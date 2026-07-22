@@ -2876,6 +2876,7 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
   List<String> rawItems = const [];
   bool loading = true;
   bool settling = false;
+  String statusFilter = 'all';
 
   @override
   void initState() {
@@ -2946,6 +2947,21 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
     return created != null &&
         !created.isBefore(DateTime.now().subtract(const Duration(days: 7)));
   }
+
+  String _settlementState(Map<String, dynamic> item) {
+    final settlement = item['settlement'];
+    return settlement is Map ? settlement['state']?.toString() ?? '' : '';
+  }
+
+  List<String> _visibleItems() => rawItems.where((raw) {
+        final item = _decode(raw);
+        if (!_withinLastSevenDays(item)) return false;
+        return switch (statusFilter) {
+          'won' || 'lost' => _settlementState(item) == statusFilter,
+          'pending' => !{'won', 'lost'}.contains(_settlementState(item)),
+          _ => true,
+        };
+      }).toList(growable: false);
 
   ({String label, Color background, Color foreground}) _statusStyle(
       Map<String, dynamic> item) {
@@ -3277,27 +3293,35 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                       icon: const Icon(Icons.close))
                 ])),
             const Divider(height: 1),
+            Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                child: SegmentedButton<String>(
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(value: 'all', label: Text('全部')),
+                      ButtonSegment(value: 'pending', label: Text('待开奖')),
+                      ButtonSegment(value: 'won', label: Text('中奖')),
+                      ButtonSegment(value: 'lost', label: Text('未中')),
+                    ],
+                    selected: {statusFilter},
+                    onSelectionChanged: (value) =>
+                        setState(() => statusFilter = value.first))),
             Expanded(
                 child: loading
                     ? const Center(child: CircularProgressIndicator())
-                    : rawItems
-                            .where((raw) => _withinLastSevenDays(_decode(raw)))
-                            .isEmpty
-                        ? const Center(child: Text('最近7天暂无保存方案'))
+                    : _visibleItems().isEmpty
+                        ? Center(
+                            child: Text(statusFilter == 'all'
+                                ? '最近7天暂无保存方案'
+                                : '暂无符合条件的方案'))
                         : ListView.separated(
                             controller: controller,
                             padding: const EdgeInsets.all(12),
-                            itemCount: rawItems
-                                .where(
-                                    (raw) => _withinLastSevenDays(_decode(raw)))
-                                .length,
+                            itemCount: _visibleItems().length,
                             separatorBuilder: (_, __) =>
                                 const SizedBox(height: 8),
                             itemBuilder: (_, index) {
-                              final visible = rawItems
-                                  .where((raw) =>
-                                      _withinLastSevenDays(_decode(raw)))
-                                  .toList(growable: false);
+                              final visible = _visibleItems();
                               final raw = visible[index];
                               final item = _decode(raw);
                               final amount = item['amount'];
