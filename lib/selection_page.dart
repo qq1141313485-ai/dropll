@@ -1547,13 +1547,17 @@ class _SchemePage extends StatefulWidget {
       required this.initialPasses,
       this.initialMultiple = 1,
       this.initialBudget,
-      this.optimizationOnly = false});
+      this.optimizationOnly = false,
+      this.initialResult,
+      this.initialShowCombinations = false});
 
   final List<MatchPick> picks;
   final List<PassMethod> initialPasses;
   final int initialMultiple;
   final double? initialBudget;
   final bool optimizationOnly;
+  final BettingResult? initialResult;
+  final bool initialShowCombinations;
 
   @override
   State<_SchemePage> createState() => _SchemePageState();
@@ -1591,7 +1595,12 @@ class _SchemePageState extends State<_SchemePage> {
         if (widget.initialPasses.any((pass) => pass.label == item.label)) item
     ];
     if (selectedMethods.isEmpty) selectedMethods = [methods.last];
-    _recalculate();
+    showCombinations = widget.initialShowCombinations;
+    if (widget.initialResult != null) {
+      result = widget.initialResult;
+    } else {
+      _recalculate();
+    }
   }
 
   String get _passLabel => selectedMethods.map((item) => item.label).join('、');
@@ -1628,29 +1637,6 @@ class _SchemePageState extends State<_SchemePage> {
     }
   }
 
-  double? _amountForMultipleText() {
-    final multiple = int.tryParse(multipleController.text);
-    if (multiple == null) return null;
-    final calculated = const BettingEngine().calculateMultiple(
-      picks: widget.picks,
-      passes: selectedMethods,
-      multiple: multiple.clamp(1, BettingEngine.maxSchemeMultiple),
-    );
-    return calculated.amount;
-  }
-
-  void _syncBudgetFromMultiple() {
-    if (mode != _SchemeMode.optimize) return;
-    final amount = _amountForMultipleText();
-    if (amount == null) return;
-    final nextText = amount.toStringAsFixed(0);
-    if (budgetController.text == nextText) return;
-    budgetController.value = TextEditingValue(
-      text: nextText,
-      selection: TextSelection.collapsed(offset: nextText.length),
-    );
-  }
-
   int _multipleFor(BettingResult value, AtomicBet bet) => value.tickets
       .where((ticket) => identical(ticket.bet, bet))
       .fold(0, (sum, ticket) => sum + ticket.multiple);
@@ -1672,13 +1658,6 @@ class _SchemePageState extends State<_SchemePage> {
     if (nextMultiple < 1 || nextMultiple > BettingEngine.maxSchemeMultiple) {
       return;
     }
-    final budget = double.tryParse(budgetController.text) ?? 0;
-    final projectedAmount = current.amount + delta * 2;
-    if (delta > 0 && projectedAmount > budget + 0.001) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('预算已用完，请先减少其他组合倍数')));
-      return;
-    }
     final tickets = <SplitTicket>[
       for (final entry in current.returnsByCombination.keys)
         SplitTicket(
@@ -1688,6 +1667,11 @@ class _SchemePageState extends State<_SchemePage> {
                 : _multipleFor(current, entry))
     ];
     final draft = BettingResult(current.atomicBets, tickets);
+    final nextBudget = draft.amount.toStringAsFixed(0);
+    budgetController.value = TextEditingValue(
+      text: nextBudget,
+      selection: TextSelection.collapsed(offset: nextBudget.length),
+    );
     setState(() {
       result = BettingResult(current.atomicBets, tickets,
           principalProtected: draft.minReturn + 0.001 >= draft.amount);
@@ -1746,7 +1730,7 @@ class _SchemePageState extends State<_SchemePage> {
     saved.insert(
         0,
         jsonEncode({
-          'version': 4,
+          'version': 5,
           'id': DateTime.now().microsecondsSinceEpoch.toString(),
           'createdAt': DateTime.now().toIso8601String(),
           'status': '已保存',
@@ -1763,6 +1747,21 @@ class _SchemePageState extends State<_SchemePage> {
           'optimizationOnly': widget.optimizationOnly,
           'passes': selectedMethods.map((item) => item.label).toList(),
           'picks': widget.picks.map(_serializePick).toList(),
+          'combinations': [
+            for (final entry in value.returnsByCombination.entries)
+              {
+                'multiple': _multipleFor(value, entry.key),
+                'picks': [
+                  for (final item in entry.key.picks)
+                    {
+                      'matchId': item.match.matchId,
+                      'play': (item.option.play ?? item.match.play).name,
+                      'label': item.option.label,
+                      'sp': item.option.sp,
+                    }
+                ],
+              }
+          ],
         }));
     await preferences.setStringList(
         'saved_football_schemes', saved.take(30).toList());
@@ -1850,38 +1849,18 @@ class _SchemePageState extends State<_SchemePage> {
                     suffixText: '倍（最高10000）',
                     border: OutlineInputBorder()))
           else ...[
-            Row(children: [
-              Expanded(
-                  child: TextField(
-                      controller: multipleController,
-                      keyboardType: TextInputType.number,
-                      textInputAction: TextInputAction.done,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      onChanged: (_) {
-                        _syncBudgetFromMultiple();
-                        _recalculate();
-                      },
-                      onSubmitted: (_) => FocusScope.of(context).unfocus(),
-                      decoration: const InputDecoration(
-                          isDense: true,
-                          labelText: '方案倍数',
-                          suffixText: '倍',
-                          border: OutlineInputBorder()))),
-              const SizedBox(width: 10),
-              Expanded(
-                  child: TextField(
-                      controller: budgetController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      textInputAction: TextInputAction.done,
-                      onChanged: (_) => _recalculate(),
-                      onSubmitted: (_) => FocusScope.of(context).unfocus(),
-                      decoration: const InputDecoration(
-                          isDense: true,
-                          labelText: '优化预算',
-                          suffixText: '元',
-                          border: OutlineInputBorder()))),
-            ]),
+            TextField(
+                controller: budgetController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.done,
+                onChanged: (_) => _recalculate(),
+                onSubmitted: (_) => FocusScope.of(context).unfocus(),
+                decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: '优化预算',
+                    suffixText: '元',
+                    border: OutlineInputBorder())),
             const SizedBox(height: 10),
             Row(children: [
               _optimizeButton(OptimizeMode.balanced, '平均'),
@@ -2357,7 +2336,20 @@ class _SchemePageState extends State<_SchemePage> {
                 border: Border(
                     top: BorderSide(color: Color(0xffe5e9e7), width: .7))),
             child: FilledButton(
-                onPressed: value == null ? null : () => _save(value),
+                onPressed: value == null
+                    ? null
+                    : () async {
+                        await _save(value);
+                        if (!mounted) return;
+                        await Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => _SchemePage(
+                                  picks: widget.picks,
+                                  initialPasses: selectedMethods,
+                                  initialBudget: value.amount,
+                                  initialResult: value,
+                                  initialShowCombinations: true,
+                                )));
+                      },
                 style: FilledButton.styleFrom(backgroundColor: _green),
                 child: const Text('保存优化方案'))),
       );
@@ -2806,6 +2798,7 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
           preferences.getStringList('saved_football_schemes') ?? const [];
       loading = false;
     });
+    await _settleSavedSchemes();
   }
 
   Map<String, dynamic> _decode(String raw) {
@@ -2852,6 +2845,38 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
     if (date == null) return '时间未知';
     return '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} '
         '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  bool _withinLastSevenDays(Map<String, dynamic> item) {
+    final created = DateTime.tryParse(item['createdAt']?.toString() ?? '');
+    return created != null &&
+        !created.isBefore(DateTime.now().subtract(const Duration(days: 7)));
+  }
+
+  ({String label, Color background, Color foreground}) _statusStyle(
+      Map<String, dynamic> item) {
+    final settlement = item['settlement'];
+    final state = settlement is Map ? settlement['state']?.toString() : '';
+    if (state == 'won') {
+      final prize = num.tryParse(settlement?['prize']?.toString() ?? '') ?? 0;
+      return (
+        label: '奖金${prize.toStringAsFixed(2)}元',
+        background: const Color(0xffffedd2),
+        foreground: const Color(0xffc76a00),
+      );
+    }
+    if (state == 'lost') {
+      return (
+        label: '未中奖',
+        background: const Color(0xffeef1ef),
+        foreground: const Color(0xff7a827e),
+      );
+    }
+    return (
+      label: '待开奖',
+      background: const Color(0xffe1f0ff),
+      foreground: const Color(0xff2778ad),
+    );
   }
 
   FootballPlay? _play(dynamic value) {
@@ -2913,6 +2938,182 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
     return picks;
   }
 
+  bool _isFinished(MatchItem match) =>
+      match.matchState == MatchState.finished ||
+      match.status == MatchStatus.finished ||
+      (match.finalScore?.isNotEmpty ?? false);
+
+  ({int home, int away})? _score(String? value) {
+    final found =
+        RegExp(r'^(\d+)\s*[:\-]\s*(\d+)$').firstMatch(value?.trim() ?? '');
+    if (found == null) return null;
+    return (home: int.parse(found.group(1)!), away: int.parse(found.group(2)!));
+  }
+
+  String _outcome(int home, int away,
+          {String win = '胜', String draw = '平', String lose = '负'}) =>
+      home > away
+          ? win
+          : home == away
+              ? draw
+              : lose;
+
+  String? _winningLabel(MatchItem match, FootballPlay play) {
+    final score = _score(match.finalScore);
+    if (score == null) return null;
+    switch (play) {
+      case FootballPlay.had:
+        return _outcome(score.home, score.away);
+      case FootballPlay.hhad:
+        final handicap =
+            double.tryParse(match.hhad['让球']?.toString() ?? '') ?? 0;
+        return _outcome(score.home + handicap.round(), score.away,
+            win: '让胜', draw: '让平', lose: '让负');
+      case FootballPlay.ttg:
+        final total = score.home + score.away;
+        return total >= 7 ? '7+' : '$total';
+      case FootballPlay.crs:
+        final direct = '${score.home}:${score.away}';
+        if (match.crs.containsKey(direct)) return direct;
+        return _outcome(score.home, score.away,
+            win: '胜其他', draw: '平其他', lose: '负其他');
+      case FootballPlay.hafu:
+        final half = _score(match.halfTimeScore);
+        if (half == null) return null;
+        return '${_outcome(half.home, half.away)}${_outcome(score.home, score.away)}';
+    }
+  }
+
+  bool _optionWins(String option, String winner, FootballPlay play) {
+    if (option == winner) return true;
+    if (play == FootballPlay.hhad) {
+      return switch (winner) {
+        '让胜' => option == '胜',
+        '让平' => option == '平',
+        '让负' => option == '负',
+        _ => false,
+      };
+    }
+    return false;
+  }
+
+  Future<void> _settleSavedSchemes() async {
+    final decoded = rawItems.map(_decode).toList(growable: false);
+    final pending = decoded.where((item) {
+      final settlement = item['settlement'];
+      return item['combinations'] is List &&
+          !(settlement is Map && settlement['state'] != 'pending');
+    }).toList(growable: false);
+    if (pending.isEmpty) return;
+    final ids = <String>{
+      for (final item in pending)
+        for (final pick
+            in (item['picks'] is List ? item['picks'] as List : const []))
+          if (pick is Map && pick['matchId']?.toString().isNotEmpty == true)
+            pick['matchId'].toString(),
+    };
+    if (ids.isEmpty) return;
+    final client = CaiApiClient();
+    final matches = <String, MatchItem>{};
+    try {
+      await Future.wait(ids.map((id) async {
+        try {
+          matches[id] = await client.fetchMatch(id);
+        } catch (_) {
+          // Keep this plan pending until the next time the saved list is opened.
+        }
+      }));
+    } finally {
+      client.close();
+    }
+    var changed = false;
+    final updated = <String>[];
+    for (final raw in rawItems) {
+      final item = _decode(raw);
+      if (item['combinations'] is! List ||
+          (item['settlement'] is Map &&
+              item['settlement']['state'] != 'pending')) {
+        updated.add(raw);
+        continue;
+      }
+      final picks = item['picks'] is List ? item['picks'] as List : const [];
+      final matchIds = [
+        for (final pick in picks)
+          if (pick is Map) pick['matchId']?.toString() ?? '',
+      ].where((id) => id.isNotEmpty).toSet();
+      if (matchIds.isEmpty ||
+          !matchIds.every(
+              (id) => matches[id] != null && _isFinished(matches[id]!))) {
+        updated.add(raw);
+        continue;
+      }
+      final winners = <String, Map<String, String>>{};
+      for (final pick in picks.whereType<Map>()) {
+        final match = matches[pick['matchId']?.toString()];
+        if (match == null) continue;
+        final labels = <String, String>{};
+        for (final rawOption
+            in (pick['options'] is List ? pick['options'] as List : const [])) {
+          if (rawOption is! Map) continue;
+          final play = _play(rawOption['play']);
+          if (play == null) continue;
+          final winner = _winningLabel(match, play);
+          if (winner != null) labels[play.name] = winner;
+        }
+        winners[pick['matchId']?.toString() ?? ''] = labels;
+      }
+      var prize = 0.0;
+      for (final combination in item['combinations'] as List) {
+        if (combination is! Map || combination['picks'] is! List) continue;
+        var wins = true;
+        var spProduct = 1.0;
+        for (final rawPick in combination['picks'] as List) {
+          if (rawPick is! Map) continue;
+          final play = _play(rawPick['play']);
+          if (play == null) {
+            wins = false;
+            break;
+          }
+          final winner = winners[rawPick['matchId']?.toString()]?[play.name];
+          if (winner == null ||
+              !_optionWins(rawPick['label']?.toString() ?? '', winner, play)) {
+            wins = false;
+            break;
+          }
+          spProduct *=
+              num.tryParse(rawPick['sp']?.toString() ?? '')?.toDouble() ?? 0;
+        }
+        if (wins) {
+          prize += 2 *
+              spProduct *
+              (num.tryParse(combination['multiple']?.toString() ?? '')
+                      ?.toDouble() ??
+                  0);
+        }
+      }
+      final outcomes = <String, dynamic>{
+        for (final id in matchIds)
+          id: {
+            'score': matches[id]?.finalScore ?? matches[id]?.score ?? '--',
+            'winners': winners[id] ?? const <String, String>{},
+          }
+      };
+      item['settlement'] = {
+        'state': prize > 0 ? 'won' : 'lost',
+        'prize': double.parse(prize.toStringAsFixed(2)),
+        'settledAt': DateTime.now().toIso8601String(),
+        'outcomes': outcomes,
+      };
+      item['status'] = prize > 0 ? '已中奖' : '未中奖';
+      updated.add(jsonEncode(item));
+      changed = true;
+    }
+    if (!changed) return;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setStringList('saved_football_schemes', updated);
+    if (mounted) setState(() => rawItems = updated);
+  }
+
   Future<void> _openScheme(Map<String, dynamic> item) async {
     final picks = _restorePicks(item);
     if (picks.isEmpty) {
@@ -2921,28 +3122,8 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
       );
       return;
     }
-    final maxPass = picks
-        .expand((pick) =>
-            pick.options.map((option) => (option.play ?? pick.play).maxPass))
-        .reduce(math.min);
-    final available = PassMethod.available(picks.length, maxPass);
-    final savedLabels = <String>{
-      if (item['passes'] is List)
-        for (final value in item['passes'] as List) value.toString(),
-      if (item['pass'] != null) item['pass'].toString(),
-    };
-    final passes = available
-        .where((method) => savedLabels.contains(method.label))
-        .toList();
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => _SchemePage(
-        picks: picks,
-        initialPasses: passes.isEmpty ? [available.last] : passes,
-        initialMultiple: int.tryParse(item['multiple']?.toString() ?? '') ?? 1,
-        initialBudget:
-            num.tryParse(item['budget']?.toString() ?? '')?.toDouble(),
-        optimizationOnly: item['optimizationOnly'] == true,
-      ),
+      builder: (_) => _SavedSchemeDetailPage(item: item),
     ));
   }
 
@@ -2967,17 +3148,28 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
             Expanded(
                 child: loading
                     ? const Center(child: CircularProgressIndicator())
-                    : rawItems.isEmpty
-                        ? const Center(child: Text('暂无保存方案'))
+                    : rawItems
+                            .where((raw) => _withinLastSevenDays(_decode(raw)))
+                            .isEmpty
+                        ? const Center(child: Text('最近7天暂无保存方案'))
                         : ListView.separated(
                             controller: controller,
                             padding: const EdgeInsets.all(12),
-                            itemCount: rawItems.length,
+                            itemCount: rawItems
+                                .where(
+                                    (raw) => _withinLastSevenDays(_decode(raw)))
+                                .length,
                             separatorBuilder: (_, __) =>
                                 const SizedBox(height: 8),
                             itemBuilder: (_, index) {
-                              final item = _decode(rawItems[index]);
+                              final visible = rawItems
+                                  .where((raw) =>
+                                      _withinLastSevenDays(_decode(raw)))
+                                  .toList(growable: false);
+                              final raw = visible[index];
+                              final item = _decode(raw);
                               final amount = item['amount'];
+                              final status = _statusStyle(item);
                               return Card(
                                   elevation: 0,
                                   color: const Color(0xfff6f8f7),
@@ -2997,20 +3189,20 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                                                           horizontal: 8,
                                                           vertical: 3),
                                                       decoration: BoxDecoration(
-                                                          color: const Color(
-                                                              0xffd9f2e6),
+                                                          color:
+                                                              status.background,
                                                           borderRadius:
                                                               BorderRadius
                                                                   .circular(
                                                                       12)),
-                                                      child: Text(
-                                                          item['status']
-                                                                  ?.toString() ??
-                                                              '已保存',
-                                                          style: const TextStyle(
-                                                              color: Color(
-                                                                  0xff087a4d),
-                                                              fontSize: 11))),
+                                                      child: Text(status.label,
+                                                          style: TextStyle(
+                                                              color: status
+                                                                  .foreground,
+                                                              fontSize: 11,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700))),
                                                   const Spacer(),
                                                   Text(_time(item['createdAt']),
                                                       style: const TextStyle(
@@ -3062,7 +3254,9 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                                                               const Text('复制')),
                                                       TextButton.icon(
                                                           onPressed: () =>
-                                                              _delete(index),
+                                                              _delete(rawItems
+                                                                  .indexOf(
+                                                                      raw)),
                                                           icon: const Icon(
                                                               Icons
                                                                   .delete_outline,
@@ -3073,4 +3267,167 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                                               ]))));
                             }))
           ]));
+}
+
+class _SavedSchemeDetailPage extends StatelessWidget {
+  const _SavedSchemeDetailPage({required this.item});
+
+  final Map<String, dynamic> item;
+
+  String _winner(Map<String, dynamic> outcomes, String matchId, String play) {
+    final outcome = outcomes[matchId];
+    if (outcome is! Map) return '';
+    final winners = outcome['winners'];
+    return winners is Map ? winners[play]?.toString() ?? '' : '';
+  }
+
+  bool _isWinningOption(String label, String winner, String play) {
+    if (label == winner) return true;
+    if (play == FootballPlay.hhad.name) {
+      return (winner == '让胜' && label == '胜') ||
+          (winner == '让平' && label == '平') ||
+          (winner == '让负' && label == '负');
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settlement = item['settlement'];
+    final state = settlement is Map ? settlement['state']?.toString() : '';
+    final prize = settlement is Map
+        ? num.tryParse(settlement['prize']?.toString() ?? '')
+        : null;
+    final outcomes = settlement is Map && settlement['outcomes'] is Map
+        ? Map<String, dynamic>.from(settlement['outcomes'] as Map)
+        : const <String, dynamic>{};
+    final picks = item['picks'] is List ? item['picks'] as List : const [];
+    final statusColor = state == 'won'
+        ? const Color(0xffc76a00)
+        : state == 'lost'
+            ? const Color(0xff767e7a)
+            : const Color(0xff2778ad);
+    final statusLabel = state == 'won'
+        ? '实际税前奖金 ${prize?.toStringAsFixed(2) ?? '--'} 元'
+        : state == 'lost'
+            ? '未中奖'
+            : '待开奖';
+    return Scaffold(
+      backgroundColor: const Color(0xfff5f7f6),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        title: const Text('保存方案详情',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(8)),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(item['pass']?.toString() ?? '竞彩足球',
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 5),
+              Text(
+                  '${item['notes'] ?? '--'}注 · 投入${num.tryParse(item['amount']?.toString() ?? '')?.toStringAsFixed(0) ?? '--'}元',
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xff737b77))),
+              const SizedBox(height: 10),
+              Text(statusLabel,
+                  style: TextStyle(
+                      color: statusColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800)),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          for (final rawPick in picks.whereType<Map>()) ...[
+            Builder(builder: (_) {
+              final pick = Map<String, dynamic>.from(rawPick);
+              final matchId = pick['matchId']?.toString() ?? '';
+              final outcome = outcomes[matchId];
+              final score =
+                  outcome is Map ? outcome['score']?.toString() ?? '--' : '--';
+              final options =
+                  pick['options'] is List ? pick['options'] as List : const [];
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8)),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Text(pick['number']?.toString() ?? '--',
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w800)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                            child: Text(
+                                '${pick['home'] ?? '--'}  $score  ${pick['away'] ?? '--'}',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800))),
+                      ]),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final rawOption in options.whereType<Map>())
+                            Builder(builder: (_) {
+                              final option =
+                                  Map<String, dynamic>.from(rawOption);
+                              final play = option['play']?.toString() ?? '';
+                              final winner = _winner(outcomes, matchId, play);
+                              final won = _isWinningOption(
+                                  option['label']?.toString() ?? '',
+                                  winner,
+                                  play);
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: winner.isEmpty
+                                      ? const Color(0xfff1f4f2)
+                                      : won
+                                          ? const Color(0xffffe6e6)
+                                          : const Color(0xffeef1ef),
+                                  border: Border.all(
+                                      color: winner.isEmpty
+                                          ? const Color(0xffdfe5e1)
+                                          : won
+                                              ? const Color(0xffdf6971)
+                                              : const Color(0xffe0e4e1)),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                    '${option['label']}  ${option['sp']}',
+                                    style: TextStyle(
+                                        color: won
+                                            ? const Color(0xffc83d46)
+                                            : const Color(0xff646c68),
+                                        fontWeight: won
+                                            ? FontWeight.w800
+                                            : FontWeight.w500)),
+                              );
+                            })
+                        ],
+                      )
+                    ]),
+              );
+            }),
+          ]
+        ],
+      ),
+    );
+  }
 }
