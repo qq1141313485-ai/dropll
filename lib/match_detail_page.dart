@@ -35,6 +35,7 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
   @override
   void initState() {
     super.initState();
+    if (_isFinishedMatch(widget.match)) _tab = 2;
     _future = _load();
   }
 
@@ -96,9 +97,9 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
             surfaceTintColor: Colors.white,
             backgroundColor: Colors.white,
             elevation: 0,
-            title: const Text(
-              '比赛详情',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            title: Text(
+              match.matchState == MatchState.finished ? '完场赛果' : '比赛详情',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
@@ -1883,6 +1884,11 @@ String? _displayScore(MatchItem match) {
   final text = value?.trim() ?? '';
   return text.isEmpty ? null : text;
 }
+
+bool _isFinishedMatch(MatchItem match) =>
+    match.matchState == MatchState.finished ||
+    match.status == MatchStatus.finished ||
+    _scoreParts(match.finalScore) != null;
 
 (int, int)? _scoreParts(String? source) {
   final match = RegExp(r'(\d+)\s*[:\-]\s*(\d+)').firstMatch(source ?? '');
