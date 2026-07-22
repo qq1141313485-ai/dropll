@@ -305,48 +305,27 @@ class BettingEngine {
     if (units < atomic.length) {
       throw ArgumentError('预算不足，至少需要 ${atomic.length * 2} 元覆盖全部组合');
     }
-    var multiples = List<int>.filled(atomic.length, 1);
+    final multiples = List<int>.filled(atomic.length, 1);
     var remaining = units - atomic.length;
-    var principalProtected = false;
-
-    if (mode != OptimizeMode.balanced) {
-      final protected = [
-        for (final bet in atomic) math.max(1, (budget / bet.unitReturn).ceil())
-      ];
-      final protectedUnits =
-          protected.fold<int>(0, (sum, value) => sum + value);
-      if (protectedUnits <= units &&
-          protected.every((value) => value <= maxSchemeMultiple)) {
-        multiples = protected;
-        remaining = units - protectedUnits;
-        principalProtected = true;
-      }
-    }
-
-    double priority(int index) {
-      final bet = atomic[index];
-      if (mode == OptimizeMode.balanced || !principalProtected) {
-        return -bet.unitReturn * multiples[index];
-      }
-      final extra = math.max(1,
-          multiples[index] - math.max(1, (budget / bet.unitReturn).ceil()) + 1);
-      final weight =
-          mode == OptimizeMode.hot ? 1 / bet.unitReturn : bet.unitReturn;
-      return weight / extra;
-    }
-
     while (remaining > 0) {
-      var best = -1;
-      var bestPriority = -double.infinity;
+      var best = 0;
+      var bestScore = mode == OptimizeMode.balanced
+          ? double.infinity
+          : mode == OptimizeMode.hot
+              ? double.infinity
+              : -double.infinity;
       for (var index = 0; index < atomic.length; index++) {
         if (multiples[index] >= maxSchemeMultiple) continue;
-        final value = priority(index);
-        if (value > bestPriority) {
-          bestPriority = value;
+        final value = mode == OptimizeMode.balanced
+            ? atomic[index].unitReturn * multiples[index]
+            : atomic[index].unitReturn;
+        final shouldSelect =
+            mode == OptimizeMode.cold ? value > bestScore : value < bestScore;
+        if (shouldSelect) {
+          bestScore = value;
           best = index;
         }
       }
-      if (best < 0) break;
       multiples[best]++;
       remaining--;
     }
@@ -356,8 +335,7 @@ class BettingEngine {
         for (var i = 0; i < atomic.length; i++)
           SplitTicket(bet: atomic[i], multiple: multiples[i])
       ],
-      principalProtected:
-          mode == OptimizeMode.balanced ? null : principalProtected,
+      principalProtected: null,
     );
   }
 
@@ -380,57 +358,29 @@ class BettingEngine {
     final multiples = List<int>.filled(atomic.length, 1);
     var remaining = units - atomic.length;
 
-    if (mode == OptimizeMode.balanced) {
-      while (remaining > 0) {
-        var best = 0;
-        var lowestReturn = double.infinity;
-        for (var index = 0; index < atomic.length; index++) {
-          final value = atomic[index].unitReturn * multiples[index];
-          if (multiples[index] < maxSchemeMultiple && value < lowestReturn) {
-            lowestReturn = value;
-            best = index;
-          }
+    while (remaining > 0) {
+      var best = 0;
+      var bestScore = mode == OptimizeMode.balanced
+          ? double.infinity
+          : mode == OptimizeMode.hot
+              ? double.infinity
+              : -double.infinity;
+      for (var index = 0; index < atomic.length; index++) {
+        if (multiples[index] >= maxSchemeMultiple) continue;
+        final value = mode == OptimizeMode.balanced
+            ? atomic[index].unitReturn * multiples[index]
+            : atomic[index].unitReturn;
+        final shouldSelect =
+            mode == OptimizeMode.cold ? value > bestScore : value < bestScore;
+        if (shouldSelect) {
+          bestScore = value;
+          best = index;
         }
-        multiples[best]++;
-        remaining--;
       }
-      return _optimizedResult(atomic, multiples, null);
+      multiples[best]++;
+      remaining--;
     }
-
-    var lowest = 0;
-    var highest = 0;
-    for (var index = 1; index < atomic.length; index++) {
-      if (atomic[index].unitReturn < atomic[lowest].unitReturn) lowest = index;
-      if (atomic[index].unitReturn > atomic[highest].unitReturn) {
-        highest = index;
-      }
-    }
-
-    final protectedIndexes = mode == OptimizeMode.hot
-        ? [
-            for (var i = 0; i < atomic.length; i++)
-              if (i != lowest) i
-          ]
-        : [lowest];
-    var protected = true;
-    for (final index in protectedIndexes) {
-      final required = math.max(1, (budget / atomic[index].unitReturn).ceil());
-      final extra = required - multiples[index];
-      if (extra > remaining || required > maxSchemeMultiple) {
-        protected = false;
-        break;
-      }
-      multiples[index] = required;
-      remaining -= extra;
-    }
-
-    final target = mode == OptimizeMode.hot ? lowest : highest;
-    final room = maxSchemeMultiple - multiples[target];
-    final assigned = math.min(room, remaining);
-    multiples[target] += assigned;
-    remaining -= assigned;
-    if (remaining > 0) protected = false;
-    return _optimizedResult(atomic, multiples, protected);
+    return _optimizedResult(atomic, multiples, null);
   }
 
   BettingResult _optimizedResult(

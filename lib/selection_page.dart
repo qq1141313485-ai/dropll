@@ -357,7 +357,8 @@ class _SelectionPageState extends State<SelectionPage> {
       });
 
   Future<void> _editQuickMultiple() async {
-    var input = '$quickMultiple';
+    // Keep the display at 1x, but let a typed value replace it rather than append.
+    var input = '';
     final chosen = await showModalBottomSheet<int>(
         context: context,
         useSafeArea: true,
@@ -486,7 +487,7 @@ class _SelectionPageState extends State<SelectionPage> {
                               child: const Text('完成')))
                     ]);
                   }),
-                  const Text('超过50倍为汇总测算，按需拆票后生成票单明细',
+                  const Text('输入倍数后按完成更新方案金额与奖金测算',
                       style: TextStyle(fontSize: 10, color: Color(0xff8a918e)))
                 ]))));
     if (chosen != null && mounted) {
@@ -1576,6 +1577,7 @@ class _SchemePageState extends State<_SchemePage> {
   BettingResult? result;
   String? error;
   bool showCombinations = false;
+  bool isSharing = false;
 
   @override
   void initState() {
@@ -1673,8 +1675,7 @@ class _SchemePageState extends State<_SchemePage> {
       selection: TextSelection.collapsed(offset: nextBudget.length),
     );
     setState(() {
-      result = BettingResult(current.atomicBets, tickets,
-          principalProtected: draft.minReturn + 0.001 >= draft.amount);
+      result = BettingResult(current.atomicBets, tickets);
     });
   }
 
@@ -1772,55 +1773,66 @@ class _SchemePageState extends State<_SchemePage> {
   }
 
   Future<void> _shareSchemeImage(BettingResult value) async {
-    const width = 1080.0;
-    const horizontal = 72.0;
-    final body = TextPainter(
-      text: TextSpan(
-        text: _schemeText(value),
-        style: const TextStyle(
-          color: Color(0xff202522),
-          fontSize: 30,
-          height: 1.55,
+    if (isSharing) return;
+    setState(() => isSharing = true);
+    try {
+      const width = 1080.0;
+      const horizontal = 72.0;
+      final body = TextPainter(
+        text: TextSpan(
+          text: _schemeText(value),
+          style: const TextStyle(
+            color: Color(0xff202522),
+            fontSize: 30,
+            height: 1.55,
+          ),
         ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: width - horizontal * 2);
-    final height = math.max(1200.0, body.height + 360).ceil();
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    canvas.drawColor(Colors.white, BlendMode.src);
-    canvas.drawRect(
-      const Rect.fromLTWH(0, 0, width, 190),
-      Paint()..color = const Color(0xff168f62),
-    );
-    final title = TextPainter(
-      text: const TextSpan(
-        text: '竞球镜·方案分享',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 48,
-          fontWeight: FontWeight.w700,
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: width - horizontal * 2);
+      final height = math.max(1200.0, body.height + 360).ceil();
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawColor(Colors.white, BlendMode.src);
+      canvas.drawRect(
+        const Rect.fromLTWH(0, 0, width, 190),
+        Paint()..color = const Color(0xff168f62),
+      );
+      final title = TextPainter(
+        text: const TextSpan(
+          text: '竞球镜·方案分享',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 48,
+            fontWeight: FontWeight.w700,
+          ),
         ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: width - horizontal * 2);
-    title.paint(canvas, const Offset(horizontal, 62));
-    body.paint(canvas, const Offset(horizontal, 250));
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(width.ceil(), height);
-    final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    if (data == null) return;
-    final directory = await getTemporaryDirectory();
-    final file = File(
-      '${directory.path}/jingqiujing_scheme_${DateTime.now().millisecondsSinceEpoch}.png',
-    );
-    await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(file.path)],
-        text: '竞球镜·方案分享',
-      ),
-    );
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: width - horizontal * 2);
+      title.paint(canvas, const Offset(horizontal, 62));
+      body.paint(canvas, const Offset(horizontal, 250));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(width.ceil(), height);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (data == null) throw StateError('分享图片生成失败');
+      final directory = await getTemporaryDirectory();
+      final file = File(
+        '${directory.path}/jingqiujing_scheme_${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+      await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path)],
+          text: '竞球镜·方案分享',
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('分享图片生成失败，请重试')));
+      }
+    } finally {
+      if (mounted) setState(() => isSharing = false);
+    }
   }
 
   Widget _parameters() => Container(
@@ -1871,8 +1883,8 @@ class _SchemePageState extends State<_SchemePage> {
             Text(
                 switch (optimizeMode) {
                   OptimizeMode.balanced => '尽量让各组合中奖回报接近',
-                  OptimizeMode.hot => '保本优先，剩余资金偏向低SP组合',
-                  OptimizeMode.cold => '保本优先，剩余资金偏向高SP组合',
+                  OptimizeMode.hot => '将预算增量集中到低SP组合',
+                  OptimizeMode.cold => '将预算增量集中到高SP组合',
                 },
                 style: const TextStyle(fontSize: 11, color: Color(0xff858d89)))
           ]
@@ -2150,15 +2162,6 @@ class _SchemePageState extends State<_SchemePage> {
                       const TextStyle(fontSize: 11, color: Color(0xff7d8581)));
             })
           ],
-          if (value.principalProtected != null) ...[
-            const SizedBox(height: 6),
-            Text(value.principalProtected! ? '当前分配已达到保本线' : '当前预算无法覆盖全部组合的保本线',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: value.principalProtected!
-                        ? _green
-                        : const Color(0xffdf733d)))
-          ]
         ]),
       );
 
@@ -2200,8 +2203,7 @@ class _SchemePageState extends State<_SchemePage> {
                                     fontSize: 12.5, height: 1.3))),
                       if (!widget.optimizationOnly) ...[
                         const SizedBox(height: 5),
-                        Text(
-                            '${_multipleFor(value, entries[index].key)}倍${value.isSplit ? ' · 已拆票' : ''}',
+                        Text('${_multipleFor(value, entries[index].key)}倍',
                             style: const TextStyle(
                                 fontSize: 11, color: Color(0xff858d89)))
                       ]
@@ -2304,18 +2306,17 @@ class _SchemePageState extends State<_SchemePage> {
             child: Row(children: [
               Expanded(
                   child: TextButton.icon(
-                      onPressed: value == null || value.isSplit
+                      onPressed: value == null || isSharing
                           ? null
-                          : () => setState(() =>
-                              result = const BettingEngine().split(value)),
-                      icon: const Icon(Icons.call_split_outlined, size: 19),
-                      label: Text(value?.isSplit == true ? '已拆票' : '拆票'))),
-              Expanded(
-                  child: TextButton.icon(
-                      onPressed:
-                          value == null ? null : () => _shareSchemeImage(value),
-                      icon: const Icon(Icons.ios_share_outlined, size: 19),
-                      label: const Text('分享'))),
+                          : () => _shareSchemeImage(value),
+                      icon: isSharing
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.ios_share_outlined, size: 19),
+                      label: Text(isSharing ? '生成中' : '分享'))),
               const SizedBox(width: 6),
               Expanded(
                   flex: 2,

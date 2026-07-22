@@ -152,7 +152,7 @@ void main() {
     expect(result.maxReturn, 24);
   });
 
-  test('博热和博冷均先保本，再分别倾斜低SP与高SP组合', () {
+  test('博热集中低SP组合，博冷集中高SP组合', () {
     final picks = [
       pick('1', [1.5, 4]),
       pick('2', [1])
@@ -167,11 +167,22 @@ void main() {
         pass: PassMethod.simple.first,
         budget: 100,
         mode: OptimizeMode.cold);
-    expect(hot.principalProtected, isTrue);
-    expect(cold.principalProtected, isTrue);
-    expect(hot.minReturn, greaterThanOrEqualTo(100));
-    expect(cold.minReturn, greaterThanOrEqualTo(100));
-    expect(hot.maxReturn, isNot(equals(cold.maxReturn)));
+    final hotMultiples = {
+      for (final entry in hot.returnsByCombination.keys)
+        entry.unitReturn: hot.tickets
+            .where((ticket) => identical(ticket.bet, entry))
+            .fold(0, (sum, ticket) => sum + ticket.multiple),
+    };
+    final coldMultiples = {
+      for (final entry in cold.returnsByCombination.keys)
+        entry.unitReturn: cold.tickets
+            .where((ticket) => identical(ticket.bet, entry))
+            .fold(0, (sum, ticket) => sum + ticket.multiple),
+    };
+    expect(hot.principalProtected, isNull);
+    expect(cold.principalProtected, isNull);
+    expect(hotMultiples[3], greaterThan(hotMultiples[8]!));
+    expect(coldMultiples[8], greaterThan(coldMultiples[3]!));
   });
 
   test('奖金区间按互斥组合取最小最大值而不是相加', () {
@@ -200,7 +211,7 @@ void main() {
     expect(result.amount, 494);
   });
 
-  test('多过关博热保护其他组合并把余量投向最低SP', () {
+  test('多过关博热将预算增量集中到最低SP组合', () {
     final result = engine.optimizeMultiple(
       picks: [
         pick('1', [1.5, 4]),
@@ -219,10 +230,11 @@ void main() {
         .where((ticket) => identical(ticket.bet, bet))
         .fold(0, (sum, ticket) => sum + ticket.multiple);
     expect(multiple(lowest), greaterThan(multiple(highest)));
-    expect(highest.unitReturn * multiple(highest), greaterThanOrEqualTo(100));
+    expect(multiple(highest), 1);
+    expect(result.principalProtected, isNull);
   });
 
-  test('多过关博冷保护最低SP并把余量投向最高SP', () {
+  test('多过关博冷将预算增量集中到最高SP组合', () {
     final result = engine.optimizeMultiple(
       picks: [
         pick('1', [1.5, 4]),
@@ -240,7 +252,8 @@ void main() {
     int multiple(AtomicBet bet) => result.tickets
         .where((ticket) => identical(ticket.bet, bet))
         .fold(0, (sum, ticket) => sum + ticket.multiple);
-    expect(lowest.unitReturn * multiple(lowest), greaterThanOrEqualTo(100));
-    expect(multiple(highest), greaterThan(1));
+    expect(multiple(lowest), 1);
+    expect(multiple(highest), greaterThan(multiple(lowest)));
+    expect(result.principalProtected, isNull);
   });
 }
