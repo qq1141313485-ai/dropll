@@ -1777,39 +1777,130 @@ class _SchemePageState extends State<_SchemePage> {
     setState(() => isSharing = true);
     try {
       const width = 1080.0;
-      const horizontal = 72.0;
-      final body = TextPainter(
-        text: TextSpan(
-          text: _schemeText(value),
-          style: const TextStyle(
-            color: Color(0xff202522),
-            fontSize: 30,
-            height: 1.55,
+      const horizontal = 64.0;
+      const contentWidth = width - horizontal * 2;
+      TextPainter painter(
+        String text, {
+        required TextStyle style,
+        double? maxWidth,
+      }) =>
+          TextPainter(
+            text: TextSpan(text: text, style: style),
+            textDirection: TextDirection.ltr,
+            maxLines: null,
+          )..layout(maxWidth: maxWidth ?? contentWidth);
+
+      final pickCards = <({TextPainter title, TextPainter choices})>[];
+      for (final pick in widget.picks) {
+        final groups = <String>[];
+        for (final play in FootballPlay.values) {
+          final options = pick.options
+              .where((option) => (option.play ?? pick.play) == play)
+              .toList(growable: false);
+          if (options.isEmpty) continue;
+          final labels = options
+              .map((option) =>
+                  '${_compactOptionLabel(play, option.label)} ${option.sp.toStringAsFixed(2)}')
+              .join('  ');
+          final prefix = play == FootballPlay.hhad && pick.handicap.isNotEmpty
+              ? '${pick.handicap}${play.label}'
+              : play.label;
+          groups.add('$prefix：$labels');
+        }
+        pickCards.add((
+          title: painter(
+            '${pick.number}  ${pick.home}  vs  ${pick.away}',
+            style: const TextStyle(
+              color: Color(0xff17231e),
+              fontSize: 29,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout(maxWidth: width - horizontal * 2);
-      final height = math.max(1200.0, body.height + 360).ceil();
+          choices: painter(
+            groups.join('\n'),
+            style: const TextStyle(
+              color: Color(0xff3e5148),
+              fontSize: 23,
+              height: 1.45,
+            ),
+          ),
+        ));
+      }
+      final cardsHeight = pickCards.fold<double>(0, (sum, card) {
+        return sum + card.title.height + card.choices.height + 58;
+      });
+      final height = math.max(1420.0, 490 + cardsHeight + 130).ceil();
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      canvas.drawColor(Colors.white, BlendMode.src);
+      canvas.drawColor(const Color(0xffeef3f0), BlendMode.src);
       canvas.drawRect(
-        const Rect.fromLTWH(0, 0, width, 190),
+        const Rect.fromLTWH(0, 0, width, 238),
         Paint()..color = const Color(0xff168f62),
       );
       final title = TextPainter(
         text: const TextSpan(
-          text: '竞球镜·方案分享',
+          text: '竞球镜',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 48,
+            fontSize: 56,
             fontWeight: FontWeight.w700,
           ),
         ),
         textDirection: TextDirection.ltr,
       )..layout(maxWidth: width - horizontal * 2);
-      title.paint(canvas, const Offset(horizontal, 62));
-      body.paint(canvas, const Offset(horizontal, 250));
+      title.paint(canvas, const Offset(horizontal, 48));
+      painter(
+        '竞彩足球方案分享',
+        style: const TextStyle(color: Color(0xffd9f5e7), fontSize: 27),
+      ).paint(canvas, const Offset(horizontal, 128));
+      painter(
+        '最早开赛 ${_earliestKickoff()}',
+        style: const TextStyle(color: Color(0xffd9f5e7), fontSize: 24),
+      ).paint(canvas, const Offset(horizontal, 174));
+
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(40, 202, width - 80, height - 252),
+          const Radius.circular(18),
+        ),
+        Paint()..color = Colors.white,
+      );
+      var y = 274.0;
+      painter(
+        '$_passLabel  ·  ${value.notes}注  ·  ${value.amount.toStringAsFixed(0)}元',
+        style: const TextStyle(
+          color: Color(0xff1d2924),
+          fontSize: 31,
+          fontWeight: FontWeight.w700,
+        ),
+      ).paint(canvas, Offset(horizontal, y));
+      y += 62;
+      painter(
+        '预计税前奖金  ${_prizeText(value.minReturn, value.maxReturn)}',
+        style: const TextStyle(
+          color: Color(0xffd8484f),
+          fontSize: 31,
+          fontWeight: FontWeight.w700,
+        ),
+      ).paint(canvas, Offset(horizontal, y));
+      y += 78;
+      for (final card in pickCards) {
+        canvas.drawLine(
+          Offset(horizontal, y - 22),
+          Offset(width - horizontal, y - 22),
+          Paint()
+            ..color = const Color(0xffe2e9e5)
+            ..strokeWidth = 1.5,
+        );
+        card.title.paint(canvas, Offset(horizontal, y));
+        y += card.title.height + 12;
+        card.choices.paint(canvas, Offset(horizontal, y));
+        y += card.choices.height + 46;
+      }
+      painter(
+        'SP变化后请重新计算 · 方案仅供参考',
+        style: const TextStyle(color: Color(0xff87928c), fontSize: 21),
+      ).paint(canvas, Offset(horizontal, height - 106));
       final picture = recorder.endRecording();
       final image = await picture.toImage(width.ceil(), height);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
