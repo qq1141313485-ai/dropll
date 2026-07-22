@@ -346,6 +346,7 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
   }
 
   String _displayStatus() {
+    if (match.isLiveDataStale) return '数据同步中';
     final status = _isLive ? (_minuteText() ?? _statusText()) : _statusText();
     return _isLive ? (_minuteText() ?? status) : status;
   }
@@ -374,6 +375,7 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
   }
 
   Color _statusColor() {
+    if (match.isLiveDataStale) return const Color(0xffff9f1c);
     return _isFinished
         ? _resultColor
         : (_isHalfTime

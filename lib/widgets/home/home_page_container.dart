@@ -42,15 +42,21 @@ class _HomePageContainerState extends State<HomePageContainer>
     const useDemo = bool.fromEnvironment('CAIMASTER_USE_DEMO');
     if (client.isConfigured) {
       refresh();
-      // Live scores are driven by a push-backed API. Poll often enough that a
-      // score update is visible promptly, while `loadingToday` prevents overlap.
-      timer = Timer.periodic(const Duration(seconds: 10), (_) => refresh());
     } else if (kDebugMode && useDemo) {
       today =
           demoMatches.where((m) => m.status != MatchStatus.finished).toList();
       finished =
           demoMatches.where((m) => m.status == MatchStatus.finished).toList();
     }
+  }
+
+  void _scheduleRefresh() {
+    if (!mounted || !client.isConfigured) return;
+    timer?.cancel();
+    final hasLive = today.any((match) =>
+        match.matchState == MatchState.live ||
+        match.matchState == MatchState.halftime);
+    timer = Timer(Duration(seconds: hasLive ? 5 : 30), refresh);
   }
 
   void _handleTabChange() {
@@ -94,7 +100,10 @@ class _HomePageContainerState extends State<HomePageContainer>
       debugPrint('首页数据加载失败: $error');
       setState(() => todayError = error.toString());
     } finally {
-      if (mounted) setState(() => loadingToday = false);
+      if (mounted) {
+        setState(() => loadingToday = false);
+        _scheduleRefresh();
+      }
     }
   }
 

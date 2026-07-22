@@ -22,6 +22,7 @@ class MatchItem {
     this.finalScore,
     this.halfTimeScore,
     this.liveStatusText,
+    this.titanLastUpdated,
     this.extraTimeScore,
     this.penaltyScore,
     this.officialResults,
@@ -55,6 +56,7 @@ class MatchItem {
   final String? finalScore;
   final String? halfTimeScore;
   final String? liveStatusText;
+  final DateTime? titanLastUpdated;
   final String? extraTimeScore;
   final String? penaltyScore;
   final Map<String, dynamic>? officialResults;
@@ -242,6 +244,8 @@ class MatchItem {
       finalScore: finalScore ?? officialFinalScore,
       halfTimeScore: json['halfTimeScore']?.toString(),
       liveStatusText: liveStatusText.isEmpty ? null : liveStatusText,
+      titanLastUpdated:
+          DateTime.tryParse(json['titanLastUpdated']?.toString() ?? ''),
       extraTimeScore: findStageScore(
         officialResults,
         const [
@@ -275,6 +279,16 @@ class MatchItem {
       hafu: toDoubleMap(odds['hafu']),
       pools: (json['pools'] as Map?)?.cast<String, dynamic>() ?? const {},
     );
+  }
+
+  bool get isLiveDataStale {
+    if (matchState != MatchState.live && matchState != MatchState.halftime) {
+      return false;
+    }
+    final updated = titanLastUpdated;
+    return updated != null &&
+        DateTime.now().difference(updated.toLocal()) >
+            const Duration(seconds: 60);
   }
 }
 
