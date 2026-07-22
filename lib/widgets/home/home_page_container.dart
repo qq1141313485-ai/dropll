@@ -42,7 +42,9 @@ class _HomePageContainerState extends State<HomePageContainer>
     const useDemo = bool.fromEnvironment('CAIMASTER_USE_DEMO');
     if (client.isConfigured) {
       refresh();
-      timer = Timer.periodic(const Duration(seconds: 20), (_) => refresh());
+      // Live scores are driven by a push-backed API. Poll often enough that a
+      // score update is visible promptly, while `loadingToday` prevents overlap.
+      timer = Timer.periodic(const Duration(seconds: 10), (_) => refresh());
     } else if (kDebugMode && useDemo) {
       today =
           demoMatches.where((m) => m.status != MatchStatus.finished).toList();
