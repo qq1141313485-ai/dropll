@@ -2784,6 +2784,7 @@ class _SavedSchemesSheet extends StatefulWidget {
 class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
   List<String> rawItems = const [];
   bool loading = true;
+  bool settling = false;
 
   @override
   void initState() {
@@ -2797,9 +2798,10 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
     setState(() {
       rawItems =
           preferences.getStringList('saved_football_schemes') ?? const [];
-      loading = false;
+      loading = true;
     });
     await _settleSavedSchemes();
+    if (mounted) setState(() => loading = false);
   }
 
   Map<String, dynamic> _decode(String raw) {
@@ -2959,15 +2961,20 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
               ? draw
               : lose;
 
-  String? _winningLabel(MatchItem match, FootballPlay play) {
+  String? _winningLabel(
+    MatchItem match,
+    FootballPlay play, {
+    String? savedHandicap,
+  }) {
     final score = _score(match.finalScore);
     if (score == null) return null;
     switch (play) {
       case FootballPlay.had:
         return _outcome(score.home, score.away);
       case FootballPlay.hhad:
-        final handicap =
-            double.tryParse(match.hhad['让球']?.toString() ?? '') ?? 0;
+        final handicap = double.tryParse(savedHandicap?.trim() ?? '') ??
+            double.tryParse(match.hhad['让球']?.toString() ?? '') ??
+            0;
         return _outcome(score.home + handicap.round(), score.away,
             win: '让胜', draw: '让平', lose: '让负');
       case FootballPlay.ttg:
@@ -2999,120 +3006,143 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
   }
 
   Future<void> _settleSavedSchemes() async {
-    final decoded = rawItems.map(_decode).toList(growable: false);
-    final pending = decoded.where((item) {
-      final settlement = item['settlement'];
-      return item['combinations'] is List &&
-          !(settlement is Map && settlement['state'] != 'pending');
-    }).toList(growable: false);
-    if (pending.isEmpty) return;
-    final ids = <String>{
-      for (final item in pending)
-        for (final pick
-            in (item['picks'] is List ? item['picks'] as List : const []))
-          if (pick is Map && pick['matchId']?.toString().isNotEmpty == true)
-            pick['matchId'].toString(),
-    };
-    if (ids.isEmpty) return;
-    final client = CaiApiClient();
-    final matches = <String, MatchItem>{};
+    if (settling) return;
+    if (mounted) setState(() => settling = true);
     try {
-      await Future.wait(ids.map((id) async {
-        try {
-          matches[id] = await client.fetchMatch(id);
-        } catch (_) {
-          // Keep this plan pending until the next time the saved list is opened.
+      final decoded = rawItems.map(_decode).toList(growable: false);
+      final pending = decoded.where((item) {
+        final settlement = item['settlement'];
+        return item['combinations'] is List &&
+            !(settlement is Map && settlement['state'] != 'pending');
+      }).toList(growable: false);
+      if (pending.isEmpty) return;
+      final ids = <String>{
+        for (final item in pending)
+          for (final pick
+              in (item['picks'] is List ? item['picks'] as List : const []))
+            if (pick is Map && pick['matchId']?.toString().isNotEmpty == true)
+              pick['matchId'].toString(),
+      };
+      if (ids.isEmpty) return;
+      final client = CaiApiClient();
+      final matches = <String, MatchItem>{};
+      try {
+        await Future.wait(ids.map((id) async {
+          try {
+            matches[id] = await client.fetchMatch(id);
+          } catch (_) {
+            // Keep this plan pending until the next time the saved list is opened.
+          }
+        }));
+      } finally {
+        client.close();
+      }
+      var changed = false;
+      final updated = <String>[];
+      for (final raw in rawItems) {
+        final item = _decode(raw);
+        if (item['combinations'] is! List ||
+            (item['settlement'] is Map &&
+                item['settlement']['state'] != 'pending')) {
+          updated.add(raw);
+          continue;
         }
-      }));
+        final picks = item['picks'] is List ? item['picks'] as List : const [];
+        final matchIds = [
+          for (final pick in picks)
+            if (pick is Map) pick['matchId']?.toString() ?? '',
+        ].where((id) => id.isNotEmpty).toSet();
+        if (matchIds.isEmpty ||
+            !matchIds.every(
+                (id) => matches[id] != null && _isFinished(matches[id]!))) {
+          updated.add(raw);
+          continue;
+        }
+        final winners = <String, Map<String, String>>{};
+        var hasAllOutcomes = true;
+        for (final pick in picks.whereType<Map>()) {
+          final match = matches[pick['matchId']?.toString()];
+          if (match == null) continue;
+          final labels = <String, String>{};
+          for (final rawOption in (pick['options'] is List
+              ? pick['options'] as List
+              : const [])) {
+            if (rawOption is! Map) continue;
+            final play = _play(rawOption['play']);
+            if (play == null) continue;
+            final winner = _winningLabel(
+              match,
+              play,
+              savedHandicap: pick['handicap']?.toString(),
+            );
+            if (winner == null) {
+              hasAllOutcomes = false;
+            } else {
+              labels[play.name] = winner;
+            }
+          }
+          winners[pick['matchId']?.toString() ?? ''] = labels;
+        }
+        // A finished match may still lack half-time or official pool data.
+        // Keep the plan pending instead of incorrectly marking it as a loss.
+        if (!hasAllOutcomes) {
+          updated.add(raw);
+          continue;
+        }
+        var prize = 0.0;
+        for (final combination in item['combinations'] as List) {
+          if (combination is! Map || combination['picks'] is! List) continue;
+          var wins = true;
+          var spProduct = 1.0;
+          for (final rawPick in combination['picks'] as List) {
+            if (rawPick is! Map) continue;
+            final play = _play(rawPick['play']);
+            if (play == null) {
+              wins = false;
+              break;
+            }
+            final winner = winners[rawPick['matchId']?.toString()]?[play.name];
+            if (winner == null ||
+                !_optionWins(
+                    rawPick['label']?.toString() ?? '', winner, play)) {
+              wins = false;
+              break;
+            }
+            spProduct *=
+                num.tryParse(rawPick['sp']?.toString() ?? '')?.toDouble() ?? 0;
+          }
+          if (wins) {
+            prize += 2 *
+                spProduct *
+                (num.tryParse(combination['multiple']?.toString() ?? '')
+                        ?.toDouble() ??
+                    0);
+          }
+        }
+        final outcomes = <String, dynamic>{
+          for (final id in matchIds)
+            id: {
+              'score': matches[id]?.finalScore ?? matches[id]?.score ?? '--',
+              'winners': winners[id] ?? const <String, String>{},
+            }
+        };
+        item['settlement'] = {
+          'state': prize > 0 ? 'won' : 'lost',
+          'prize': double.parse(prize.toStringAsFixed(2)),
+          'settledAt': DateTime.now().toIso8601String(),
+          'outcomes': outcomes,
+        };
+        item['status'] = prize > 0 ? '已中奖' : '未中奖';
+        updated.add(jsonEncode(item));
+        changed = true;
+      }
+      if (!changed) return;
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setStringList('saved_football_schemes', updated);
+      if (mounted) setState(() => rawItems = updated);
     } finally {
-      client.close();
+      if (mounted) setState(() => settling = false);
     }
-    var changed = false;
-    final updated = <String>[];
-    for (final raw in rawItems) {
-      final item = _decode(raw);
-      if (item['combinations'] is! List ||
-          (item['settlement'] is Map &&
-              item['settlement']['state'] != 'pending')) {
-        updated.add(raw);
-        continue;
-      }
-      final picks = item['picks'] is List ? item['picks'] as List : const [];
-      final matchIds = [
-        for (final pick in picks)
-          if (pick is Map) pick['matchId']?.toString() ?? '',
-      ].where((id) => id.isNotEmpty).toSet();
-      if (matchIds.isEmpty ||
-          !matchIds.every(
-              (id) => matches[id] != null && _isFinished(matches[id]!))) {
-        updated.add(raw);
-        continue;
-      }
-      final winners = <String, Map<String, String>>{};
-      for (final pick in picks.whereType<Map>()) {
-        final match = matches[pick['matchId']?.toString()];
-        if (match == null) continue;
-        final labels = <String, String>{};
-        for (final rawOption
-            in (pick['options'] is List ? pick['options'] as List : const [])) {
-          if (rawOption is! Map) continue;
-          final play = _play(rawOption['play']);
-          if (play == null) continue;
-          final winner = _winningLabel(match, play);
-          if (winner != null) labels[play.name] = winner;
-        }
-        winners[pick['matchId']?.toString() ?? ''] = labels;
-      }
-      var prize = 0.0;
-      for (final combination in item['combinations'] as List) {
-        if (combination is! Map || combination['picks'] is! List) continue;
-        var wins = true;
-        var spProduct = 1.0;
-        for (final rawPick in combination['picks'] as List) {
-          if (rawPick is! Map) continue;
-          final play = _play(rawPick['play']);
-          if (play == null) {
-            wins = false;
-            break;
-          }
-          final winner = winners[rawPick['matchId']?.toString()]?[play.name];
-          if (winner == null ||
-              !_optionWins(rawPick['label']?.toString() ?? '', winner, play)) {
-            wins = false;
-            break;
-          }
-          spProduct *=
-              num.tryParse(rawPick['sp']?.toString() ?? '')?.toDouble() ?? 0;
-        }
-        if (wins) {
-          prize += 2 *
-              spProduct *
-              (num.tryParse(combination['multiple']?.toString() ?? '')
-                      ?.toDouble() ??
-                  0);
-        }
-      }
-      final outcomes = <String, dynamic>{
-        for (final id in matchIds)
-          id: {
-            'score': matches[id]?.finalScore ?? matches[id]?.score ?? '--',
-            'winners': winners[id] ?? const <String, String>{},
-          }
-      };
-      item['settlement'] = {
-        'state': prize > 0 ? 'won' : 'lost',
-        'prize': double.parse(prize.toStringAsFixed(2)),
-        'settledAt': DateTime.now().toIso8601String(),
-        'outcomes': outcomes,
-      };
-      item['status'] = prize > 0 ? '已中奖' : '未中奖';
-      updated.add(jsonEncode(item));
-      changed = true;
-    }
-    if (!changed) return;
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setStringList('saved_football_schemes', updated);
-    if (mounted) setState(() => rawItems = updated);
   }
 
   Future<void> _openScheme(Map<String, dynamic> item) async {
@@ -3141,6 +3171,16 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                       child: Text('保存方案',
                           style: TextStyle(
                               fontSize: 20, fontWeight: FontWeight.w900))),
+                  IconButton(
+                      tooltip: '刷新开奖结果',
+                      onPressed: loading || settling ? null : _load,
+                      icon: settling
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh)),
                   IconButton(
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.close))
