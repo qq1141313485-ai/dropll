@@ -143,6 +143,7 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
                   _LoadError(message: data.error!, onRetry: _reload),
                 _DetailTabs(
                   value: _tab,
+                  finished: match.matchState == MatchState.finished,
                   onChanged: (value) => setState(() => _tab = value),
                 ),
                 Padding(
@@ -150,7 +151,9 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
                   child: switch (_tab) {
                     0 => _OverviewTab(match: match, loadedAt: data.loadedAt),
                     1 => _OddsTab(match: match, loadedAt: data.loadedAt),
-                    2 => _DataTab(match: match),
+                    2 => match.matchState == MatchState.finished
+                        ? _ResultsTab(match: match)
+                        : _DataTab(match: match),
                     _ => _AnalysisTab(
                         match: match,
                         predictions: data.predictions,
@@ -410,14 +413,19 @@ class _Meta extends StatelessWidget {
 }
 
 class _DetailTabs extends StatelessWidget {
-  const _DetailTabs({required this.value, required this.onChanged});
+  const _DetailTabs({
+    required this.value,
+    required this.finished,
+    required this.onChanged,
+  });
 
   final int value;
+  final bool finished;
   final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    const labels = ['概览', '赔率', '数据', '分析'];
+    final labels = ['概览', '赔率', finished ? '赛果' : '数据', '分析'];
     return Container(
       height: 51,
       margin: const EdgeInsets.only(top: 8),
@@ -1059,6 +1067,342 @@ class _DataTab extends StatelessWidget {
   }
 }
 
+class _ResultsTab extends StatelessWidget {
+  const _ResultsTab({required this.match});
+
+  final MatchItem match;
+
+  @override
+  Widget build(BuildContext context) {
+    final full = _scoreParts(match.finalScore ?? match.score);
+    final half = _scoreParts(match.halfTimeScore);
+    final officialRows = _officialResultRows(match.officialResults);
+    if (full == null) {
+      return const _Surface(child: _Empty(text: '官方赛果暂未回传'));
+    }
+
+    final markets = <_ResolvedMarketData>[
+      if (match.had.isNotEmpty)
+        _ResolvedMarketData(
+          title: '胜平负',
+          winner: _normalOutcome(full.$1, full.$2),
+          values: match.had,
+        ),
+      if (match.hhad.isNotEmpty)
+        _ResolvedMarketData(
+          title: '让球胜平负',
+          winner: _handicapOutcome(full.$1, full.$2, match.hhad['让球']),
+          values: Map<String, dynamic>.from(match.hhad)..remove('让球'),
+          note: '让球 ${match.hhad['让球'] ?? '--'}',
+          aliases: const {'让胜': '胜', '让平': '平', '让负': '负'},
+        ),
+      if (match.ttg.isNotEmpty)
+        _ResolvedMarketData(
+          title: '总进球',
+          winner: _totalGoalsOutcome(full.$1, full.$2),
+          values: match.ttg,
+        ),
+      if (match.crs.isNotEmpty)
+        _ResolvedMarketData(
+          title: '比分',
+          winner: _scoreOutcome(full.$1, full.$2, match.crs),
+          values: match.crs,
+        ),
+      if (match.hafu.isNotEmpty && half != null)
+        _ResolvedMarketData(
+          title: '半全场',
+          winner:
+              '${_normalOutcome(half.$1, half.$2)}${_normalOutcome(full.$1, full.$2)}',
+          values: match.hafu,
+        ),
+    ];
+
+    return Column(
+      children: [
+        _Surface(
+          color: const Color(0xfffff7f7),
+          child: Column(
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.emoji_events_outlined, size: 17, color: _red),
+                  SizedBox(width: 5),
+                  Text('官方赛果',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  Spacer(),
+                  _Badge(text: '已完场'),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                '${full.$1} : ${full.$2}',
+                style: const TextStyle(
+                  fontSize: 34,
+                  height: 1,
+                  fontWeight: FontWeight.w800,
+                  color: _red,
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                  '${match.home}  ${_normalOutcome(full.$1, full.$2)}  ${match.away}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 11, color: _muted)),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                alignment: WrapAlignment.center,
+                children: [
+                  _ResultStat(
+                      label: '半场', value: _scoreText(match.halfTimeScore)),
+                  if ((match.extraTimeScore ?? '').trim().isNotEmpty)
+                    _ResultStat(
+                        label: '加时', value: match.extraTimeScore!.trim()),
+                  if ((match.penaltyScore ?? '').trim().isNotEmpty)
+                    _ResultStat(label: '点球', value: match.penaltyScore!.trim()),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        _Surface(
+          padding: const EdgeInsets.fromLTRB(11, 11, 11, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _SectionTitle(title: '竞彩开奖结果'),
+              const SizedBox(height: 10),
+              if (markets.isEmpty)
+                const _Empty(text: '未保留本场开奖玩法')
+              else
+                for (final market in markets) _ResolvedMarket(data: market),
+            ],
+          ),
+        ),
+        if (officialRows.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _Surface(
+            padding: const EdgeInsets.fromLTRB(11, 11, 11, 7),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _SectionTitle(title: '官方开奖明细'),
+                const SizedBox(height: 7),
+                for (final row in officialRows) _OfficialResultRow(row: row),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        const _ResultRuleNotice(),
+      ],
+    );
+  }
+}
+
+class _ResolvedMarketData {
+  const _ResolvedMarketData({
+    required this.title,
+    required this.winner,
+    required this.values,
+    this.note,
+    this.aliases = const {},
+  });
+
+  final String title;
+  final String winner;
+  final Map<String, dynamic> values;
+  final String? note;
+  final Map<String, String> aliases;
+}
+
+class _ResolvedMarket extends StatelessWidget {
+  const _ResolvedMarket({required this.data});
+
+  final _ResolvedMarketData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = _orderedMarket(data.title, data.values);
+    final selectedKey = data.aliases[data.winner] ?? data.winner;
+    return Container(
+      padding: const EdgeInsets.only(bottom: 11),
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: _line)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(data.title,
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700)),
+              if (data.note != null) ...[
+                const SizedBox(width: 7),
+                Text(data.note!,
+                    style: const TextStyle(fontSize: 10, color: _muted)),
+              ],
+              const Spacer(),
+              Text('开奖结果：${data.winner}',
+                  style: const TextStyle(
+                      fontSize: 11, color: _red, fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: entries.map((entry) {
+              final selected = entry.key == selectedKey;
+              return _ResultOption(
+                label: _marketLabel(data.title, entry.key),
+                odd: _odd(entry.value),
+                selected: selected,
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResultOption extends StatelessWidget {
+  const _ResultOption({
+    required this.label,
+    required this.odd,
+    required this.selected,
+  });
+
+  final String label;
+  final String odd;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 66),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: selected ? const Color(0xffffe9eb) : const Color(0xfff7f8f8),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: selected ? const Color(0xffeeaab2) : _line),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (selected) ...[
+            const Icon(Icons.check_circle_rounded, size: 13, color: _red),
+            const SizedBox(width: 4),
+          ],
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? _red : _ink)),
+          const SizedBox(width: 6),
+          Text(odd,
+              style: TextStyle(fontSize: 10, color: selected ? _red : _muted)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResultStat extends StatelessWidget {
+  const _ResultStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xffffdadd)),
+      ),
+      child: Text('$label  $value',
+          style: const TextStyle(fontSize: 10, color: Color(0xff6d454b))),
+    );
+  }
+}
+
+class _OfficialResultRow extends StatelessWidget {
+  const _OfficialResultRow({required this.row});
+
+  final Map<String, dynamic> row;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _firstText(row, const [
+      'combinationDesc',
+      'combination',
+      'resultName',
+      'name',
+      'code',
+    ]);
+    final code = _firstText(row, const ['code', 'poolCode']);
+    final handicap = _firstText(row, const ['goalLine', 'handicap']);
+    final odds = _firstText(row, const ['odds', 'sp']);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: _line)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label.isEmpty ? '--' : label,
+                style:
+                    const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+          ),
+          if (handicap.isNotEmpty)
+            Text('让$handicap  ',
+                style: const TextStyle(fontSize: 10, color: _muted)),
+          if (odds.isNotEmpty)
+            Text('SP $odds',
+                style: const TextStyle(fontSize: 10, color: _muted)),
+          if (code.isNotEmpty && odds.isEmpty)
+            Text(code, style: const TextStyle(fontSize: 10, color: _muted)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResultRuleNotice extends StatelessWidget {
+  const _ResultRuleNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _Surface(
+      color: Color(0xfffffaf3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded, size: 16, color: _orange),
+          SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              '竞彩赛果以官方公布为准。90分钟内（含伤停补时）比分用于胜平负、让球胜平负、总进球、比分和半全场开奖。',
+              style: TextStyle(
+                  fontSize: 10, height: 1.4, color: Color(0xff6f5a39)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AnalysisTab extends StatelessWidget {
   const _AnalysisTab({required this.match, required this.predictions});
 
@@ -1538,6 +1882,64 @@ String? _displayScore(MatchItem match) {
       : (match.score ?? match.finalScore);
   final text = value?.trim() ?? '';
   return text.isEmpty ? null : text;
+}
+
+(int, int)? _scoreParts(String? source) {
+  final match = RegExp(r'(\d+)\s*[:\-]\s*(\d+)').firstMatch(source ?? '');
+  if (match == null) return null;
+  return (int.parse(match.group(1)!), int.parse(match.group(2)!));
+}
+
+String _scoreText(String? source) {
+  final score = _scoreParts(source);
+  return score == null ? '--' : '${score.$1}:${score.$2}';
+}
+
+String _normalOutcome(int home, int away) => home > away
+    ? '胜'
+    : home == away
+        ? '平'
+        : '负';
+
+String _handicapOutcome(int home, int away, dynamic rawHandicap) {
+  final handicap = double.tryParse(rawHandicap?.toString() ?? '') ?? 0;
+  return _normalOutcome(home + handicap.round(), away)
+      .replaceFirst('胜', '让胜')
+      .replaceFirst('平', '让平')
+      .replaceFirst('负', '让负');
+}
+
+String _totalGoalsOutcome(int home, int away) {
+  final total = home + away;
+  return total >= 7 ? '7+' : '$total';
+}
+
+String _scoreOutcome(int home, int away, Map<String, dynamic> values) {
+  final score = '$home:$away';
+  if (values.containsKey(score)) return score;
+  return switch (_normalOutcome(home, away)) {
+    '胜' => '胜其他',
+    '平' => '平其他',
+    _ => '负其他',
+  };
+}
+
+List<Map<String, dynamic>> _officialResultRows(Map<String, dynamic>? raw) {
+  final items = raw?['matchResultList'];
+  if (items is! Iterable) return const [];
+  return items
+      .whereType<Map>()
+      .map((item) => item.map<String, dynamic>(
+          (key, value) => MapEntry(key.toString(), value)))
+      .toList(growable: false);
+}
+
+String _firstText(Map<String, dynamic> source, List<String> keys) {
+  for (final key in keys) {
+    final value = source[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+  return '';
 }
 
 String _odd(dynamic value) {
