@@ -1736,7 +1736,7 @@ class _SchemePageState extends State<_SchemePage> {
     saved.insert(
         0,
         jsonEncode({
-          'version': 5,
+          'version': 6,
           'id': DateTime.now().microsecondsSinceEpoch.toString(),
           'createdAt': DateTime.now().toIso8601String(),
           'status': '已保存',
@@ -1751,12 +1751,23 @@ class _SchemePageState extends State<_SchemePage> {
           'multiple': int.tryParse(multipleController.text) ?? 1,
           'budget': double.tryParse(budgetController.text),
           'optimizationOnly': widget.optimizationOnly,
+          'optimization': widget.optimizationOnly
+              ? {
+                  'mode': optimizeMode.name,
+                  'budget': value.amount,
+                  'principalProtected': value.principalProtected == true,
+                }
+              : null,
           'passes': selectedMethods.map((item) => item.label).toList(),
           'picks': widget.picks.map(_serializePick).toList(),
           'combinations': [
             for (final entry in value.returnsByCombination.entries)
               {
                 'multiple': _multipleFor(value, entry.key),
+                'amount': _multipleFor(value, entry.key) * 2,
+                'return': entry.value,
+                'passSize': entry.key.passSize,
+                'description': _compactDescription(entry.key),
                 'picks': [
                   for (final item in entry.key.picks)
                     {
@@ -2638,6 +2649,20 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
     );
   }
 
+  String _optimizationLabel(Map<String, dynamic> item) {
+    final optimization = item['optimization'];
+    if (optimization is! Map) {
+      return item['optimizationOnly'] == true ? '奖金优化' : '';
+    }
+    final mode = switch (optimization['mode']?.toString()) {
+      'hot' => '博热',
+      'cold' => '博冷',
+      'balanced' => '平均',
+      _ => '奖金优化',
+    };
+    return optimization['principalProtected'] == true ? '$mode · 已保本' : mode;
+  }
+
   FootballPlay? _play(dynamic value) {
     final name = value?.toString();
     for (final play in FootballPlay.values) {
@@ -2975,6 +3000,7 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                               final item = _decode(raw);
                               final amount = item['amount'];
                               final status = _statusStyle(item);
+                              final optimization = _optimizationLabel(item);
                               return Card(
                                   elevation: 0,
                                   color: const Color(0xfff6f8f7),
@@ -3021,6 +3047,20 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                                                     style: const TextStyle(
                                                         fontWeight:
                                                             FontWeight.w900)),
+                                                if (optimization.isNotEmpty)
+                                                  Padding(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                            top: 3),
+                                                    child: Text(optimization,
+                                                        style: const TextStyle(
+                                                            fontSize: 11,
+                                                            color: Color(
+                                                                0xff168f62),
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .w600)),
+                                                  ),
                                                 if (item['physicalTickets'] !=
                                                     null)
                                                   Text(
@@ -3079,6 +3119,53 @@ class _SavedSchemeDetailPage extends StatelessWidget {
 
   final Map<String, dynamic> item;
 
+  String _optimizationLabel() {
+    final optimization = item['optimization'];
+    if (optimization is! Map) {
+      return item['optimizationOnly'] == true ? '奖金优化' : '';
+    }
+    final mode = switch (optimization['mode']?.toString()) {
+      'hot' => '博热优化',
+      'cold' => '博冷优化',
+      'balanced' => '平均优化',
+      _ => '奖金优化',
+    };
+    return optimization['principalProtected'] == true ? '$mode · 已保本' : mode;
+  }
+
+  String _combinationDescription(Map combination) {
+    final savedPicks = item['picks'] is List ? item['picks'] as List : const [];
+    final numbers = <String, String>{
+      for (final raw in savedPicks.whereType<Map>())
+        raw['matchId']?.toString() ?? '': raw['number']?.toString() ?? '--',
+    };
+    final parts = <String>[];
+    for (final raw in (combination['picks'] is List
+        ? combination['picks'] as List
+        : const [])) {
+      if (raw is! Map) continue;
+      final number = numbers[raw['matchId']?.toString()] ?? '--';
+      parts.add('$number ${raw['label'] ?? '--'}');
+    }
+    return parts.isEmpty ? '--' : parts.join(' × ');
+  }
+
+  double? _combinationReturn(Map combination) {
+    final stored = num.tryParse(combination['return']?.toString() ?? '');
+    if (stored != null) return stored.toDouble();
+    final multiple = num.tryParse(combination['multiple']?.toString() ?? '');
+    final picks = combination['picks'];
+    if (multiple == null || picks is! List) return null;
+    var product = 1.0;
+    for (final raw in picks) {
+      if (raw is! Map) return null;
+      final sp = num.tryParse(raw['sp']?.toString() ?? '');
+      if (sp == null) return null;
+      product *= sp.toDouble();
+    }
+    return 2 * product * multiple.toDouble();
+  }
+
   String _winner(Map<String, dynamic> outcomes, String matchId, String play) {
     final outcome = outcomes[matchId];
     if (outcome is! Map) return '';
@@ -3107,6 +3194,11 @@ class _SavedSchemeDetailPage extends StatelessWidget {
         ? Map<String, dynamic>.from(settlement['outcomes'] as Map)
         : const <String, dynamic>{};
     final picks = item['picks'] is List ? item['picks'] as List : const [];
+    final combinations =
+        item['combinations'] is List ? item['combinations'] as List : const [];
+    final estimatedMin = num.tryParse(item['minReturn']?.toString() ?? '');
+    final estimatedMax = num.tryParse(item['maxReturn']?.toString() ?? '');
+    final optimization = _optimizationLabel();
     final statusColor = state == 'won'
         ? const Color(0xffc76a00)
         : state == 'lost'
@@ -3142,6 +3234,23 @@ class _SavedSchemeDetailPage extends StatelessWidget {
                   '${item['notes'] ?? '--'}注 · 投入${num.tryParse(item['amount']?.toString() ?? '')?.toStringAsFixed(0) ?? '--'}元',
                   style:
                       const TextStyle(fontSize: 12, color: Color(0xff737b77))),
+              if (estimatedMin != null && estimatedMax != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                    '预计税前奖金 ${estimatedMin.toStringAsFixed(2)}～${estimatedMax.toStringAsFixed(2)}元',
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xffc83d46),
+                        fontWeight: FontWeight.w700)),
+              ],
+              if (optimization.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(optimization,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xff168f62),
+                        fontWeight: FontWeight.w700)),
+              ],
               const SizedBox(height: 10),
               Text(statusLabel,
                   style: TextStyle(
@@ -3150,6 +3259,71 @@ class _SavedSchemeDetailPage extends StatelessWidget {
                       fontWeight: FontWeight.w800)),
             ]),
           ),
+          if (combinations.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              color: Colors.white,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(14, 13, 14, 7),
+                    child: Text('组合明细',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w800)),
+                  ),
+                  for (var index = 0; index < combinations.length; index++)
+                    Builder(builder: (_) {
+                      final raw = combinations[index];
+                      if (raw is! Map) return const SizedBox.shrink();
+                      final combination = Map<String, dynamic>.from(raw);
+                      final multiple =
+                          combination['multiple']?.toString() ?? '--';
+                      final payout = _combinationReturn(combination);
+                      return Container(
+                        padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+                        decoration: const BoxDecoration(
+                          border:
+                              Border(top: BorderSide(color: Color(0xffedf0ee))),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: 26,
+                              child: Text('${index + 1}',
+                                  style: const TextStyle(
+                                      fontSize: 11, color: Color(0xff8a928e))),
+                            ),
+                            Expanded(
+                              child: Text(_combinationDescription(combination),
+                                  style: const TextStyle(
+                                      fontSize: 12, height: 1.35)),
+                            ),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('$multiple倍',
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xff68716c))),
+                                if (payout != null)
+                                  Text('${payout.toStringAsFixed(2)}元',
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xffc83d46),
+                                          fontWeight: FontWeight.w700)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           for (final rawPick in picks.whereType<Map>()) ...[
             Builder(builder: (_) {
