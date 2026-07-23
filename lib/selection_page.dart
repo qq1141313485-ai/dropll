@@ -40,7 +40,11 @@ extension on _SelectionViewMode {
 }
 
 class SelectionPage extends StatefulWidget {
-  const SelectionPage({super.key});
+  const SelectionPage({this.focusMatchId, super.key});
+
+  /// When opened from match details, open this fixture's play sheet directly.
+  final String? focusMatchId;
+
   @override
   State<SelectionPage> createState() => _SelectionPageState();
 }
@@ -55,6 +59,7 @@ class _SelectionPageState extends State<SelectionPage> {
   List<PassMethod> quickPasses = const [];
   int quickMultiple = 1;
   _SelectionViewMode viewMode = _SelectionViewMode.mixed;
+  bool didHandleFocusedMatch = false;
 
   @override
   void initState() {
@@ -111,6 +116,7 @@ class _SelectionPageState extends State<SelectionPage> {
           if (before != drafts.length) _reconcileQuickPass();
           loadError = null;
         });
+        _openFocusedMatchIfNeeded(refreshed);
       }
     } catch (error) {
       debugPrint('选号数据加载失败: $error');
@@ -122,6 +128,23 @@ class _SelectionPageState extends State<SelectionPage> {
     } finally {
       if (mounted && !silent) setState(() => loading = false);
     }
+  }
+
+  void _openFocusedMatchIfNeeded(List<MatchItem> refreshed) {
+    final matchId = widget.focusMatchId;
+    if (didHandleFocusedMatch || matchId == null || matchId.isEmpty) return;
+    didHandleFocusedMatch = true;
+    final index = refreshed.indexWhere((match) => match.id == matchId);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (index < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('该比赛当前不在可选号列表，可能已停售')),
+        );
+        return;
+      }
+      _openMore(refreshed[index]);
+    });
   }
 
   int _compareMatchNumber(MatchItem a, MatchItem b) {
@@ -1755,6 +1778,7 @@ class _SchemePageState extends State<_SchemePage> {
           'id': DateTime.now().microsecondsSinceEpoch.toString(),
           'createdAt': DateTime.now().toIso8601String(),
           'status': '已保存',
+          'settlement': const {'state': 'pending'},
           'pass': _passLabel,
           'amount': value.amount,
           'notes': value.notes,
@@ -2657,8 +2681,17 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
         foreground: const Color(0xff7a827e),
       );
     }
+    if (state == 'in_progress') {
+      final finished = settlement?['finishedMatches']?.toString() ?? '0';
+      final total = settlement?['totalMatches']?.toString() ?? '--';
+      return (
+        label: '结算中 $finished/$total',
+        background: const Color(0xfffff3d6),
+        foreground: const Color(0xff9a6814),
+      );
+    }
     return (
-      label: '待开奖',
+      label: '待开赛',
       background: const Color(0xffe1f0ff),
       foreground: const Color(0xff2778ad),
     );
@@ -2808,8 +2841,10 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
       final decoded = rawItems.map(_decode).toList(growable: false);
       final pending = decoded.where((item) {
         final settlement = item['settlement'];
+        final state = settlement is Map ? settlement['state']?.toString() : '';
         return item['combinations'] is List &&
-            !(settlement is Map && settlement['state'] != 'pending');
+            state != 'won' &&
+            state != 'lost';
       }).toList(growable: false);
       if (pending.isEmpty) return;
       final ids = <String>{
@@ -2837,9 +2872,13 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
       final updated = <String>[];
       for (final raw in rawItems) {
         final item = _decode(raw);
+        final currentSettlement = item['settlement'];
+        final currentState = currentSettlement is Map
+            ? currentSettlement['state']?.toString()
+            : '';
         if (item['combinations'] is! List ||
-            (item['settlement'] is Map &&
-                item['settlement']['state'] != 'pending')) {
+            currentState == 'won' ||
+            currentState == 'lost') {
           updated.add(raw);
           continue;
         }
@@ -2848,10 +2887,37 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
           for (final pick in picks)
             if (pick is Map) pick['matchId']?.toString() ?? '',
         ].where((id) => id.isNotEmpty).toSet();
-        if (matchIds.isEmpty ||
-            !matchIds.every(
-                (id) => matches[id] != null && _isFinished(matches[id]!))) {
-          updated.add(raw);
+        final finishedMatches = matchIds
+            .where((id) => matches[id] != null && _isFinished(matches[id]!))
+            .length;
+        final allFinished =
+            matchIds.isNotEmpty && finishedMatches == matchIds.length;
+        if (!allFinished) {
+          final hasPassedKickoff = picks.whereType<Map>().any((pick) {
+            final kickoff =
+                DateTime.tryParse(pick['kickoff']?.toString() ?? '');
+            return kickoff != null && !kickoff.isAfter(DateTime.now());
+          });
+          final nextState = finishedMatches > 0 || hasPassedKickoff
+              ? 'in_progress'
+              : 'pending';
+          final previousFinished = currentSettlement is Map
+              ? currentSettlement['finishedMatches']?.toString()
+              : '';
+          if (currentState != nextState ||
+              previousFinished != finishedMatches.toString()) {
+            item['settlement'] = {
+              'state': nextState,
+              'finishedMatches': finishedMatches,
+              'totalMatches': matchIds.length,
+              'updatedAt': DateTime.now().toIso8601String(),
+            };
+            item['status'] = nextState == 'in_progress' ? '结算中' : '待开赛';
+            updated.add(jsonEncode(item));
+            changed = true;
+          } else {
+            updated.add(raw);
+          }
           continue;
         }
         final winners = <String, Map<String, String>>{};
@@ -2880,9 +2946,17 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
           winners[pick['matchId']?.toString() ?? ''] = labels;
         }
         // A finished match may still lack half-time or official pool data.
-        // Keep the plan pending instead of incorrectly marking it as a loss.
+        // Keep it in settlement instead of incorrectly marking it as a loss.
         if (!hasAllOutcomes) {
-          updated.add(raw);
+          item['settlement'] = {
+            'state': 'in_progress',
+            'finishedMatches': matchIds.length,
+            'totalMatches': matchIds.length,
+            'updatedAt': DateTime.now().toIso8601String(),
+          };
+          item['status'] = '结算中';
+          updated.add(jsonEncode(item));
+          changed = true;
           continue;
         }
         var prize = 0.0;
@@ -2988,7 +3062,7 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                     showSelectedIcon: false,
                     segments: const [
                       ButtonSegment(value: 'all', label: Text('全部')),
-                      ButtonSegment(value: 'pending', label: Text('待开奖')),
+                      ButtonSegment(value: 'pending', label: Text('待结算')),
                       ButtonSegment(value: 'won', label: Text('中奖')),
                       ButtonSegment(value: 'lost', label: Text('未中')),
                     ],
@@ -3234,12 +3308,16 @@ class _SavedSchemeDetailPage extends StatelessWidget {
         ? const Color(0xffc76a00)
         : state == 'lost'
             ? const Color(0xff767e7a)
-            : const Color(0xff2778ad);
+            : state == 'in_progress'
+                ? const Color(0xff9a6814)
+                : const Color(0xff2778ad);
     final statusLabel = state == 'won'
         ? '实际税前奖金 ${prize?.toStringAsFixed(2) ?? '--'} 元'
         : state == 'lost'
             ? '未中奖'
-            : '待开奖';
+            : state == 'in_progress'
+                ? '结算中 · ${settlement?['finishedMatches'] ?? 0}/${settlement?['totalMatches'] ?? '--'} 场已完场'
+                : '待开赛';
     return Scaffold(
       backgroundColor: const Color(0xfff5f7f6),
       appBar: AppBar(

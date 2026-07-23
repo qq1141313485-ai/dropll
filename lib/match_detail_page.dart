@@ -1782,7 +1782,8 @@ class _BottomActions extends StatelessWidget {
                       ? () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (_) => const SelectionPage()),
+                                builder: (_) =>
+                                    SelectionPage(focusMatchId: match.id)),
                           )
                       : null,
                   style: FilledButton.styleFrom(
