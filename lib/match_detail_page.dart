@@ -481,6 +481,11 @@ class _OverviewTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        if (match.matchState != MatchState.finished &&
+            match.had.isNotEmpty) ...[
+          _OddsProbabilityPanel(match: match),
+          const SizedBox(height: 10),
+        ],
         _Surface(
           padding: const EdgeInsets.fromLTRB(10, 11, 10, 10),
           child: Column(
@@ -518,6 +523,105 @@ class _OverviewTab extends StatelessWidget {
         const SizedBox(height: 10),
         _RiskPanel(match: match),
       ],
+    );
+  }
+}
+
+class _OddsProbabilityPanel extends StatelessWidget {
+  const _OddsProbabilityPanel({required this.match});
+
+  final MatchItem match;
+
+  @override
+  Widget build(BuildContext context) {
+    final values = _normalizedProbabilities(match.had);
+    final rows = <({String label, double value, Color color})>[
+      (label: '主胜', value: values.$1, color: const Color(0xffe44f61)),
+      (label: '平局', value: values.$2, color: const Color(0xffe5a32d)),
+      (label: '客胜', value: values.$3, color: const Color(0xff288ec7)),
+    ];
+    final favorite = rows.reduce((a, b) => a.value >= b.value ? a : b);
+    return _Surface(
+      color: const Color(0xfff4faf7),
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.insights_outlined, size: 17, color: _green),
+              const SizedBox(width: 5),
+              const Text('当前 SP 倾向',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              Text('重点 ${favorite.label}',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: favorite.color,
+                      fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 11),
+          Row(
+            children: [
+              for (var index = 0; index < rows.length; index++)
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                        right: index == rows.length - 1 ? 0 : 7),
+                    child: _ProbabilityCell(data: rows[index]),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text('按当前胜平负 SP 归一化换算，仅反映赔率倾向，不构成赛果预测。',
+              style: TextStyle(fontSize: 9.5, color: _muted)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProbabilityCell extends StatelessWidget {
+  const _ProbabilityCell({required this.data});
+
+  final ({String label, double value, Color color}) data;
+
+  @override
+  Widget build(BuildContext context) {
+    final percentage = (data.value * 100).round();
+    return Container(
+      height: 66,
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xffe3ece7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(data.label, style: const TextStyle(fontSize: 10, color: _muted)),
+          const SizedBox(height: 2),
+          Text('$percentage%',
+              style: TextStyle(
+                  fontSize: 17,
+                  height: 1,
+                  color: data.color,
+                  fontWeight: FontWeight.w800)),
+          const Spacer(),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: LinearProgressIndicator(
+              value: data.value,
+              minHeight: 4,
+              color: data.color,
+              backgroundColor: const Color(0xffe9eeeb),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
