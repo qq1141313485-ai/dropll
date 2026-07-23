@@ -183,6 +183,18 @@ class CaiApiClient {
         .toList(growable: false);
   }
 
+  /// 官方赔率采集器按变化写入的历史快照，按时间正序返回。
+  Future<List<Map<String, dynamic>>> fetchOddsHistory(
+    String matchId,
+  ) async {
+    final body = await _getJson('/v1/matches/$matchId/odds-history');
+    final items = body['items'] as List<dynamic>? ?? const [];
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
   Future<List<Map<String, dynamic>>> fetchModelRankings() async {
     final body = await _getJson('/v1/models/rankings');
     final items = body['items'] as List<dynamic>? ?? const [];

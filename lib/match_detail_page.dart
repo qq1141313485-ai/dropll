@@ -53,10 +53,12 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
       final values = await Future.wait<Object>([
         _client.fetchMatch(widget.match.id),
         _client.fetchMatchPredictions(widget.match.id),
+        _client.fetchOddsHistory(widget.match.id),
       ]);
       return _DetailData(
         match: values[0] as MatchItem,
         predictions: values[1] as List<Map<String, dynamic>>,
+        oddsHistory: values[2] as List<Map<String, dynamic>>,
         loadedAt: DateTime.now(),
       );
     } catch (_) {
@@ -151,7 +153,11 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 22),
                   child: switch (_tab) {
                     0 => _OverviewTab(match: match, loadedAt: data.loadedAt),
-                    1 => _OddsTab(match: match, loadedAt: data.loadedAt),
+                    1 => _OddsTab(
+                        match: match,
+                        loadedAt: data.loadedAt,
+                        history: data.oddsHistory,
+                      ),
                     2 => match.matchState == MatchState.finished
                         ? _ResultsTab(match: match)
                         : _DataTab(match: match),
@@ -179,12 +185,14 @@ class _DetailData {
   const _DetailData({
     required this.match,
     this.predictions = const [],
+    this.oddsHistory = const [],
     this.loadedAt,
     this.error,
   });
 
   final MatchItem match;
   final List<Map<String, dynamic>> predictions;
+  final List<Map<String, dynamic>> oddsHistory;
   final DateTime? loadedAt;
   final String? error;
 }
@@ -880,10 +888,15 @@ class _RiskPanel extends StatelessWidget {
 }
 
 class _OddsTab extends StatelessWidget {
-  const _OddsTab({required this.match, required this.loadedAt});
+  const _OddsTab({
+    required this.match,
+    required this.loadedAt,
+    required this.history,
+  });
 
   final MatchItem match;
   final DateTime? loadedAt;
+  final List<Map<String, dynamic>> history;
 
   @override
   Widget build(BuildContext context) {
@@ -927,7 +940,7 @@ class _OddsTab extends StatelessWidget {
                       loadedAt == null ? null : '数据更新 ${_mdhm(loadedAt!)}',
                 ),
                 const SizedBox(height: 12),
-                _ChangeTable(match: match),
+                _ChangeTable(match: match, history: history),
               ],
             ),
           ),
@@ -957,19 +970,27 @@ class _OddsTab extends StatelessWidget {
 }
 
 class _ChangeTable extends StatelessWidget {
-  const _ChangeTable({required this.match});
+  const _ChangeTable({required this.match, required this.history});
 
   final MatchItem match;
+  final List<Map<String, dynamic>> history;
 
   @override
   Widget build(BuildContext context) {
     final had = _orderedOutcomes(match.had);
     final hhadValues = Map<String, dynamic>.from(match.hhad)..remove('让球');
     final hhad = _orderedOutcomes(hhadValues);
+    final first = history.isEmpty ? null : history.first;
+    final initialHad = _historyMarket(first, 'had');
+    final initialHhad = _historyMarket(first, 'hhad')..remove('让球');
+    final initialTime = _historyTime(first);
     return Column(
       children: [
         const _ChangeRow(label: '时间', values: ['胜', '平', '负']),
-        const _ChangeRow(label: '初始', values: ['--', '--', '--']),
+        _ChangeRow(
+          label: initialTime == null ? '初始' : _mdhm(initialTime),
+          values: _historyOdds(initialHad),
+        ),
         if (had.isNotEmpty)
           _ChangeRow(
               label: '即时',
@@ -980,12 +1001,21 @@ class _ChangeTable extends StatelessWidget {
             label: '让${match.hhad['让球'] ?? ''}',
             values: hhad.map((e) => _odd(e.value)).toList(),
           ),
-        const Padding(
-          padding: EdgeInsets.only(top: 8),
+        if (hhad.isNotEmpty && initialHhad.isNotEmpty)
+          _ChangeRow(
+            label: '让球初始',
+            values: _historyOdds(initialHhad),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Text('当前数据源暂未提供初始SP与涨跌历史',
-                style: TextStyle(fontSize: 9, color: _muted)),
+            child: Text(
+              history.isEmpty
+                  ? '历史赔率正在积累中'
+                  : '已记录 ${history.length} 次赔率变化，仅在官方 SP 变动时保存',
+              style: const TextStyle(fontSize: 9, color: _muted),
+            ),
           ),
         ),
       ],
@@ -2244,6 +2274,31 @@ List<MapEntry<String, dynamic>> _orderedOutcomes(Map<String, dynamic> source) {
     if (!result.any((item) => item.key == entry.key)) result.add(entry);
   }
   return result;
+}
+
+Map<String, dynamic> _historyMarket(
+  Map<String, dynamic>? snapshot,
+  String market,
+) {
+  final odds = snapshot?['odds'];
+  if (odds is! Map) return <String, dynamic>{};
+  final values = odds[market];
+  return values is Map
+      ? Map<String, dynamic>.from(values)
+      : <String, dynamic>{};
+}
+
+List<String> _historyOdds(Map<String, dynamic> values) {
+  final entries = _orderedOutcomes(values);
+  return List<String>.generate(
+    3,
+    (index) => index < entries.length ? _odd(entries[index].value) : '--',
+  );
+}
+
+DateTime? _historyTime(Map<String, dynamic>? snapshot) {
+  final value = snapshot?['capturedAt']?.toString();
+  return value == null ? null : DateTime.tryParse(value)?.toLocal();
 }
 
 List<MapEntry<String, dynamic>> _orderedMarket(

@@ -18,6 +18,12 @@ Authorization: Bearer <private-app-token>
 
 返回完整赔率、半场比分、全场比分和官方开奖结果。
 
+## 历史赔率
+
+`GET /v1/matches/{official_match_id}/odds-history?limit=300`
+
+按时间正序返回官方 SP 快照。后台每 30 秒检查一次官方赔率，只有胜平负、让球胜平负、总进球、比分或半全场任一玩法实际变化时才新增记录。每项包含 `capturedAt` 和 `odds`；历史从 2026-07-23 开始积累，不能补回此前未保存的走势。
+
 ## 模型观点
 
 `GET /v1/matches/{official_match_id}/predictions`
