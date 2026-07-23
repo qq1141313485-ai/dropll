@@ -1587,7 +1587,8 @@ class _SchemePage extends StatefulWidget {
       this.initialBudget,
       this.optimizationOnly = false,
       this.initialResult,
-      this.initialShowCombinations = false});
+      this.initialShowCombinations = false,
+      this.savedSettlement});
 
   final List<MatchPick> picks;
   final List<PassMethod> initialPasses;
@@ -1596,6 +1597,7 @@ class _SchemePage extends StatefulWidget {
   final bool optimizationOnly;
   final BettingResult? initialResult;
   final bool initialShowCombinations;
+  final Map<String, dynamic>? savedSettlement;
 
   @override
   State<_SchemePage> createState() => _SchemePageState();
@@ -1643,6 +1645,15 @@ class _SchemePageState extends State<_SchemePage> {
   }
 
   String get _passLabel => selectedMethods.map((item) => item.label).join('、');
+
+  String get _settlementState =>
+      widget.savedSettlement?['state']?.toString() ?? '';
+
+  double? get _actualPrize {
+    if (_settlementState != 'won') return null;
+    return num.tryParse(widget.savedSettlement?['prize']?.toString() ?? '')
+        ?.toDouble();
+  }
 
   @override
   void dispose() {
@@ -1965,12 +1976,22 @@ class _SchemePageState extends State<_SchemePage> {
         '${directory.path}/jingqiujing_scheme_${DateTime.now().millisecondsSinceEpoch}.png',
       );
       await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
-      await SharePlus.instance.share(
+      final shareResult = await SharePlus.instance.share(
         ShareParams(
-          files: [XFile(file.path)],
+          files: [
+            XFile(
+              file.path,
+              mimeType: 'image/png',
+              name: '竞球镜方案.png',
+            ),
+          ],
           text: '竞球镜·方案分享',
+          subject: '竞球镜·方案分享',
         ),
       );
+      if (shareResult.status == ShareResultStatus.unavailable) {
+        throw StateError('系统分享服务不可用');
+      }
     } catch (error, stackTrace) {
       debugPrint('方案图片分享失败: $error\n$stackTrace');
       try {
@@ -2186,49 +2207,65 @@ class _SchemePageState extends State<_SchemePage> {
     );
   }
 
-  Widget _schemeOverview(BettingResult value) => Container(
-        padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
-        decoration: BoxDecoration(
-            color: Colors.white, borderRadius: BorderRadius.circular(12)),
-        child: Column(children: [
-          Row(children: [
-            const Text('金额',
-                style: TextStyle(fontSize: 12, color: Color(0xff7d8581))),
-            const SizedBox(width: 7),
-            Text('${value.amount.toStringAsFixed(0)}元',
-                style: const TextStyle(
-                    fontSize: 16,
-                    color: Color(0xff303733),
-                    fontWeight: FontWeight.w700)),
-            const SizedBox(width: 5),
-            Text('[${widget.initialMultiple}倍]',
-                style: const TextStyle(fontSize: 11, color: Color(0xff7d8581))),
-            const Spacer(),
-            const Text('最高奖金',
-                style: TextStyle(fontSize: 11, color: Color(0xff7d8581))),
-            const SizedBox(width: 6),
-            Text('${value.maxReturn.toStringAsFixed(2)}元',
-                style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xffdf4162),
-                    fontWeight: FontWeight.w700)),
-          ]),
-          const Divider(height: 20),
-          Row(children: [
-            const Text('竞彩足球',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xff168f62),
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(width: 8),
-            Text('${widget.picks.length}场  $_passLabel',
-                style: const TextStyle(fontSize: 12, color: Color(0xff4f5753))),
-            const Spacer(),
-            Text('${value.notes}注',
-                style: const TextStyle(fontSize: 11, color: Color(0xff7d8581)))
-          ])
+  Widget _schemeOverview(BettingResult value) {
+    final actualPrize = _actualPrize;
+    final isLost = _settlementState == 'lost';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
+      decoration: BoxDecoration(
+          color: Colors.white, borderRadius: BorderRadius.circular(12)),
+      child: Column(children: [
+        Row(children: [
+          const Text('金额',
+              style: TextStyle(fontSize: 12, color: Color(0xff7d8581))),
+          const SizedBox(width: 7),
+          Text('${value.amount.toStringAsFixed(0)}元',
+              style: const TextStyle(
+                  fontSize: 16,
+                  color: Color(0xff303733),
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(width: 5),
+          Text('[${widget.initialMultiple}倍]',
+              style: const TextStyle(fontSize: 11, color: Color(0xff7d8581))),
+          const Spacer(),
+          Text(
+              actualPrize != null
+                  ? '实际奖金'
+                  : isLost
+                      ? '赛果'
+                      : '最高奖金',
+              style: const TextStyle(fontSize: 11, color: Color(0xff7d8581))),
+          const SizedBox(width: 6),
+          Text(
+              actualPrize != null
+                  ? '${actualPrize.toStringAsFixed(2)}元'
+                  : isLost
+                      ? '未中奖'
+                      : '${value.maxReturn.toStringAsFixed(2)}元',
+              style: TextStyle(
+                  fontSize: 14,
+                  color: actualPrize != null
+                      ? const Color(0xffdf4162)
+                      : const Color(0xff5f6863),
+                  fontWeight: FontWeight.w700)),
         ]),
-      );
+        const Divider(height: 20),
+        Row(children: [
+          const Text('竞彩足球',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xff168f62),
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(width: 8),
+          Text('${widget.picks.length}场  $_passLabel',
+              style: const TextStyle(fontSize: 12, color: Color(0xff4f5753))),
+          const Spacer(),
+          Text('${value.notes}注',
+              style: const TextStyle(fontSize: 11, color: Color(0xff7d8581)))
+        ])
+      ]),
+    );
+  }
 
   Widget _ticketCards() => Column(children: [
         for (final pick in widget.picks)
@@ -2282,48 +2319,76 @@ class _SchemePageState extends State<_SchemePage> {
           )
       ]);
 
-  Widget _summary(BettingResult value) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-            color: Colors.white, borderRadius: BorderRadius.circular(12)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Text('$_passLabel · ${value.notes}注',
-                style:
-                    const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-            const Spacer(),
-            Text('${value.amount.toStringAsFixed(0)}元',
-                style:
-                    const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))
-          ]),
-          const SizedBox(height: 9),
-          const Text('预计奖金',
-              style: TextStyle(fontSize: 12, color: Color(0xff7d8581))),
-          const SizedBox(height: 2),
-          Text(_prizeText(value.minReturn, value.maxReturn),
-              style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xffdf4162),
-                  fontWeight: FontWeight.w700)),
-          if (widget.optimizationOnly) ...[
-            const SizedBox(height: 8),
-            if (value.principalProtected == true)
-              const Text('已按当前投入完成保本分配',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xff168f62),
-                      fontWeight: FontWeight.w600)),
-            Builder(builder: (_) {
-              final budget = double.tryParse(budgetController.text) ?? 0;
-              final remaining = math.max(0, budget - value.amount);
-              return Text(
-                  '预算${budget.toStringAsFixed(0)}元  ·  已分配${value.amount.toStringAsFixed(0)}元  ·  剩余${remaining.toStringAsFixed(0)}元',
-                  style:
-                      const TextStyle(fontSize: 11, color: Color(0xff7d8581)));
-            })
-          ],
+  Widget _summary(BettingResult value) {
+    final actualPrize = _actualPrize;
+    final isLost = _settlementState == 'lost';
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+          color: Colors.white, borderRadius: BorderRadius.circular(12)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('$_passLabel · ${value.notes}注',
+              style:
+                  const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          const Spacer(),
+          Text('${value.amount.toStringAsFixed(0)}元',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))
         ]),
-      );
+        const SizedBox(height: 9),
+        if (actualPrize != null)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('实际税前奖金',
+                  style: TextStyle(fontSize: 12, color: Color(0xff7d8581))),
+              const SizedBox(height: 2),
+              Text('${actualPrize.toStringAsFixed(2)}元',
+                  style: const TextStyle(
+                      fontSize: 20,
+                      color: Color(0xffd8484f),
+                      fontWeight: FontWeight.w800)),
+            ],
+          )
+        else if (isLost)
+          const Text('本方案未中奖',
+              style: TextStyle(
+                  fontSize: 14,
+                  color: Color(0xff767e7a),
+                  fontWeight: FontWeight.w700))
+        else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('预计奖金',
+                  style: TextStyle(fontSize: 12, color: Color(0xff7d8581))),
+              const SizedBox(height: 2),
+              Text(_prizeText(value.minReturn, value.maxReturn),
+                  style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xffdf4162),
+                      fontWeight: FontWeight.w700)),
+            ],
+          ),
+        if (widget.optimizationOnly) ...[
+          const SizedBox(height: 8),
+          if (value.principalProtected == true)
+            const Text('已按当前投入完成保本分配',
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Color(0xff168f62),
+                    fontWeight: FontWeight.w600)),
+          Builder(builder: (_) {
+            final budget = double.tryParse(budgetController.text) ?? 0;
+            final remaining = math.max(0, budget - value.amount);
+            return Text(
+                '预算${budget.toStringAsFixed(0)}元  ·  已分配${value.amount.toStringAsFixed(0)}元  ·  剩余${remaining.toStringAsFixed(0)}元',
+                style: const TextStyle(fontSize: 11, color: Color(0xff7d8581)));
+          })
+        ],
+      ]),
+    );
+  }
 
   Widget _combinations(BettingResult value) {
     final entries = value.returnsByCombination.entries.toList();
@@ -2730,6 +2795,22 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
     return optimization['principalProtected'] == true ? '$mode · 已保本' : mode;
   }
 
+  String _schemeAmountDetail(Map<String, dynamic> item) {
+    final settlement = item['settlement'];
+    final state = settlement is Map ? settlement['state']?.toString() : '';
+    final prize = settlement is Map
+        ? num.tryParse(settlement['prize']?.toString() ?? '')
+        : null;
+    if (state == 'won' && prize != null) {
+      return '实际奖金${prize.toStringAsFixed(2)}元';
+    }
+    if (state == 'lost') return '未中奖';
+    final minReturn = num.tryParse(item['minReturn']?.toString() ?? '');
+    final maxReturn = num.tryParse(item['maxReturn']?.toString() ?? '');
+    if (minReturn == null || maxReturn == null) return '';
+    return '预计奖金${minReturn.toStringAsFixed(2)}～${maxReturn.toStringAsFixed(2)}元';
+  }
+
   FootballPlay? _play(dynamic value) {
     final name = value?.toString();
     for (final play in FootballPlay.values) {
@@ -3108,9 +3189,89 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
       );
       return;
     }
+    final restoredResult = _restoreResult(item, picks);
+    if (restoredResult != null) {
+      final settlement = item['settlement'];
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => _SchemePage(
+          picks: picks,
+          initialPasses: _restorePasses(item, picks),
+          initialMultiple:
+              int.tryParse(item['multiple']?.toString() ?? '') ?? 1,
+          initialBudget:
+              num.tryParse(item['amount']?.toString() ?? '')?.toDouble(),
+          optimizationOnly: item['optimizationOnly'] == true,
+          initialResult: restoredResult,
+          initialShowCombinations: true,
+          savedSettlement:
+              settlement is Map ? Map<String, dynamic>.from(settlement) : null,
+        ),
+      ));
+      return;
+    }
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => _SavedSchemeDetailPage(item: item),
     ));
+  }
+
+  List<PassMethod> _restorePasses(
+    Map<String, dynamic> item,
+    List<MatchPick> picks,
+  ) {
+    final maxPass = picks
+        .expand((pick) =>
+            pick.options.map((option) => (option.play ?? pick.play).maxPass))
+        .reduce(math.min);
+    final available = PassMethod.available(picks.length, maxPass);
+    final stored = item['passes'] is List
+        ? (item['passes'] as List).map((value) => value.toString()).toSet()
+        : {item['pass']?.toString() ?? ''};
+    final restored = available
+        .where((method) => stored.contains(method.label))
+        .toList(growable: false);
+    return restored.isEmpty ? [available.last] : restored;
+  }
+
+  BettingResult? _restoreResult(
+    Map<String, dynamic> item,
+    List<MatchPick> picks,
+  ) {
+    final rawCombinations = item['combinations'];
+    if (rawCombinations is! List || rawCombinations.isEmpty) return null;
+    final matches = {for (final pick in picks) pick.matchId: pick};
+    final atomicBets = <AtomicBet>[];
+    final tickets = <SplitTicket>[];
+    for (final rawCombination in rawCombinations) {
+      if (rawCombination is! Map || rawCombination['picks'] is! List) continue;
+      final legs = <({MatchPick match, BetOption option})>[];
+      for (final rawLeg in rawCombination['picks'] as List) {
+        if (rawLeg is! Map) continue;
+        final match = matches[rawLeg['matchId']?.toString()];
+        final play = _play(rawLeg['play']);
+        final sp = num.tryParse(rawLeg['sp']?.toString() ?? '');
+        if (match == null || play == null || sp == null || sp <= 0) continue;
+        legs.add((
+          match: match,
+          option: BetOption(
+            label: rawLeg['label']?.toString() ?? '',
+            sp: sp.toDouble(),
+            play: play,
+          ),
+        ));
+      }
+      if (legs.isEmpty) continue;
+      final bet = AtomicBet(
+        picks: legs,
+        passSize: int.tryParse(rawCombination['passSize']?.toString() ?? '') ??
+            legs.length,
+      );
+      final multiple =
+          int.tryParse(rawCombination['multiple']?.toString() ?? '') ?? 0;
+      if (multiple < 1) continue;
+      atomicBets.add(bet);
+      tickets.add(SplitTicket(bet: bet, multiple: multiple));
+    }
+    return atomicBets.isEmpty ? null : BettingResult(atomicBets, tickets);
   }
 
   @override
@@ -3175,6 +3336,7 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                               final amount = item['amount'];
                               final status = _statusStyle(item);
                               final optimization = _optimizationLabel(item);
+                              final amountDetail = _schemeAmountDetail(item);
                               return Card(
                                   elevation: 0,
                                   color: const Color(0xfff6f8f7),
@@ -3236,9 +3398,10 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                                                                     .w600)),
                                                   ),
                                                 if (item['physicalTickets'] !=
-                                                    null)
+                                                        null &&
+                                                    amountDetail.isNotEmpty)
                                                   Text(
-                                                      '${item['notes']}注 · ${item['physicalTickets']}张票 · 奖金${(item['minReturn'] as num).toStringAsFixed(2)}～${(item['maxReturn'] as num).toStringAsFixed(2)}元',
+                                                      '${item['notes']}注 · ${item['physicalTickets']}张票 · $amountDetail',
                                                       style: const TextStyle(
                                                           fontSize: 11,
                                                           color: Color(
@@ -3292,23 +3455,6 @@ class _SavedSchemeDetailPage extends StatelessWidget {
   const _SavedSchemeDetailPage({required this.item});
 
   final Map<String, dynamic> item;
-
-  Future<void> _share(BuildContext context) async {
-    try {
-      await SharePlus.instance.share(
-        ShareParams(
-          subject: '竞球镜·保存方案',
-          text: item['text']?.toString() ?? '竞球镜·保存方案',
-        ),
-      );
-    } catch (error) {
-      debugPrint('保存方案分享失败: $error');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('分享失败，请稍后重试')));
-      }
-    }
-  }
 
   String _optimizationLabel() {
     final optimization = item['optimization'];
@@ -3430,13 +3576,6 @@ class _SavedSchemeDetailPage extends StatelessWidget {
         surfaceTintColor: Colors.white,
         title: const Text('保存方案详情',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-        actions: [
-          IconButton(
-            tooltip: '分享方案',
-            onPressed: () => _share(context),
-            icon: const Icon(Icons.ios_share_outlined),
-          ),
-        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(12),
