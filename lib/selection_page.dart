@@ -2953,6 +2953,21 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
     return '预计奖金${minReturn.toStringAsFixed(2)}～${maxReturn.toStringAsFixed(2)}元';
   }
 
+  String _schemeMeta(Map<String, dynamic> item) {
+    final details = <String>[];
+    final picks = item['picks'];
+    if (picks is List && picks.isNotEmpty) details.add('${picks.length}场');
+    final notes = num.tryParse(item['notes']?.toString() ?? '');
+    if (notes != null) details.add('${notes.toStringAsFixed(0)}注');
+    final tickets = num.tryParse(item['physicalTickets']?.toString() ?? '');
+    if (tickets != null && tickets > 0) {
+      details.add('${tickets.toStringAsFixed(0)}张票');
+    }
+    final amountDetail = _schemeAmountDetail(item);
+    if (amountDetail.isNotEmpty) details.add(amountDetail);
+    return details.join(' · ');
+  }
+
   FootballPlay? _play(dynamic value) {
     final name = value?.toString();
     for (final play in FootballPlay.values) {
@@ -3492,13 +3507,15 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                               final amount = item['amount'];
                               final status = _statusStyle(item);
                               final optimization = _optimizationLabel(item);
-                              final amountDetail = _schemeAmountDetail(item);
+                              final schemeMeta = _schemeMeta(item);
                               return Card(
                                   elevation: 0,
                                   color: const Color(0xfff6f8f7),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8)),
                                   child: InkWell(
                                       onTap: () => _openScheme(item),
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: BorderRadius.circular(8),
                                       child: Padding(
                                           padding: const EdgeInsets.all(12),
                                           child: Column(
@@ -3553,11 +3570,8 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                                                                 FontWeight
                                                                     .w600)),
                                                   ),
-                                                if (item['physicalTickets'] !=
-                                                        null &&
-                                                    amountDetail.isNotEmpty)
-                                                  Text(
-                                                      '${item['notes']}注 · ${item['physicalTickets']}张票 · $amountDetail',
+                                                if (schemeMeta.isNotEmpty)
+                                                  Text(schemeMeta,
                                                       style: const TextStyle(
                                                           fontSize: 11,
                                                           color: Color(
