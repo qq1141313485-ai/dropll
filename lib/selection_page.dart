@@ -1776,17 +1776,23 @@ class _SchemePageState extends State<_SchemePage> {
       }).join(' × ');
 
   String _schemeText(BettingResult value) {
+    final prize = _actualPrize;
+    final settled = _isSettled;
     final buffer = StringBuffer()
       ..writeln('竞球镜｜竞彩足球计算方案（非出票凭证）')
       ..writeln(
           '$_passLabel｜${value.notes}注｜${value.amount.toStringAsFixed(0)}元')
-      ..writeln('预计奖金 ${_prizeText(value.minReturn, value.maxReturn)}');
+      ..writeln(prize != null
+          ? '实际税前奖金 ${prize.toStringAsFixed(2)}元'
+          : settled
+              ? '本方案未中奖'
+              : '预计奖金 ${_prizeText(value.minReturn, value.maxReturn)}');
     var index = 1;
     for (final entry in value.returnsByCombination.entries) {
       buffer.writeln(
           '${index++}. ${_compactDescription(entry.key)}｜${_multipleFor(value, entry.key)}倍｜${entry.value.toStringAsFixed(2)}元');
     }
-    buffer.write('SP变化后请重新计算；本方案仅供计算参考。');
+    buffer.write(settled ? '赛果按全场90分钟（含伤停补时）结算。' : 'SP变化后请重新计算；本方案仅供计算参考。');
     return buffer.toString();
   }
 
@@ -1878,6 +1884,13 @@ class _SchemePageState extends State<_SchemePage> {
     if (isSharing) return;
     setState(() => isSharing = true);
     try {
+      final actualPrize = _actualPrize;
+      final settled = _isSettled;
+      final prizeTitle = actualPrize != null
+          ? '实际税前奖金  ${actualPrize.toStringAsFixed(2)}元'
+          : settled
+              ? '赛果  未中奖'
+              : '预计税前奖金  ${_prizeText(value.minReturn, value.maxReturn)}';
       const width = 1080.0;
       const horizontal = 64.0;
       const contentWidth = width - horizontal * 2;
@@ -1900,10 +1913,10 @@ class _SchemePageState extends State<_SchemePage> {
               .where((option) => (option.play ?? pick.play) == play)
               .toList(growable: false);
           if (options.isEmpty) continue;
-          final labels = options
-              .map((option) =>
-                  '${_compactOptionLabel(play, option.label)} ${option.sp.toStringAsFixed(2)}')
-              .join('  ');
+          final labels = options.map((option) {
+            final won = _optionWon(option.label, _winnerFor(pick, play), play);
+            return '${settled && won ? '命中 ' : ''}${_compactOptionLabel(play, option.label)} ${option.sp.toStringAsFixed(2)}';
+          }).join('  ');
           final prefix = play == FootballPlay.hhad && pick.handicap.isNotEmpty
               ? '${pick.handicap}${play.label}'
               : play.label;
@@ -1911,7 +1924,7 @@ class _SchemePageState extends State<_SchemePage> {
         }
         pickCards.add((
           title: painter(
-            '${pick.number}  ${pick.home}  vs  ${pick.away}',
+            '${pick.number}  ${pick.home}  ${_scoreFor(pick).isEmpty ? 'vs' : _scoreFor(pick)}  ${pick.away}',
             style: const TextStyle(
               color: Color(0xff17231e),
               fontSize: 29,
@@ -1952,7 +1965,7 @@ class _SchemePageState extends State<_SchemePage> {
       )..layout(maxWidth: width - horizontal * 2);
       title.paint(canvas, const Offset(horizontal, 48));
       painter(
-        '竞彩足球方案分享',
+        settled ? '竞彩足球保存方案' : '竞彩足球方案分享',
         style: const TextStyle(color: Color(0xffd9f5e7), fontSize: 27),
       ).paint(canvas, const Offset(horizontal, 128));
       painter(
@@ -1978,9 +1991,13 @@ class _SchemePageState extends State<_SchemePage> {
       ).paint(canvas, Offset(horizontal, y));
       y += 62;
       painter(
-        '预计税前奖金  ${_prizeText(value.minReturn, value.maxReturn)}',
-        style: const TextStyle(
-          color: Color(0xffd8484f),
+        prizeTitle,
+        style: TextStyle(
+          color: actualPrize != null
+              ? const Color(0xffc76a00)
+              : settled
+                  ? const Color(0xff767e7a)
+                  : const Color(0xffd8484f),
           fontSize: 31,
           fontWeight: FontWeight.w700,
         ),
@@ -2000,7 +2017,7 @@ class _SchemePageState extends State<_SchemePage> {
         y += card.choices.height + 46;
       }
       painter(
-        'SP变化后请重新计算 · 方案仅供参考',
+        settled ? '赛果按全场90分钟（含伤停补时）结算' : 'SP变化后请重新计算 · 方案仅供参考',
         style: const TextStyle(color: Color(0xff87928c), fontSize: 21),
       ).paint(canvas, Offset(horizontal, height - 106));
       final picture = recorder.endRecording();
