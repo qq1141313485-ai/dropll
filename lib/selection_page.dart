@@ -101,7 +101,8 @@ class _SelectionPageState extends State<SelectionPage> {
                 match.bettingStatus == BettingStatus.open &&
                 match.kickoff.isAfter(now) &&
                 FootballPlay.values.any((play) => _enabled(match, play)))
-            .toList(growable: false);
+            .toList()
+          ..sort(_compareMatchNumber);
         final activeIds = refreshed.map((match) => match.id).toSet();
         setState(() {
           matches = refreshed;
@@ -122,6 +123,20 @@ class _SelectionPageState extends State<SelectionPage> {
       if (mounted && !silent) setState(() => loading = false);
     }
   }
+
+  int _compareMatchNumber(MatchItem a, MatchItem b) {
+    final dateOrder = a.businessDateOnly.compareTo(b.businessDateOnly);
+    if (dateOrder != 0) return dateOrder;
+    final aSequence = _matchNumberSequence(a.number);
+    final bSequence = _matchNumberSequence(b.number);
+    final numberOrder = aSequence.compareTo(bSequence);
+    if (numberOrder != 0) return numberOrder;
+    final labelOrder = a.number.compareTo(b.number);
+    return labelOrder != 0 ? labelOrder : a.id.compareTo(b.id);
+  }
+
+  int _matchNumberSequence(String number) =>
+      int.tryParse(RegExp(r'\d+$').firstMatch(number)?.group(0) ?? '') ?? 9999;
 
   Map<String, double> _odds(MatchItem m, FootballPlay p) => switch (p) {
         FootballPlay.had => m.had,
