@@ -3331,13 +3331,14 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
       );
       return;
     }
-    final restoredResult = _restoreResult(item, picks);
+    final passes = _restorePasses(item, picks);
+    final restoredResult = _restoreResult(item, picks, passes);
     if (restoredResult != null) {
       final settlement = item['settlement'];
       await Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => _SchemePage(
           picks: picks,
-          initialPasses: _restorePasses(item, picks),
+          initialPasses: passes,
           initialMultiple:
               int.tryParse(item['multiple']?.toString() ?? '') ?? 1,
           initialBudget:
@@ -3377,9 +3378,22 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
   BettingResult? _restoreResult(
     Map<String, dynamic> item,
     List<MatchPick> picks,
+    List<PassMethod> passes,
   ) {
     final rawCombinations = item['combinations'];
-    if (rawCombinations is! List || rawCombinations.isEmpty) return null;
+    if (rawCombinations is! List || rawCombinations.isEmpty) {
+      if (item['optimizationOnly'] == true) return null;
+      try {
+        return const BettingEngine().calculateMultiple(
+          picks: picks,
+          passes: passes,
+          multiple: (int.tryParse(item['multiple']?.toString() ?? '') ?? 1)
+              .clamp(1, BettingEngine.maxSchemeMultiple),
+        );
+      } catch (_) {
+        return null;
+      }
+    }
     final matches = {for (final pick in picks) pick.matchId: pick};
     final atomicBets = <AtomicBet>[];
     final tickets = <SplitTicket>[];
