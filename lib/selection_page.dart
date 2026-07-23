@@ -2803,28 +2803,60 @@ class _SavedSchemesSheet extends StatefulWidget {
   State<_SavedSchemesSheet> createState() => _SavedSchemesSheetState();
 }
 
-class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
+class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
+    with WidgetsBindingObserver {
   List<String> rawItems = const [];
   bool loading = true;
   bool settling = false;
+  bool reloading = false;
   String statusFilter = 'all';
+  DateTime? lastCheckedAt;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
+  }
+
   Future<void> _load() async {
-    final preferences = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      rawItems =
-          preferences.getStringList('saved_football_schemes') ?? const [];
-      loading = true;
-    });
-    await _settleSavedSchemes();
-    if (mounted) setState(() => loading = false);
+    if (reloading) return;
+    reloading = true;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        rawItems =
+            preferences.getStringList('saved_football_schemes') ?? const [];
+        loading = true;
+      });
+      await _settleSavedSchemes();
+      if (mounted) {
+        setState(() {
+          loading = false;
+          lastCheckedAt = DateTime.now();
+        });
+      }
+    } finally {
+      reloading = false;
+    }
+  }
+
+  String _lastCheckedLabel() {
+    final value = lastCheckedAt;
+    if (value == null) return '';
+    return '已检查 ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
   }
 
   Map<String, dynamic> _decode(String raw) {
@@ -3505,6 +3537,11 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                       child: Text('保存方案',
                           style: TextStyle(
                               fontSize: 20, fontWeight: FontWeight.w900))),
+                  if (_lastCheckedLabel().isNotEmpty)
+                    Text(_lastCheckedLabel(),
+                        style: const TextStyle(
+                            fontSize: 10, color: Color(0xff858d89))),
+                  if (_lastCheckedLabel().isNotEmpty) const SizedBox(width: 2),
                   IconButton(
                       tooltip: '刷新开奖结果',
                       onPressed: loading || settling ? null : _load,
