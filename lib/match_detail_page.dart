@@ -1168,6 +1168,10 @@ class _ResultsTab extends StatelessWidget {
             ],
           ),
         ),
+        if (markets.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _ResultSpStrip(markets: markets),
+        ],
         const SizedBox(height: 10),
         _Surface(
           padding: const EdgeInsets.fromLTRB(11, 11, 11, 6),
@@ -1218,6 +1222,107 @@ class _ResolvedMarketData {
   final Map<String, dynamic> values;
   final String? note;
   final Map<String, String> aliases;
+
+  String get selectedKey => aliases[winner] ?? winner;
+
+  dynamic get selectedOdd => values[selectedKey];
+}
+
+class _ResultSpStrip extends StatelessWidget {
+  const _ResultSpStrip({required this.markets});
+
+  final List<_ResolvedMarketData> markets;
+
+  String _shortTitle(String title) => switch (title) {
+        '胜平负' => '胜平负',
+        '让球胜平负' => '让球',
+        '总进球' => '总进球',
+        '比分' => '比分',
+        '半全场' => '半全场',
+        _ => title,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return _Surface(
+      padding: const EdgeInsets.fromLTRB(11, 10, 11, 11),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.confirmation_number_outlined, size: 16, color: _red),
+              SizedBox(width: 5),
+              Text('赛果 SP',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              Spacer(),
+              Text('以官方固定奖金为准', style: TextStyle(fontSize: 9, color: _muted)),
+            ],
+          ),
+          const SizedBox(height: 9),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (var index = 0; index < markets.length; index++) ...[
+                  _ResultSpItem(
+                    title: _shortTitle(markets[index].title),
+                    outcome: _marketLabel(
+                        markets[index].title, markets[index].selectedKey),
+                    odd: _odd(markets[index].selectedOdd),
+                    note: markets[index].note,
+                  ),
+                  if (index != markets.length - 1) const SizedBox(width: 7),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResultSpItem extends StatelessWidget {
+  const _ResultSpItem({
+    required this.title,
+    required this.outcome,
+    required this.odd,
+    this.note,
+  });
+
+  final String title;
+  final String outcome;
+  final String odd;
+  final String? note;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 74),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xfffff5f6),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xffffdadd)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 9, color: _muted)),
+          const SizedBox(height: 3),
+          Text(outcome,
+              style: const TextStyle(
+                  fontSize: 12, color: _red, fontWeight: FontWeight.w800)),
+          Text('SP $odd',
+              style: const TextStyle(fontSize: 10, color: Color(0xff8a4e55))),
+          if (note != null)
+            Text(note!,
+                style: const TextStyle(fontSize: 8, color: Color(0xff9c777b))),
+        ],
+      ),
+    );
+  }
 }
 
 class _ResolvedMarket extends StatelessWidget {
@@ -1228,7 +1333,7 @@ class _ResolvedMarket extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entries = _orderedMarket(data.title, data.values);
-    final selectedKey = data.aliases[data.winner] ?? data.winner;
+    final selectedKey = data.selectedKey;
     return Container(
       padding: const EdgeInsets.only(bottom: 11),
       margin: const EdgeInsets.only(bottom: 10),
