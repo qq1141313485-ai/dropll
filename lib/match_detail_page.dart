@@ -91,6 +91,10 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
       builder: (context, snapshot) {
         final data = snapshot.data ?? _DetailData(match: widget.match);
         final match = data.match;
+        final finished = match.matchState == MatchState.finished;
+        final showAnalysis = data.predictions.isNotEmpty;
+        final tabCount = 2 + (finished ? 1 : 0) + (showAnalysis ? 1 : 0);
+        final selectedTab = math.min(_tab, tabCount - 1);
         return Scaffold(
           backgroundColor: _page,
           appBar: AppBar(
@@ -145,14 +149,19 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
                 if (data.error != null)
                   _LoadError(message: data.error!, onRetry: _reload),
                 _DetailTabs(
-                  value: _tab,
-                  finished: match.matchState == MatchState.finished,
+                  value: selectedTab,
+                  finished: finished,
+                  showAnalysis: showAnalysis,
                   onChanged: (value) => setState(() => _tab = value),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 22),
-                  child: switch (_tab) {
-                    0 => _OverviewTab(match: match, loadedAt: data.loadedAt),
+                  child: switch (selectedTab) {
+                    0 => _OverviewTab(
+                        match: match,
+                        loadedAt: data.loadedAt,
+                        onOpenOdds: () => setState(() => _tab = 1),
+                      ),
                     1 => _OddsTab(
                         match: match,
                         loadedAt: data.loadedAt,
@@ -160,7 +169,10 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
                       ),
                     2 => match.matchState == MatchState.finished
                         ? _ResultsTab(match: match)
-                        : _DataTab(match: match),
+                        : _AnalysisTab(
+                            match: match,
+                            predictions: data.predictions,
+                          ),
                     _ => _AnalysisTab(
                         match: match,
                         predictions: data.predictions,
@@ -171,9 +183,7 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
             ),
           ),
           bottomNavigationBar: _BottomActions(
-            followed: _followed,
             match: match,
-            onFollow: () => setState(() => _followed = !_followed),
           ),
         );
       },
@@ -425,16 +435,23 @@ class _DetailTabs extends StatelessWidget {
   const _DetailTabs({
     required this.value,
     required this.finished,
+    required this.showAnalysis,
     required this.onChanged,
   });
 
   final int value;
   final bool finished;
+  final bool showAnalysis;
   final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final labels = ['概览', '赔率', finished ? '赛果' : '数据', '分析'];
+    final labels = <String>[
+      '概览',
+      '赔率',
+      if (finished) '赛果',
+      if (showAnalysis) '模型',
+    ];
     return Container(
       height: 51,
       margin: const EdgeInsets.only(top: 8),
@@ -480,10 +497,15 @@ class _DetailTabs extends StatelessWidget {
 }
 
 class _OverviewTab extends StatelessWidget {
-  const _OverviewTab({required this.match, required this.loadedAt});
+  const _OverviewTab({
+    required this.match,
+    required this.loadedAt,
+    required this.onOpenOdds,
+  });
 
   final MatchItem match;
   final DateTime? loadedAt;
+  final VoidCallback onOpenOdds;
 
   @override
   Widget build(BuildContext context) {
@@ -522,14 +544,10 @@ class _OverviewTab extends StatelessWidget {
               if (match.had.isEmpty && match.hhad.isEmpty)
                 const _Empty(text: '暂无核心赔率'),
               const Divider(height: 17, color: _line),
-              _MoreMarkets(match: match),
+              _MoreMarkets(match: match, onOpenOdds: onOpenOdds),
             ],
           ),
         ),
-        const SizedBox(height: 10),
-        _InsightPanel(match: match),
-        const SizedBox(height: 10),
-        _RiskPanel(match: match),
       ],
     );
   }
@@ -720,9 +738,10 @@ class _CoreMarket extends StatelessWidget {
 }
 
 class _MoreMarkets extends StatelessWidget {
-  const _MoreMarkets({required this.match});
+  const _MoreMarkets({required this.match, required this.onOpenOdds});
 
   final MatchItem match;
+  final VoidCallback onOpenOdds;
 
   @override
   Widget build(BuildContext context) {
@@ -748,95 +767,46 @@ class _MoreMarkets extends StatelessWidget {
         subtitle: '查看全部',
       ),
     ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Row(
-          children: [
-            Text('更多玩法',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-            Spacer(),
-            Icon(Icons.chevron_right_rounded, size: 18, color: _muted),
-          ],
-        ),
-        const SizedBox(height: 9),
-        Row(
-          children: items.map((item) {
-            return Expanded(
-              child: Column(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: const Color(0xfff7f9f8),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xffedf0ef)),
-                    ),
-                    child: Icon(item.icon, color: _greenDark, size: 19),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(item.title,
-                      style: const TextStyle(fontSize: 10.5, color: _ink)),
-                  const SizedBox(height: 1),
-                  Text(item.subtitle,
-                      style: const TextStyle(fontSize: 8.5, color: _muted)),
-                ],
-              ),
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-}
-
-class _InsightPanel extends StatelessWidget {
-  const _InsightPanel({required this.match});
-
-  final MatchItem match;
-
-  @override
-  Widget build(BuildContext context) {
-    final favorite = _favorite(match.had);
-    final notes = <String>[
-      if (favorite != null) '胜平负当前最低SP为${favorite.$1} ${_odd(favorite.$2)}。',
-      '销售状态：${match.bettingStatusText.isEmpty ? '未知' : match.bettingStatusText}。',
-      match.spfSingleSupported ? '本场胜平负支持官方单关。' : '本场胜平负未标记为官方单关。',
-    ];
-    return _Surface(
-      color: const Color(0xfff3faf7),
-      child: Row(
+    return InkWell(
+      onTap: onOpenOdds,
+      borderRadius: BorderRadius.circular(8),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            flex: 7,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _SectionIconTitle(
-                  icon: Icons.bar_chart_rounded,
-                  title: '数据观察',
-                  color: _green,
-                ),
-                const SizedBox(height: 9),
-                for (final note in notes)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 7),
-                    child: Text('•  $note',
-                        style: const TextStyle(fontSize: 10.5, height: 1.35)),
-                  ),
-              ],
-            ),
+          const Row(
+            children: [
+              Text('更多玩法',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              Spacer(),
+              Icon(Icons.chevron_right_rounded, size: 18, color: _muted),
+            ],
           ),
-          Expanded(
-            flex: 4,
-            child: SizedBox(
-              height: 120,
-              child: CustomPaint(
-                painter: _OddsRadarPainter(match: match),
-              ),
-            ),
+          const SizedBox(height: 9),
+          Row(
+            children: items.map((item) {
+              return Expanded(
+                child: Column(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xfff7f9f8),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xffedf0ef)),
+                      ),
+                      child: Icon(item.icon, color: _greenDark, size: 19),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(item.title,
+                        style: const TextStyle(fontSize: 10.5, color: _ink)),
+                    const SizedBox(height: 1),
+                    Text(item.subtitle,
+                        style: const TextStyle(fontSize: 8.5, color: _muted)),
+                  ],
+                ),
+              );
+            }).toList(),
           ),
         ],
       ),
@@ -1100,14 +1070,6 @@ class _OddsMarketTable extends StatelessWidget {
                 child: Center(
                     child: Text('即时',
                         style: TextStyle(fontSize: 9, color: _muted)))),
-            Expanded(
-                child: Center(
-                    child: Text('初始',
-                        style: TextStyle(fontSize: 9, color: _muted)))),
-            Expanded(
-                child: Center(
-                    child: Text('变化',
-                        style: TextStyle(fontSize: 9, color: _muted)))),
           ],
         ),
         const SizedBox(height: 4),
@@ -1131,72 +1093,9 @@ class _OddsMarketTable extends StatelessWidget {
                             fontSize: 11, fontWeight: FontWeight.w600)),
                   ),
                 ),
-                const Expanded(
-                    child: Center(
-                        child: Text('--',
-                            style: TextStyle(fontSize: 10, color: _muted)))),
-                const Expanded(
-                    child: Center(
-                        child: Text('--',
-                            style: TextStyle(fontSize: 10, color: _muted)))),
               ],
             ),
           ),
-      ],
-    );
-  }
-}
-
-class _DataTab extends StatelessWidget {
-  const _DataTab({required this.match});
-
-  final MatchItem match;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _Surface(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const _SectionTitle(title: '比赛数据'),
-              const SizedBox(height: 8),
-              _DataRow(label: '比赛状态', value: _statusText(match)),
-              _DataRow(
-                  label: '销售状态',
-                  value: match.bettingStatusText.isEmpty
-                      ? '未知'
-                      : match.bettingStatusText),
-              _DataRow(
-                  label: '胜平负单关',
-                  value: match.spfSingleSupported ? '支持' : '不支持'),
-              _DataRow(label: '过关', value: match.canParlay ? '支持' : '不支持'),
-              if ((match.finalScore ?? '').isNotEmpty)
-                _DataRow(label: '全场比分', value: match.finalScore!),
-              if ((match.halfTimeScore ?? '').isNotEmpty)
-                _DataRow(label: '半场比分', value: match.halfTimeScore!),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        const _UnavailableBlock(
-          title: '近期战绩',
-          subtitle: '当前生产数据源暂未提供球队近期战绩',
-          height: 155,
-        ),
-        const SizedBox(height: 10),
-        const _UnavailableBlock(
-          title: '历史交锋',
-          subtitle: '当前生产数据源暂未提供历史交锋记录',
-          height: 125,
-        ),
-        const SizedBox(height: 10),
-        const _UnavailableBlock(
-          title: '联赛排名',
-          subtitle: '当前生产数据源暂未提供联赛排名',
-          height: 105,
-        ),
       ],
     );
   }
@@ -1707,8 +1606,6 @@ class _AnalysisTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _InsightPanel(match: match),
-        const SizedBox(height: 10),
         _Surface(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1725,18 +1622,6 @@ class _AnalysisTab extends StatelessWidget {
                 for (final item in predictions) _PredictionRow(item: item),
             ],
           ),
-        ),
-        const SizedBox(height: 10),
-        const _UnavailableBlock(
-          title: '关键数据对比',
-          subtitle: '当前生产数据源暂未提供射门、控球率等球队统计',
-          height: 118,
-        ),
-        const SizedBox(height: 10),
-        const _UnavailableBlock(
-          title: '趋势分析',
-          subtitle: '当前生产数据源暂未提供历史趋势序列',
-          height: 118,
         ),
         const SizedBox(height: 10),
         _RiskPanel(match: match),
@@ -1780,125 +1665,6 @@ class _PredictionRow extends StatelessWidget {
       ),
     );
   }
-}
-
-class _UnavailableBlock extends StatelessWidget {
-  const _UnavailableBlock(
-      {required this.title, required this.subtitle, required this.height});
-
-  final String title;
-  final String subtitle;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    return _Surface(
-      child: SizedBox(
-        height: height,
-        width: double.infinity,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _SectionTitle(title: title),
-            const Spacer(),
-            Center(
-              child: Column(
-                children: [
-                  const Icon(Icons.inbox_outlined,
-                      size: 25, color: Color(0xffc2c8c5)),
-                  const SizedBox(height: 7),
-                  Text(subtitle,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 10, color: _muted)),
-                ],
-              ),
-            ),
-            const Spacer(),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _OddsRadarPainter extends CustomPainter {
-  const _OddsRadarPainter({required this.match});
-
-  final MatchItem match;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2 + 4);
-    final radius = math.min(size.width, size.height) * .31;
-    const labels = ['主胜', '平局', '客胜', '过关', '单关'];
-    final probs = _normalizedProbabilities(match.had);
-    final values = <double>[
-      probs.$1,
-      probs.$2,
-      probs.$3,
-      match.canParlay ? .85 : .2,
-      match.spfSingleSupported ? .85 : .2,
-    ];
-    final gridPaint = Paint()
-      ..color = const Color(0xffd8e4df)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    final fillPaint = Paint()
-      ..color = const Color(0x2207885d)
-      ..style = PaintingStyle.fill;
-    final linePaint = Paint()
-      ..color = _green
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6;
-    for (var level = 1; level <= 3; level++) {
-      final path = Path();
-      for (var i = 0; i < 5; i++) {
-        final angle = -math.pi / 2 + i * math.pi * 2 / 5;
-        final point = center +
-            Offset(math.cos(angle), math.sin(angle)) * radius * (level / 3);
-        if (i == 0) {
-          path.moveTo(point.dx, point.dy);
-        } else {
-          path.lineTo(point.dx, point.dy);
-        }
-      }
-      path.close();
-      canvas.drawPath(path, gridPaint);
-    }
-    final dataPath = Path();
-    for (var i = 0; i < 5; i++) {
-      final angle = -math.pi / 2 + i * math.pi * 2 / 5;
-      final point = center +
-          Offset(math.cos(angle), math.sin(angle)) *
-              radius *
-              values[i].clamp(.08, 1);
-      if (i == 0) {
-        dataPath.moveTo(point.dx, point.dy);
-      } else {
-        dataPath.lineTo(point.dx, point.dy);
-      }
-    }
-    dataPath.close();
-    canvas.drawPath(dataPath, fillPaint);
-    canvas.drawPath(dataPath, linePaint);
-    for (var i = 0; i < 5; i++) {
-      final angle = -math.pi / 2 + i * math.pi * 2 / 5;
-      final point =
-          center + Offset(math.cos(angle), math.sin(angle)) * (radius + 13);
-      final painter = TextPainter(
-        text: TextSpan(
-            text: labels[i],
-            style: const TextStyle(fontSize: 8, color: Color(0xff4f575b))),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      painter.paint(
-          canvas, point - Offset(painter.width / 2, painter.height / 2));
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _OddsRadarPainter oldDelegate) =>
-      oldDelegate.match != match;
 }
 
 class _Surface extends StatelessWidget {
@@ -1969,31 +1735,6 @@ class _SectionIconTitle extends StatelessWidget {
   }
 }
 
-class _DataRow extends StatelessWidget {
-  const _DataRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 37,
-      decoration:
-          const BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
-      child: Row(
-        children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: _muted)),
-          const Spacer(),
-          Text(value,
-              style:
-                  const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
-}
-
 class _Badge extends StatelessWidget {
   const _Badge({required this.text});
 
@@ -2014,14 +1755,10 @@ class _Badge extends StatelessWidget {
 
 class _BottomActions extends StatelessWidget {
   const _BottomActions({
-    required this.followed,
     required this.match,
-    required this.onFollow,
   });
 
-  final bool followed;
   final MatchItem match;
-  final VoidCallback onFollow;
 
   @override
   Widget build(BuildContext context) {
@@ -2037,27 +1774,6 @@ class _BottomActions extends StatelessWidget {
         ),
         child: Row(
           children: [
-            SizedBox(
-              width: 105,
-              height: 49,
-              child: OutlinedButton.icon(
-                onPressed: onFollow,
-                icon: Icon(
-                    followed ? Icons.star_rounded : Icons.star_border_rounded,
-                    size: 21),
-                label: Text(followed ? '已关注' : '关注比赛'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _green,
-                  side: const BorderSide(color: Color(0xffd9e3df)),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  textStyle: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
             Expanded(
               child: SizedBox(
                 height: 49,
@@ -2078,13 +1794,9 @@ class _BottomActions extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(open ? '加入方案' : '已停售',
+                      Text(open ? '去选号' : '已停售',
                           style: const TextStyle(
                               fontSize: 16, fontWeight: FontWeight.w700)),
-                      if (open)
-                        const Text('已选 0 场',
-                            style:
-                                TextStyle(fontSize: 9, color: Colors.white70)),
                     ],
                   ),
                 ),
