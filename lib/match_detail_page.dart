@@ -870,30 +870,39 @@ class _OddsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final markets =
-        <({String title, Map<String, dynamic> values, String? handicap})>[
+    final markets = <({
+      String title,
+      String historyKey,
+      Map<String, dynamic> values,
+      String? handicap
+    })>[
       (
         title: '胜平负',
+        historyKey: 'had',
         values: Map<String, dynamic>.from(match.had),
         handicap: null
       ),
       (
         title: '让球胜平负',
+        historyKey: 'hhad',
         values: Map<String, dynamic>.from(match.hhad)..remove('让球'),
         handicap: match.hhad['让球']?.toString(),
       ),
       (
         title: '总进球',
+        historyKey: 'ttg',
         values: Map<String, dynamic>.from(match.ttg),
         handicap: null
       ),
       (
         title: '比分',
+        historyKey: 'crs',
         values: Map<String, dynamic>.from(match.crs),
         handicap: null
       ),
       (
         title: '半全场',
+        historyKey: 'hafu',
         values: Map<String, dynamic>.from(match.hafu),
         handicap: null
       ),
@@ -926,6 +935,7 @@ class _OddsTab extends StatelessWidget {
                   title: markets[index].title,
                   values: markets[index].values,
                   handicap: markets[index].handicap,
+                  initialValues: _initialValues(markets[index].historyKey),
                 ),
                 if (index != markets.length - 1)
                   const Divider(height: 22, color: _line),
@@ -936,6 +946,13 @@ class _OddsTab extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  Map<String, dynamic> _initialValues(String historyKey) {
+    final values =
+        _historyMarket(history.isEmpty ? null : history.first, historyKey);
+    values.remove('让球');
+    return values;
   }
 }
 
@@ -1035,11 +1052,16 @@ class _ChangeRow extends StatelessWidget {
 }
 
 class _OddsMarketTable extends StatelessWidget {
-  const _OddsMarketTable(
-      {required this.title, required this.values, this.handicap});
+  const _OddsMarketTable({
+    required this.title,
+    required this.values,
+    required this.initialValues,
+    this.handicap,
+  });
 
   final String title;
   final Map<String, dynamic> values;
+  final Map<String, dynamic> initialValues;
   final String? handicap;
 
   @override
@@ -1070,32 +1092,66 @@ class _OddsMarketTable extends StatelessWidget {
                 child: Center(
                     child: Text('即时',
                         style: TextStyle(fontSize: 9, color: _muted)))),
+            Expanded(
+                child: Center(
+                    child: Text('初始',
+                        style: TextStyle(fontSize: 9, color: _muted)))),
+            Expanded(
+                child: Center(
+                    child: Text('变化',
+                        style: TextStyle(fontSize: 9, color: _muted)))),
           ],
         ),
         const SizedBox(height: 4),
         for (final entry in _orderedMarket(title, values))
-          Container(
-            height: 34,
-            decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: _line))),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 94,
-                  child: Text(_marketLabel(title, entry.key),
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 10.5)),
-                ),
-                Expanded(
-                  child: Center(
-                    child: Text(_odd(entry.value),
-                        style: const TextStyle(
-                            fontSize: 11, fontWeight: FontWeight.w600)),
+          Builder(builder: (_) {
+            final initial = initialValues[entry.key];
+            final change = _oddChange(entry.value, initial);
+            return Container(
+              height: 34,
+              decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: _line))),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 94,
+                    child: Text(_marketLabel(title, entry.key),
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 10.5)),
                   ),
-                ),
-              ],
-            ),
-          ),
+                  Expanded(
+                    child: Center(
+                      child: Text(_odd(entry.value),
+                          style: const TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        initial == null ? '--' : _odd(initial),
+                        style: const TextStyle(fontSize: 10, color: _muted),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        change.label,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: change.color,
+                          fontWeight: change.emphasized
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
       ],
     );
   }
@@ -2007,6 +2063,28 @@ List<String> _historyOdds(Map<String, dynamic> values) {
     3,
     (index) => index < entries.length ? _odd(entries[index].value) : '--',
   );
+}
+
+({String label, Color color, bool emphasized}) _oddChange(
+  dynamic current,
+  dynamic initial,
+) {
+  final currentValue = double.tryParse(current?.toString() ?? '');
+  final initialValue = double.tryParse(initial?.toString() ?? '');
+  if (currentValue == null || initialValue == null) {
+    return (label: '积累中', color: _muted, emphasized: false);
+  }
+  final delta = currentValue - initialValue;
+  if (delta.abs() < 0.005) {
+    return (label: '--', color: _muted, emphasized: false);
+  }
+  return delta > 0
+      ? (label: '↑${delta.toStringAsFixed(2)}', color: _red, emphasized: true)
+      : (
+          label: '↓${delta.abs().toStringAsFixed(2)}',
+          color: _green,
+          emphasized: true
+        );
 }
 
 DateTime? _historyTime(Map<String, dynamic>? snapshot) {
