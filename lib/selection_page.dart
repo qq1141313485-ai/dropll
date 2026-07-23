@@ -3142,6 +3142,35 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
     return parsed == 0 ? null : double.parse(prize.toStringAsFixed(2));
   }
 
+  double? _legacyPrizeFromStructure(
+    Map<String, dynamic> item,
+    Map<String, Map<String, String>> winners,
+  ) {
+    if (item['optimizationOnly'] == true) return null;
+    final restoredPicks = _restorePicks(item);
+    if (restoredPicks.isEmpty) return null;
+    try {
+      final result = const BettingEngine().calculateMultiple(
+        picks: restoredPicks,
+        passes: _restorePasses(item, restoredPicks),
+        multiple: (int.tryParse(item['multiple']?.toString() ?? '') ?? 1)
+            .clamp(1, BettingEngine.maxSchemeMultiple),
+      );
+      var prize = 0.0;
+      for (final entry in result.returnsByCombination.entries) {
+        final won = entry.key.picks.every((pick) {
+          final play = pick.option.play ?? pick.match.play;
+          final winner = winners[pick.match.matchId]?[play.name] ?? '';
+          return _optionWins(pick.option.label, winner, play);
+        });
+        if (won) prize += entry.value;
+      }
+      return double.parse(prize.toStringAsFixed(2));
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _settleSavedSchemes() async {
     if (settling) return;
     if (mounted) setState(() => settling = true);
@@ -3273,7 +3302,8 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
             }
         };
         if (item['combinations'] is! List) {
-          final legacyPrize = _legacyPrizeFromText(item, picks, winners);
+          final legacyPrize = _legacyPrizeFromText(item, picks, winners) ??
+              _legacyPrizeFromStructure(item, winners);
           final legacyWon = legacyPrize != null && legacyPrize > 0;
           item['settlement'] = {
             'state': legacyWon ? 'won' : 'lost',
