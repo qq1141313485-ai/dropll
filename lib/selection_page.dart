@@ -1655,6 +1655,42 @@ class _SchemePageState extends State<_SchemePage> {
         ?.toDouble();
   }
 
+  bool get _isSavedScheme => widget.savedSettlement != null;
+
+  bool get _isSettled =>
+      _settlementState == 'won' || _settlementState == 'lost';
+
+  Map<String, dynamic>? _outcomeFor(MatchPick pick) {
+    final outcomes = widget.savedSettlement?['outcomes'];
+    if (outcomes is! Map) return null;
+    final outcome = outcomes[pick.matchId];
+    return outcome is Map ? Map<String, dynamic>.from(outcome) : null;
+  }
+
+  String _scoreFor(MatchPick pick) =>
+      _outcomeFor(pick)?['score']?.toString() ?? '';
+
+  String _winnerFor(MatchPick pick, FootballPlay play) {
+    final winners = _outcomeFor(pick)?['winners'];
+    return winners is Map ? winners[play.name]?.toString() ?? '' : '';
+  }
+
+  bool _optionWon(String label, String winner, FootballPlay play) {
+    if (label == winner) return true;
+    if (play == FootballPlay.hhad) {
+      return (winner == '让胜' && label == '胜') ||
+          (winner == '让平' && label == '平') ||
+          (winner == '让负' && label == '负');
+    }
+    return false;
+  }
+
+  bool _ticketWon(AtomicBet bet) => bet.picks.every((item) {
+        final play = item.option.play ?? item.match.play;
+        return _optionWon(
+            item.option.label, _winnerFor(item.match, play), play);
+      });
+
   @override
   void dispose() {
     multipleController.dispose();
@@ -2143,32 +2179,47 @@ class _SchemePageState extends State<_SchemePage> {
                         : const Color(0xff8a918e),
                     fontWeight: FontWeight.w600))),
         for (final label in const ['胜', '平', '负'])
-          Expanded(
-              child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Container(
-                    height: 34,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                        color: selected.contains(label)
-                            ? const Color(0xff168f62)
-                            : const Color(0xfff3f5f4),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                            color: selected.contains(label)
-                                ? const Color(0xff168f62)
-                                : const Color(0xffe3e7e5))),
-                    child: Text(
-                        '$label ${odds[label]?.toStringAsFixed(2) ?? '--'}',
-                        style: TextStyle(
-                            fontSize: 11.5,
-                            color: selected.contains(label)
-                                ? Colors.white
-                                : const Color(0xff8b928f),
-                            fontWeight: selected.contains(label)
-                                ? FontWeight.w600
-                                : FontWeight.w400)),
-                  )))
+          Builder(builder: (_) {
+            final isSelected = selected.contains(label);
+            final selectedWon =
+                isSelected && _optionWon(label, _winnerFor(pick, play), play);
+            final selectedLost = _isSettled && isSelected && !selectedWon;
+            final selectedActive = isSelected && (selectedWon || !_isSettled);
+            final background = selectedActive
+                ? _green
+                : selectedLost
+                    ? const Color(0xffe8ece9)
+                    : Colors.white;
+            final foreground = selectedActive
+                ? Colors.white
+                : selectedLost
+                    ? const Color(0xff69716d)
+                    : const Color(0xff8b928f);
+            return Expanded(
+                child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: Container(
+                      height: 34,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                          color: background,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: selectedActive
+                                  ? _green
+                                  : selectedLost
+                                      ? const Color(0xffd4dbd6)
+                                      : const Color(0xffe3e7e5))),
+                      child: Text(
+                          '$label ${odds[label]?.toStringAsFixed(2) ?? '--'}',
+                          style: TextStyle(
+                              fontSize: 11.5,
+                              color: foreground,
+                              fontWeight: isSelected
+                                  ? FontWeight.w700
+                                  : FontWeight.w400)),
+                    )));
+          })
       ]),
     );
   }
@@ -2183,26 +2234,42 @@ class _SchemePageState extends State<_SchemePage> {
       padding: const EdgeInsets.only(top: 7, left: 30),
       child: Wrap(spacing: 6, runSpacing: 6, children: [
         for (final option in options)
-          Container(
-              width: 104,
-              height: 48,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                  color: const Color(0xff168f62),
-                  border: Border.all(color: const Color(0xff168f62)),
-                  borderRadius: BorderRadius.circular(4)),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text(
-                    _compactOptionLabel(option.play ?? pick.play, option.label),
-                    style: const TextStyle(
-                        fontSize: 13,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700)),
-                const SizedBox(height: 2),
-                Text(option.sp.toStringAsFixed(2),
-                    style:
-                        const TextStyle(fontSize: 11, color: Color(0xffe8f7f0)))
-              ]))
+          Builder(builder: (_) {
+            final play = option.play ?? pick.play;
+            final won = _optionWon(option.label, _winnerFor(pick, play), play);
+            final lost = _isSettled && !won;
+            final active = won || !_isSettled;
+            final background = active
+                ? _green
+                : lost
+                    ? const Color(0xffe8ece9)
+                    : Colors.white;
+            final foreground =
+                won || !_isSavedScheme ? Colors.white : const Color(0xff69716d);
+            return Container(
+                width: 104,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                    color: background,
+                    border: Border.all(
+                        color: active ? _green : const Color(0xffd4dbd6)),
+                    borderRadius: BorderRadius.circular(4)),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text(_compactOptionLabel(play, option.label),
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: foreground,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(option.sp.toStringAsFixed(2),
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: active
+                              ? const Color(0xffe8f7f0)
+                              : const Color(0xff818985)))
+                ]));
+          })
       ]),
     );
   }
@@ -2245,7 +2312,7 @@ class _SchemePageState extends State<_SchemePage> {
               style: TextStyle(
                   fontSize: 14,
                   color: actualPrize != null
-                      ? const Color(0xffdf4162)
+                      ? const Color(0xffc76a00)
                       : const Color(0xff5f6863),
                   fontWeight: FontWeight.w700)),
         ]),
@@ -2269,54 +2336,90 @@ class _SchemePageState extends State<_SchemePage> {
 
   Widget _ticketCards() => Column(children: [
         for (final pick in widget.picks)
-          Container(
-            margin: const EdgeInsets.only(bottom: 7),
-            padding: const EdgeInsets.fromLTRB(13, 9, 13, 10),
-            decoration: BoxDecoration(
-                color: Colors.white, borderRadius: BorderRadius.circular(12)),
-            child: Column(children: [
-              Row(children: [
-                Text(pick.number,
-                    style: const TextStyle(
-                        fontSize: 12, color: Color(0xff7c8480))),
-                const SizedBox(width: 7),
-                Text(pick.league,
-                    style: const TextStyle(
-                        fontSize: 12,
-                        color: _green,
-                        fontWeight: FontWeight.w600)),
-                const Spacer(),
-                Text(_kickoffLabel(pick),
-                    style:
-                        const TextStyle(fontSize: 12, color: Color(0xff8a918e)))
+          Builder(builder: (_) {
+            final score = _scoreFor(pick);
+            final hasOutcome = score.isNotEmpty;
+            final hasHit = pick.options.any((option) {
+              final play = option.play ?? pick.play;
+              return _optionWon(option.label, _winnerFor(pick, play), play);
+            });
+            final statusLabel = !_isSettled
+                ? ''
+                : hasHit
+                    ? '命中'
+                    : '未中';
+            final statusColor = hasHit ? _green : const Color(0xff767e7a);
+            return Container(
+              margin: const EdgeInsets.only(bottom: 7),
+              padding: const EdgeInsets.fromLTRB(13, 9, 13, 10),
+              decoration: BoxDecoration(
+                  color: Colors.white, borderRadius: BorderRadius.circular(12)),
+              child: Column(children: [
+                Row(children: [
+                  Text(pick.number,
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xff7c8480))),
+                  const SizedBox(width: 7),
+                  Text(pick.league,
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: _green,
+                          fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  if (statusLabel.isNotEmpty) ...[
+                    Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                            color: hasHit
+                                ? const Color(0xffe3f3ea)
+                                : const Color(0xffeef1ef),
+                            borderRadius: BorderRadius.circular(4)),
+                        child: Text(statusLabel,
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: statusColor,
+                                fontWeight: FontWeight.w700))),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(hasOutcome ? '完场' : _kickoffLabel(pick),
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xff8a918e)))
+                ]),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(
+                      child: Text(pick.home,
+                          textAlign: TextAlign.right,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w700))),
+                  SizedBox(
+                      width: 54,
+                      child: Text(hasOutcome ? score : 'VS',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: hasOutcome ? 16 : 13,
+                              color: hasOutcome
+                                  ? const Color(0xff303733)
+                                  : const Color(0xff9ba19e),
+                              fontWeight: hasOutcome
+                                  ? FontWeight.w800
+                                  : FontWeight.w400))),
+                  Expanded(
+                      child: Text(pick.away,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w700)))
+                ]),
+                _resultOddsRow(pick, FootballPlay.had),
+                _resultOddsRow(pick, FootballPlay.hhad),
+                _otherPlaySelections(pick)
               ]),
-              const SizedBox(height: 8),
-              Row(children: [
-                Expanded(
-                    child: Text(pick.home,
-                        textAlign: TextAlign.right,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700))),
-                const SizedBox(
-                    width: 54,
-                    child: Text('VS',
-                        textAlign: TextAlign.center,
-                        style:
-                            TextStyle(fontSize: 13, color: Color(0xff9ba19e)))),
-                Expanded(
-                    child: Text(pick.away,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700)))
-              ]),
-              _resultOddsRow(pick, FootballPlay.had),
-              _resultOddsRow(pick, FootballPlay.hhad),
-              _otherPlaySelections(pick)
-            ]),
-          )
+            );
+          })
       ]);
 
   Widget _summary(BettingResult value) {
@@ -2346,7 +2449,7 @@ class _SchemePageState extends State<_SchemePage> {
               Text('${actualPrize.toStringAsFixed(2)}元',
                   style: const TextStyle(
                       fontSize: 20,
-                      color: Color(0xffd8484f),
+                      color: Color(0xffc76a00),
                       fontWeight: FontWeight.w800)),
             ],
           )
@@ -2456,11 +2559,23 @@ class _SchemePageState extends State<_SchemePage> {
                           () => _adjustMultiple(entries[index].key, 1)),
                     ]),
                   if (widget.optimizationOnly) const SizedBox(height: 6),
-                  Text('${entries[index].value.toStringAsFixed(2)}元',
-                      style: const TextStyle(
-                          color: Color(0xffdf4162),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700))
+                  Builder(builder: (_) {
+                    final won = _isSettled && _ticketWon(entries[index].key);
+                    final text = _isSettled
+                        ? (won
+                            ? '中奖 ${entries[index].value.toStringAsFixed(2)}元'
+                            : '未中')
+                        : '${entries[index].value.toStringAsFixed(2)}元';
+                    return Text(text,
+                        style: TextStyle(
+                            color: won
+                                ? const Color(0xffc76a00)
+                                : _isSettled
+                                    ? const Color(0xff767e7a)
+                                    : const Color(0xffdf4162),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700));
+                  })
                 ])
               ]))
       ]),
@@ -2541,14 +2656,16 @@ class _SchemePageState extends State<_SchemePage> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.ios_share_outlined, size: 19),
-                      label: Text(isSharing ? '生成中' : '分享'))),
-              const SizedBox(width: 6),
-              Expanded(
-                  flex: 2,
-                  child: FilledButton(
-                      onPressed: value == null ? null : () => _save(value),
-                      style: FilledButton.styleFrom(backgroundColor: _green),
-                      child: const Text('保存方案')))
+                      label: Text(isSharing ? '生成中' : '分享方案'))),
+              if (!_isSavedScheme) ...[
+                const SizedBox(width: 6),
+                Expanded(
+                    flex: 2,
+                    child: FilledButton(
+                        onPressed: value == null ? null : () => _save(value),
+                        style: FilledButton.styleFrom(backgroundColor: _green),
+                        child: const Text('保存方案')))
+              ]
             ])),
       );
 
@@ -2588,7 +2705,12 @@ class _SchemePageState extends State<_SchemePage> {
       appBar: AppBar(
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.white,
-          title: Text(widget.optimizationOnly ? '奖金优化' : '竞球镜·方案分享',
+          title: Text(
+              widget.optimizationOnly
+                  ? '奖金优化'
+                  : _isSavedScheme
+                      ? '保存方案'
+                      : '竞球镜·方案分享',
               style:
                   const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
       body: GestureDetector(
@@ -2623,10 +2745,13 @@ class _SchemePageState extends State<_SchemePage> {
                   _combinations(value),
                 ],
                 const SizedBox(height: 10),
-                const Center(
-                    child: Text('预计奖金仅供参考，SP变化后请重新计算',
-                        style:
-                            TextStyle(fontSize: 11, color: Color(0xff8b928f))))
+                Center(
+                    child: Text(
+                        _isSettled
+                            ? '赛果按全场90分钟（含伤停补时）结算'
+                            : '预计奖金仅供参考，SP变化后请重新计算',
+                        style: const TextStyle(
+                            fontSize: 11, color: Color(0xff8b928f))))
               ]
             ]),
       ),
