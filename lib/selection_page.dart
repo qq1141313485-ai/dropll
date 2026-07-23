@@ -3166,6 +3166,22 @@ class _SavedSchemeDetailPage extends StatelessWidget {
     return 2 * product * multiple.toDouble();
   }
 
+  bool _combinationWon(Map combination, Map<String, dynamic> outcomes) {
+    final picks = combination['picks'];
+    if (picks is! List || picks.isEmpty) return false;
+    for (final raw in picks) {
+      if (raw is! Map) return false;
+      final matchId = raw['matchId']?.toString() ?? '';
+      final play = raw['play']?.toString() ?? '';
+      final winner = _winner(outcomes, matchId, play);
+      if (winner.isEmpty ||
+          !_isWinningOption(raw['label']?.toString() ?? '', winner, play)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   String _winner(Map<String, dynamic> outcomes, String matchId, String play) {
     final outcome = outcomes[matchId];
     if (outcome is! Map) return '';
@@ -3280,6 +3296,9 @@ class _SavedSchemeDetailPage extends StatelessWidget {
                       final multiple =
                           combination['multiple']?.toString() ?? '--';
                       final payout = _combinationReturn(combination);
+                      final settled = state == 'won' || state == 'lost';
+                      final won =
+                          settled && _combinationWon(combination, outcomes);
                       return Container(
                         padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
                         decoration: const BoxDecoration(
@@ -3309,10 +3328,17 @@ class _SavedSchemeDetailPage extends StatelessWidget {
                                         fontSize: 11,
                                         color: Color(0xff68716c))),
                                 if (payout != null)
-                                  Text('${payout.toStringAsFixed(2)}元',
-                                      style: const TextStyle(
+                                  Text(
+                                      settled
+                                          ? (won
+                                              ? '中奖 ${payout.toStringAsFixed(2)}元'
+                                              : '未中')
+                                          : '返奖 ${payout.toStringAsFixed(2)}元',
+                                      style: TextStyle(
                                           fontSize: 11,
-                                          color: Color(0xffc83d46),
+                                          color: settled && !won
+                                              ? const Color(0xff7b837f)
+                                              : const Color(0xffc83d46),
                                           fontWeight: FontWeight.w700)),
                               ],
                             ),
