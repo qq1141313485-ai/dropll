@@ -305,38 +305,7 @@ class BettingEngine {
     if (units < atomic.length) {
       throw ArgumentError('预算不足，至少需要 ${atomic.length * 2} 元覆盖全部组合');
     }
-    final multiples = List<int>.filled(atomic.length, 1);
-    var remaining = units - atomic.length;
-    while (remaining > 0) {
-      var best = 0;
-      var bestScore = mode == OptimizeMode.balanced
-          ? double.infinity
-          : mode == OptimizeMode.hot
-              ? double.infinity
-              : -double.infinity;
-      for (var index = 0; index < atomic.length; index++) {
-        if (multiples[index] >= maxSchemeMultiple) continue;
-        final value = mode == OptimizeMode.balanced
-            ? atomic[index].unitReturn * multiples[index]
-            : atomic[index].unitReturn;
-        final shouldSelect =
-            mode == OptimizeMode.cold ? value > bestScore : value < bestScore;
-        if (shouldSelect) {
-          bestScore = value;
-          best = index;
-        }
-      }
-      multiples[best]++;
-      remaining--;
-    }
-    return BettingResult(
-      atomic,
-      [
-        for (var i = 0; i < atomic.length; i++)
-          SplitTicket(bet: atomic[i], multiple: multiples[i])
-      ],
-      principalProtected: null,
-    );
+    return _optimizeAtomic(atomic, units, mode);
   }
 
   BettingResult optimizeMultiple({
@@ -355,32 +324,76 @@ class BettingEngine {
     if (units < atomic.length) {
       throw ArgumentError('预算不足，至少需要 ${atomic.length * 2} 元覆盖全部组合');
     }
-    final multiples = List<int>.filled(atomic.length, 1);
-    var remaining = units - atomic.length;
+    return _optimizeAtomic(atomic, units, mode);
+  }
 
+  BettingResult _optimizeAtomic(
+      List<AtomicBet> atomic, int units, OptimizeMode mode) {
+    final multiples = List<int>.filled(atomic.length, 1);
+    if (mode == OptimizeMode.balanced) {
+      _allocateAverage(atomic, multiples, units - atomic.length);
+      return _optimizedResult(atomic, multiples, null);
+    }
+
+    // 博热/博冷先让每个可能命中的单注返奖不少于本次实际投入，
+    // 再将剩余注数集中给目标组合。
+    final protectedAmount = units * 2.0;
+    for (var index = 0; index < atomic.length; index++) {
+      final required = (protectedAmount / atomic[index].unitReturn).ceil();
+      multiples[index] = math.max(1, required);
+      if (multiples[index] > maxSchemeMultiple) {
+        throw ArgumentError('当前预算超过单个组合$maxSchemeMultiple倍上限，无法保本优化');
+      }
+    }
+    final protectedUnits = multiples.fold(0, (sum, value) => sum + value);
+    if (protectedUnits > units) {
+      throw ArgumentError('当前预算无法保证所有组合保本，至少需要${protectedUnits * 2}元');
+    }
+
+    final target = _targetIndex(atomic, mode);
+    var remaining = units - protectedUnits;
+    while (remaining > 0 && multiples[target] < maxSchemeMultiple) {
+      multiples[target]++;
+      remaining--;
+    }
+    if (remaining > 0) {
+      throw ArgumentError('目标组合已达到$maxSchemeMultiple倍上限，请提高分配范围');
+    }
+    return _optimizedResult(atomic, multiples, true);
+  }
+
+  void _allocateAverage(
+      List<AtomicBet> atomic, List<int> multiples, int remaining) {
     while (remaining > 0) {
       var best = 0;
-      var bestScore = mode == OptimizeMode.balanced
-          ? double.infinity
-          : mode == OptimizeMode.hot
-              ? double.infinity
-              : -double.infinity;
+      var bestReturn = double.infinity;
       for (var index = 0; index < atomic.length; index++) {
         if (multiples[index] >= maxSchemeMultiple) continue;
-        final value = mode == OptimizeMode.balanced
-            ? atomic[index].unitReturn * multiples[index]
-            : atomic[index].unitReturn;
-        final shouldSelect =
-            mode == OptimizeMode.cold ? value > bestScore : value < bestScore;
-        if (shouldSelect) {
-          bestScore = value;
+        final value = atomic[index].unitReturn * multiples[index];
+        if (value < bestReturn) {
+          bestReturn = value;
           best = index;
         }
+      }
+      if (multiples[best] >= maxSchemeMultiple) {
+        throw ArgumentError('所有组合已达到$maxSchemeMultiple倍上限');
       }
       multiples[best]++;
       remaining--;
     }
-    return _optimizedResult(atomic, multiples, null);
+  }
+
+  int _targetIndex(List<AtomicBet> atomic, OptimizeMode mode) {
+    var target = 0;
+    for (var index = 1; index < atomic.length; index++) {
+      final current = atomic[index].unitReturn;
+      final selected = atomic[target].unitReturn;
+      if ((mode == OptimizeMode.hot && current < selected) ||
+          (mode == OptimizeMode.cold && current > selected)) {
+        target = index;
+      }
+    }
+    return target;
   }
 
   BettingResult _optimizedResult(

@@ -1668,13 +1668,19 @@ class _SchemePageState extends State<_SchemePage> {
                 : _multipleFor(current, entry))
     ];
     final draft = BettingResult(current.atomicBets, tickets);
+    final protected = draft.returnsByCombination.values
+        .every((returnValue) => returnValue >= draft.amount);
     final nextBudget = draft.amount.toStringAsFixed(0);
     budgetController.value = TextEditingValue(
       text: nextBudget,
       selection: TextSelection.collapsed(offset: nextBudget.length),
     );
     setState(() {
-      result = BettingResult(current.atomicBets, tickets);
+      result = BettingResult(
+        current.atomicBets,
+        tickets,
+        principalProtected: protected,
+      );
     });
   }
 
@@ -1973,8 +1979,8 @@ class _SchemePageState extends State<_SchemePage> {
             Text(
                 switch (optimizeMode) {
                   OptimizeMode.balanced => '尽量让各组合中奖回报接近',
-                  OptimizeMode.hot => '将预算增量集中到低SP组合',
-                  OptimizeMode.cold => '将预算增量集中到高SP组合',
+                  OptimizeMode.hot => '先保证各组合保本，再放大低SP组合奖金',
+                  OptimizeMode.cold => '先保证各组合保本，再放大高SP组合奖金',
                 },
                 style: const TextStyle(fontSize: 11, color: Color(0xff858d89)))
           ]
@@ -2243,6 +2249,12 @@ class _SchemePageState extends State<_SchemePage> {
                   fontWeight: FontWeight.w700)),
           if (widget.optimizationOnly) ...[
             const SizedBox(height: 8),
+            if (value.principalProtected == true)
+              const Text('已按当前投入完成保本分配',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xff168f62),
+                      fontWeight: FontWeight.w600)),
             Builder(builder: (_) {
               final budget = double.tryParse(budgetController.text) ?? 0;
               final remaining = math.max(0, budget - value.amount);

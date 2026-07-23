@@ -152,7 +152,7 @@ void main() {
     expect(result.maxReturn, 24);
   });
 
-  test('博热集中低SP组合，博冷集中高SP组合', () {
+  test('博热博冷先保本，再放大目标组合奖金', () {
     final picks = [
       pick('1', [1.5, 4]),
       pick('2', [1])
@@ -167,22 +167,41 @@ void main() {
         pass: PassMethod.simple.first,
         budget: 100,
         mode: OptimizeMode.cold);
-    final hotMultiples = {
-      for (final entry in hot.returnsByCombination.keys)
-        entry.unitReturn: hot.tickets
-            .where((ticket) => identical(ticket.bet, entry))
-            .fold(0, (sum, ticket) => sum + ticket.multiple),
-    };
-    final coldMultiples = {
-      for (final entry in cold.returnsByCombination.keys)
-        entry.unitReturn: cold.tickets
-            .where((ticket) => identical(ticket.bet, entry))
-            .fold(0, (sum, ticket) => sum + ticket.multiple),
-    };
-    expect(hot.principalProtected, isNull);
-    expect(cold.principalProtected, isNull);
-    expect(hotMultiples[3], greaterThan(hotMultiples[8]!));
-    expect(coldMultiples[8], greaterThan(coldMultiples[3]!));
+    expect(hot.principalProtected, isTrue);
+    expect(cold.principalProtected, isTrue);
+    expect(
+        hot.returnsByCombination.values.every((value) => value >= hot.amount),
+        isTrue);
+    expect(
+        cold.returnsByCombination.values.every((value) => value >= cold.amount),
+        isTrue);
+    expect(
+        hot.returnsByCombination.entries
+            .reduce((a, b) => a.value > b.value ? a : b)
+            .key
+            .unitReturn,
+        3);
+    expect(
+        cold.returnsByCombination.entries
+            .reduce((a, b) => a.value > b.value ? a : b)
+            .key
+            .unitReturn,
+        8);
+  });
+
+  test('预算不足时博热博冷明确提示无法保本', () {
+    expect(
+      () => engine.optimize(
+        picks: [
+          pick('1', [1.5, 4]),
+          pick('2', [1]),
+        ],
+        pass: PassMethod.simple.first,
+        budget: 10,
+        mode: OptimizeMode.hot,
+      ),
+      throwsArgumentError,
+    );
   });
 
   test('奖金区间按互斥组合取最小最大值而不是相加', () {
@@ -211,7 +230,7 @@ void main() {
     expect(result.amount, 494);
   });
 
-  test('多过关博热将预算增量集中到最低SP组合', () {
+  test('多过关博热将保本后的剩余注数集中到最低SP组合', () {
     final result = engine.optimizeMultiple(
       picks: [
         pick('1', [1.5, 4]),
@@ -229,12 +248,16 @@ void main() {
     int multiple(AtomicBet bet) => result.tickets
         .where((ticket) => identical(ticket.bet, bet))
         .fold(0, (sum, ticket) => sum + ticket.multiple);
-    expect(multiple(lowest), greaterThan(multiple(highest)));
-    expect(multiple(highest), 1);
-    expect(result.principalProtected, isNull);
+    expect(multiple(lowest) * lowest.unitReturn,
+        greaterThan(multiple(highest) * highest.unitReturn));
+    expect(
+        result.returnsByCombination.values
+            .every((value) => value >= result.amount),
+        isTrue);
+    expect(result.principalProtected, isTrue);
   });
 
-  test('多过关博冷将预算增量集中到最高SP组合', () {
+  test('多过关博冷将保本后的剩余注数集中到最高SP组合', () {
     final result = engine.optimizeMultiple(
       picks: [
         pick('1', [1.5, 4]),
@@ -252,8 +275,12 @@ void main() {
     int multiple(AtomicBet bet) => result.tickets
         .where((ticket) => identical(ticket.bet, bet))
         .fold(0, (sum, ticket) => sum + ticket.multiple);
-    expect(multiple(lowest), 1);
-    expect(multiple(highest), greaterThan(multiple(lowest)));
-    expect(result.principalProtected, isNull);
+    expect(multiple(highest) * highest.unitReturn,
+        greaterThan(multiple(lowest) * lowest.unitReturn));
+    expect(
+        result.returnsByCombination.values
+            .every((value) => value >= result.amount),
+        isTrue);
+    expect(result.principalProtected, isTrue);
   });
 }
