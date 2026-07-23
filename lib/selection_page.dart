@@ -2294,6 +2294,35 @@ class _SchemePageState extends State<_SchemePage> {
   Widget _schemeOverview(BettingResult value) {
     final actualPrize = _actualPrize;
     final isLost = _settlementState == 'lost';
+    final isSettling = _settlementState == 'in_progress';
+    final isPending = _isSavedScheme && _settlementState == 'pending';
+    final finishedMatches =
+        widget.savedSettlement?['finishedMatches']?.toString() ?? '0';
+    final totalMatches =
+        widget.savedSettlement?['totalMatches']?.toString() ?? '--';
+    final statusTitle = actualPrize != null
+        ? '实际奖金'
+        : isLost
+            ? '赛果'
+            : isSettling || isPending
+                ? '结算状态'
+                : '最高奖金';
+    final statusValue = actualPrize != null
+        ? '${actualPrize.toStringAsFixed(2)}元'
+        : isLost
+            ? '未中奖'
+            : isSettling
+                ? '结算中 $finishedMatches/$totalMatches'
+                : isPending
+                    ? '待开赛'
+                    : '${value.maxReturn.toStringAsFixed(2)}元';
+    final statusColor = actualPrize != null
+        ? const Color(0xffc76a00)
+        : isSettling
+            ? const Color(0xff9a6814)
+            : isPending
+                ? const Color(0xff2778ad)
+                : const Color(0xff5f6863);
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
       decoration: BoxDecoration(
@@ -2312,25 +2341,13 @@ class _SchemePageState extends State<_SchemePage> {
           Text('[${widget.initialMultiple}倍]',
               style: const TextStyle(fontSize: 11, color: Color(0xff7d8581))),
           const Spacer(),
-          Text(
-              actualPrize != null
-                  ? '实际奖金'
-                  : isLost
-                      ? '赛果'
-                      : '最高奖金',
+          Text(statusTitle,
               style: const TextStyle(fontSize: 11, color: Color(0xff7d8581))),
           const SizedBox(width: 6),
-          Text(
-              actualPrize != null
-                  ? '${actualPrize.toStringAsFixed(2)}元'
-                  : isLost
-                      ? '未中奖'
-                      : '${value.maxReturn.toStringAsFixed(2)}元',
+          Text(statusValue,
               style: TextStyle(
                   fontSize: 14,
-                  color: actualPrize != null
-                      ? const Color(0xffc76a00)
-                      : const Color(0xff5f6863),
+                  color: statusColor,
                   fontWeight: FontWeight.w700)),
         ]),
         const Divider(height: 20),
