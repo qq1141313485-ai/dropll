@@ -1276,6 +1276,13 @@ class _ResultsTab extends StatelessWidget {
           const SizedBox(height: 10),
           _ResultSpStrip(markets: markets),
         ],
+        if (match.had.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _ResultReview(
+            match: match,
+            actualOutcome: _normalOutcome(full.$1, full.$2),
+          ),
+        ],
         const SizedBox(height: 10),
         _Surface(
           padding: const EdgeInsets.fromLTRB(11, 11, 11, 6),
@@ -1423,6 +1430,53 @@ class _ResultSpItem extends StatelessWidget {
           if (note != null)
             Text(note!,
                 style: const TextStyle(fontSize: 8, color: Color(0xff9c777b))),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResultReview extends StatelessWidget {
+  const _ResultReview({required this.match, required this.actualOutcome});
+
+  final MatchItem match;
+  final String actualOutcome;
+
+  @override
+  Widget build(BuildContext context) {
+    final favorite = _favorite(match.had);
+    if (favorite == null) return const SizedBox.shrink();
+    final matched = favorite.$1 == actualOutcome;
+    final label = matched ? '打出赛前最低 SP 倾向' : '未打出赛前最低 SP 倾向';
+    return _Surface(
+      color: matched ? const Color(0xfff3faf7) : const Color(0xfffffaf3),
+      padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            matched ? Icons.task_alt_rounded : Icons.compare_arrows_rounded,
+            size: 17,
+            color: matched ? _green : _orange,
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('赛果复盘 · $label',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: matched ? _greenDark : const Color(0xff9b6419),
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(
+                  '赛前最低 SP：${_outcomeLabel(favorite.$1)} ${_odd(favorite.$2)}  ·  实际赛果：$actualOutcome',
+                  style: const TextStyle(fontSize: 10.5, color: _muted),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
