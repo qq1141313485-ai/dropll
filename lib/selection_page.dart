@@ -1971,10 +1971,18 @@ class _SchemePageState extends State<_SchemePage> {
           text: '竞球镜·方案分享',
         ),
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('方案图片分享失败: $error\n$stackTrace');
+      try {
+        await SharePlus.instance.share(
+          ShareParams(text: _schemeText(value), subject: '竞球镜·方案分享'),
+        );
+      } catch (fallbackError) {
+        debugPrint('方案文字分享也失败: $fallbackError');
+      }
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('分享图片生成失败，请重试')));
+            .showSnackBar(const SnackBar(content: Text('图片生成失败，已尝试文字分享')));
       }
     } finally {
       if (mounted) setState(() => isSharing = false);
@@ -2668,8 +2676,12 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
     final state = settlement is Map ? settlement['state']?.toString() : '';
     if (state == 'won') {
       if (settlement?['legacy'] == true) {
+        final legacyPrize =
+            num.tryParse(settlement?['prize']?.toString() ?? '');
         return (
-          label: '已中奖 · 奖金待补',
+          label: legacyPrize == null
+              ? '已中奖 · 奖金待补'
+              : '奖金${legacyPrize.toStringAsFixed(2)}元',
           background: const Color(0xffffedd2),
           foreground: const Color(0xffc76a00),
         );
@@ -2841,6 +2853,57 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
     return false;
   }
 
+  double? _legacyPrizeFromText(
+    Map<String, dynamic> item,
+    List<dynamic> picks,
+    Map<String, Map<String, String>> winners,
+  ) {
+    final text = item['text']?.toString() ?? '';
+    if (text.isEmpty) return null;
+    final matchIdsByNumber = <String, String>{
+      for (final pick in picks.whereType<Map>())
+        pick['number']?.toString() ?? '': pick['matchId']?.toString() ?? '',
+    };
+    final selectionPattern = RegExp(
+      r'(周[一二三四五六日]\d+)\s+(胜平负|让球胜平负|总进球|比分|半全场)\[([^\]]+)\]',
+    );
+    final prizePattern = RegExp(r'｜\s*([0-9]+(?:\.[0-9]+)?)元\s*$');
+    var parsed = 0;
+    var prize = 0.0;
+    for (final line in text.split('\n')) {
+      if (!RegExp(r'^\s*\d+\.').hasMatch(line)) continue;
+      final prizeMatch = prizePattern.firstMatch(line);
+      final selections = selectionPattern.allMatches(line).toList();
+      if (prizeMatch == null || selections.isEmpty) continue;
+      final returnAmount = double.tryParse(prizeMatch.group(1)!);
+      if (returnAmount == null) continue;
+      parsed += 1;
+      var wins = true;
+      for (final selection in selections) {
+        final play = switch (selection.group(2)!) {
+          '胜平负' => FootballPlay.had,
+          '让球胜平负' => FootballPlay.hhad,
+          '总进球' => FootballPlay.ttg,
+          '比分' => FootballPlay.crs,
+          '半全场' => FootballPlay.hafu,
+          _ => null,
+        };
+        final matchId = matchIdsByNumber[selection.group(1)!];
+        if (play == null || matchId == null) {
+          wins = false;
+          break;
+        }
+        final winner = winners[matchId]?[play.name];
+        if (winner == null || !_optionWins(selection.group(3)!, winner, play)) {
+          wins = false;
+          break;
+        }
+      }
+      if (wins) prize += returnAmount;
+    }
+    return parsed == 0 ? null : double.parse(prize.toStringAsFixed(2));
+  }
+
   Future<void> _settleSavedSchemes() async {
     if (settling) return;
     if (mounted) setState(() => settling = true);
@@ -2972,34 +3035,12 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
             }
         };
         if (item['combinations'] is! List) {
-          var legacyWon = true;
-          for (final pick in picks.whereType<Map>()) {
-            var hasWinningOption = false;
-            for (final rawOption in (pick['options'] is List
-                ? pick['options'] as List
-                : const [])) {
-              if (rawOption is! Map) continue;
-              final play = _play(rawOption['play']);
-              if (play == null) continue;
-              final winner = winners[pick['matchId']?.toString()]?[play.name];
-              if (winner != null &&
-                  _optionWins(
-                    rawOption['label']?.toString() ?? '',
-                    winner,
-                    play,
-                  )) {
-                hasWinningOption = true;
-                break;
-              }
-            }
-            if (!hasWinningOption) {
-              legacyWon = false;
-              break;
-            }
-          }
+          final legacyPrize = _legacyPrizeFromText(item, picks, winners);
+          final legacyWon = legacyPrize != null && legacyPrize > 0;
           item['settlement'] = {
             'state': legacyWon ? 'won' : 'lost',
             'legacy': true,
+            if (legacyPrize != null) 'prize': legacyPrize,
             'finishedMatches': matchIds.length,
             'totalMatches': matchIds.length,
             'settledAt': DateTime.now().toIso8601String(),
@@ -3252,6 +3293,23 @@ class _SavedSchemeDetailPage extends StatelessWidget {
 
   final Map<String, dynamic> item;
 
+  Future<void> _share(BuildContext context) async {
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          subject: '竞球镜·保存方案',
+          text: item['text']?.toString() ?? '竞球镜·保存方案',
+        ),
+      );
+    } catch (error) {
+      debugPrint('保存方案分享失败: $error');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('分享失败，请稍后重试')));
+      }
+    }
+  }
+
   String _optimizationLabel() {
     final optimization = item['optimization'];
     if (optimization is! Map) {
@@ -3356,6 +3414,8 @@ class _SavedSchemeDetailPage extends StatelessWidget {
                 ? const Color(0xff9a6814)
                 : const Color(0xff2778ad);
     final statusLabel = switch (state) {
+      'won' when settlement?['legacy'] == true && prize != null =>
+        '实际税前奖金 ${prize.toStringAsFixed(2)} 元',
       'won' when settlement?['legacy'] == true => '已中奖 · 旧方案未保存组合金额',
       'won' => '实际税前奖金 ${prize?.toStringAsFixed(2) ?? '--'} 元',
       'lost' => '未中奖',
@@ -3370,6 +3430,13 @@ class _SavedSchemeDetailPage extends StatelessWidget {
         surfaceTintColor: Colors.white,
         title: const Text('保存方案详情',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        actions: [
+          IconButton(
+            tooltip: '分享方案',
+            onPressed: () => _share(context),
+            icon: const Icon(Icons.ios_share_outlined),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(12),
