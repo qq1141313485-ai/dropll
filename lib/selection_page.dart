@@ -2667,6 +2667,13 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
     final settlement = item['settlement'];
     final state = settlement is Map ? settlement['state']?.toString() : '';
     if (state == 'won') {
+      if (settlement?['legacy'] == true) {
+        return (
+          label: '已中奖 · 奖金待补',
+          background: const Color(0xffffedd2),
+          foreground: const Color(0xffc76a00),
+        );
+      }
       final prize = num.tryParse(settlement?['prize']?.toString() ?? '') ?? 0;
       return (
         label: '奖金${prize.toStringAsFixed(2)}元',
@@ -2842,9 +2849,7 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
       final pending = decoded.where((item) {
         final settlement = item['settlement'];
         final state = settlement is Map ? settlement['state']?.toString() : '';
-        return item['combinations'] is List &&
-            state != 'won' &&
-            state != 'lost';
+        return item['picks'] is List && state != 'won' && state != 'lost';
       }).toList(growable: false);
       if (pending.isEmpty) return;
       final ids = <String>{
@@ -2876,7 +2881,7 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
         final currentState = currentSettlement is Map
             ? currentSettlement['state']?.toString()
             : '';
-        if (item['combinations'] is! List ||
+        if (item['picks'] is! List ||
             currentState == 'won' ||
             currentState == 'lost') {
           updated.add(raw);
@@ -2959,6 +2964,52 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
           changed = true;
           continue;
         }
+        final outcomes = <String, dynamic>{
+          for (final id in matchIds)
+            id: {
+              'score': matches[id]?.finalScore ?? matches[id]?.score ?? '--',
+              'winners': winners[id] ?? const <String, String>{},
+            }
+        };
+        if (item['combinations'] is! List) {
+          var legacyWon = true;
+          for (final pick in picks.whereType<Map>()) {
+            var hasWinningOption = false;
+            for (final rawOption in (pick['options'] is List
+                ? pick['options'] as List
+                : const [])) {
+              if (rawOption is! Map) continue;
+              final play = _play(rawOption['play']);
+              if (play == null) continue;
+              final winner = winners[pick['matchId']?.toString()]?[play.name];
+              if (winner != null &&
+                  _optionWins(
+                    rawOption['label']?.toString() ?? '',
+                    winner,
+                    play,
+                  )) {
+                hasWinningOption = true;
+                break;
+              }
+            }
+            if (!hasWinningOption) {
+              legacyWon = false;
+              break;
+            }
+          }
+          item['settlement'] = {
+            'state': legacyWon ? 'won' : 'lost',
+            'legacy': true,
+            'finishedMatches': matchIds.length,
+            'totalMatches': matchIds.length,
+            'settledAt': DateTime.now().toIso8601String(),
+            'outcomes': outcomes,
+          };
+          item['status'] = legacyWon ? '已中奖' : '未中奖';
+          updated.add(jsonEncode(item));
+          changed = true;
+          continue;
+        }
         var prize = 0.0;
         for (final combination in item['combinations'] as List) {
           if (combination is! Map || combination['picks'] is! List) continue;
@@ -2989,13 +3040,6 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet> {
                     0);
           }
         }
-        final outcomes = <String, dynamic>{
-          for (final id in matchIds)
-            id: {
-              'score': matches[id]?.finalScore ?? matches[id]?.score ?? '--',
-              'winners': winners[id] ?? const <String, String>{},
-            }
-        };
         item['settlement'] = {
           'state': prize > 0 ? 'won' : 'lost',
           'prize': double.parse(prize.toStringAsFixed(2)),
@@ -3311,13 +3355,14 @@ class _SavedSchemeDetailPage extends StatelessWidget {
             : state == 'in_progress'
                 ? const Color(0xff9a6814)
                 : const Color(0xff2778ad);
-    final statusLabel = state == 'won'
-        ? '实际税前奖金 ${prize?.toStringAsFixed(2) ?? '--'} 元'
-        : state == 'lost'
-            ? '未中奖'
-            : state == 'in_progress'
-                ? '结算中 · ${settlement?['finishedMatches'] ?? 0}/${settlement?['totalMatches'] ?? '--'} 场已完场'
-                : '待开赛';
+    final statusLabel = switch (state) {
+      'won' when settlement?['legacy'] == true => '已中奖 · 旧方案未保存组合金额',
+      'won' => '实际税前奖金 ${prize?.toStringAsFixed(2) ?? '--'} 元',
+      'lost' => '未中奖',
+      'in_progress' =>
+        '结算中 · ${settlement?['finishedMatches'] ?? 0}/${settlement?['totalMatches'] ?? '--'} 场已完场',
+      _ => '待开赛',
+    };
     return Scaffold(
       backgroundColor: const Color(0xfff5f7f6),
       appBar: AppBar(
