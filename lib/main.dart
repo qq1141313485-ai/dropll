@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'api_client.dart';
 import 'match_detail_page.dart';
 import 'selection_page.dart';
+import 'settings_page.dart';
 import 'widgets/home/home_page_container.dart';
 
 void main() => runApp(const CaiToolApp());
@@ -61,8 +62,8 @@ class _AppShellState extends State<AppShell> {
   static const pages = [
     ScoreBoardPage(),
     SelectionPage(),
-    ScenarioPage(),
     RankingPage(),
+    SettingsPage(),
   ];
 
   @override
@@ -83,13 +84,13 @@ class _AppShellState extends State<AppShell> {
               selectedIcon: Icon(Icons.checklist),
               label: '选号'),
           NavigationDestination(
-              icon: Icon(Icons.calculate_outlined),
-              selectedIcon: Icon(Icons.calculate),
-              label: '情景'),
-          NavigationDestination(
               icon: Icon(Icons.leaderboard_outlined),
               selectedIcon: Icon(Icons.leaderboard),
               label: '榜单'),
+          NavigationDestination(
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
+              label: '设置'),
         ],
       ),
     );
@@ -139,24 +140,6 @@ class ScoreBoardPage extends StatelessWidget {
       ),
     );
   }
-}
-
-class ScenarioPage extends StatelessWidget {
-  const ScenarioPage({super.key});
-  @override
-  Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.all(18),
-        children: const [
-          PageTitle('赔率情景', subtitle: '仅作数学比较'),
-          _InfoCard(
-              icon: Icons.calculate,
-              title: '总进球情景分析',
-              body: '选择预算与进球数选项，比较不同分配下的理论回报和风险。不会生成投注指令。',
-              action: '开始计算'),
-          SizedBox(height: 12),
-          _Notice(),
-        ],
-      );
 }
 
 class RankingPage extends StatefulWidget {
@@ -343,49 +326,4 @@ class _RankingRow extends StatelessWidget {
       ),
     );
   }
-}
-
-class _InfoCard extends StatelessWidget {
-  const _InfoCard(
-      {required this.icon,
-      required this.title,
-      required this.body,
-      required this.action});
-  final IconData icon;
-  final String title;
-  final String body;
-  final String action;
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-            color: Colors.white, borderRadius: BorderRadius.circular(18)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(icon, color: const Color(0xff079669)),
-          const SizedBox(height: 12),
-          Text(title,
-              style:
-                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Text(body,
-              style: const TextStyle(color: Color(0xff737980), height: 1.5)),
-          const SizedBox(height: 16),
-          OutlinedButton(onPressed: () {}, child: Text(action))
-        ]),
-      );
-}
-
-class _Notice extends StatelessWidget {
-  const _Notice();
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-            color: const Color(0xfffff8e9),
-            borderRadius: BorderRadius.circular(14)),
-        child: const Text(
-            '理性购彩提示：本工具不销售彩票，不代购彩票，不承诺收益；模型观点和赔率计算仅供数据研究与娱乐参考。未成年人请勿参与彩票活动。',
-            style:
-                TextStyle(fontSize: 12, color: Color(0xff8a6418), height: 1.5)),
-      );
 }

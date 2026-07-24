@@ -11,7 +11,7 @@
 - iOS 工程：`ios/Runner.xcworkspace`
 - Bundle Identifier：`com.caimaster.caiToolApp`
 - 最低 iOS 版本：13.0
-- 应用版本：`0.1.0+1`
+- 应用版本：`1.0.0+1`
 - 生产 API：`http://8.137.124.99:8787`
 - iOS `Info.plist` 已允许当前 HTTP API
 - iOS AppIcon 已由 `assets/branding/app_icon.png` 生成
@@ -84,4 +84,3 @@ flutter build ipa \
 请在 Mac 的 Codex 中打开本目录，然后发送：
 
 > 接管竞球镜 Flutter iOS 真机测试。先阅读 MAC_IOS_HANDOFF.md，只检查环境和签名，不修改业务代码；配置完成后使用生产 dart-define 构建并安装到已连接的 iPhone。禁止输出或提交 Token。
-

@@ -5,6 +5,8 @@
 - [项目速查卡](../AGENT_BRIEF.md)
 - [API 说明](API_CONTRACT.md)
 - [数据字典](docs/db.md)
+- [iOS 上架清单](docs/RELEASE_CHECKLIST.md)
+- [隐私政策](docs/PRIVACY_POLICY.md)
 
 ## 本地启动
 
