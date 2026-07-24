@@ -12,13 +12,13 @@
 
 ```powershell
 flutter pub get
-flutter run -d chrome --dart-define=CAIMASTER_API_BASE_URL=http://8.137.124.99:8787 --dart-define=CAIMASTER_API_TOKEN=replace-me
+flutter run -d chrome --dart-define=CAIMASTER_API_BASE_URL=https://api.cclloo.com --dart-define=CAIMASTER_API_TOKEN=replace-me
 ```
 
 ## 打包
 
 ```powershell
-flutter build apk --release --dart-define=CAIMASTER_API_BASE_URL=http://8.137.124.99:8787 --dart-define=CAIMASTER_API_TOKEN=replace-me
+flutter build apk --release --dart-define=CAIMASTER_API_BASE_URL=https://api.cclloo.com --dart-define=CAIMASTER_API_TOKEN=replace-me
 ```
 
 ## 开发约定

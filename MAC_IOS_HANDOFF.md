@@ -12,8 +12,8 @@
 - Bundle Identifier：`com.caimaster.caiToolApp`
 - 最低 iOS 版本：13.0
 - 应用版本：`1.0.0+1`
-- 生产 API：`http://8.137.124.99:8787`
-- iOS `Info.plist` 已允许当前 HTTP API
+- 生产 API：`https://api.cclloo.com`
+- iOS `Info.plist` 使用默认 ATS 策略，无需 HTTP 例外
 - iOS AppIcon 已由 `assets/branding/app_icon.png` 生成
 - 生产 Token 不在迁移包内，禁止写入 Git 或聊天
 
@@ -65,7 +65,7 @@ test -n "$CAIMASTER_API_TOKEN" && echo configured=true
 
 ```bash
 flutter run \
-  --dart-define=CAIMASTER_API_BASE_URL=http://8.137.124.99:8787 \
+  --dart-define=CAIMASTER_API_BASE_URL=https://api.cclloo.com \
   --dart-define=CAIMASTER_API_TOKEN="$CAIMASTER_API_TOKEN"
 ```
 
@@ -73,7 +73,7 @@ flutter run \
 
 ```bash
 flutter build ipa \
-  --dart-define=CAIMASTER_API_BASE_URL=http://8.137.124.99:8787 \
+  --dart-define=CAIMASTER_API_BASE_URL=https://api.cclloo.com \
   --dart-define=CAIMASTER_API_TOKEN="$CAIMASTER_API_TOKEN"
 ```
 

@@ -21,7 +21,7 @@ class CaiApiClient {
     'CAIMASTER_API_BASE_URL',
     defaultValue: String.fromEnvironment(
       'API_BASE_URL',
-      defaultValue: 'http://8.137.124.99:8787',
+      defaultValue: 'https://api.cclloo.com',
     ),
   );
   static const _rawToken = String.fromEnvironment(
@@ -47,8 +47,8 @@ class CaiApiClient {
       'rawTokenLength=${_rawToken.length} '
       'tokenHadBom=${_rawToken.startsWith('\ufeff')}',
     );
-    if (scheme == 'http') {
-      debugPrint('[CAI_API][transport] HTTP API in use; ATS must allow it.');
+    if (scheme != 'https') {
+      debugPrint('[CAI_API][transport] Non-HTTPS API URL detected.');
     }
   }
 
