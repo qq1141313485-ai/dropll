@@ -69,7 +69,9 @@ class MatchItem {
 
   bool get hasOfficialKickoffTime {
     final raw = kickoffRaw.trim();
-    return raw.length > 10 && !(kickoff.hour == 0 && kickoff.minute == 0);
+    // Midnight is a valid official kickoff. Only a date-only source value is
+    // considered unfilled.
+    return RegExp(r'\b\d{1,2}:\d{2}(?::\d{2})?\b').hasMatch(raw);
   }
 
   String get kickoffDisplayTime => hasOfficialKickoffTime
