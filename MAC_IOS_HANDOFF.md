@@ -11,11 +11,11 @@
 - iOS 工程：`ios/Runner.xcworkspace`
 - Bundle Identifier：`com.caimaster.caiToolApp`
 - 最低 iOS 版本：13.0
-- 应用版本：`1.0.0+1`
+- 应用版本：`1.0.0+2`
 - 生产 API：`https://api.cclloo.com`
 - iOS `Info.plist` 使用默认 ATS 策略，无需 HTTP 例外
 - iOS AppIcon 已由 `assets/branding/app_icon.png` 生成
-- 生产 Token 不在迁移包内，禁止写入 Git 或聊天
+- 安装包不包含长期 API Token；首次启动在“设置 > 激活设备”输入一次性激活码
 
 ## 严格限制
 
@@ -54,27 +54,18 @@
 
 ## 生产配置构建
 
-先在当前 Mac 终端安全设置 Token；只验证长度，不输出内容。Token 可由有权限的人员从服务器 `/opt/caimaster-api/api.env` 读取。
-
-```bash
-export CAIMASTER_API_TOKEN='在本机终端安全填写，不要发到聊天'
-test -n "$CAIMASTER_API_TOKEN" && echo configured=true
-```
-
-然后执行：
+生产包默认使用 HTTPS API；不要传入或注入长期 API Token。首次启动后，从“设置 > 激活设备”输入经安全渠道取得的一次性激活码。
 
 ```bash
 flutter run \
-  --dart-define=CAIMASTER_API_BASE_URL=https://api.cclloo.com \
-  --dart-define=CAIMASTER_API_TOKEN="$CAIMASTER_API_TOKEN"
+  --dart-define=CAIMASTER_API_BASE_URL=https://api.cclloo.com
 ```
 
 如果要生成归档：
 
 ```bash
 flutter build ipa \
-  --dart-define=CAIMASTER_API_BASE_URL=https://api.cclloo.com \
-  --dart-define=CAIMASTER_API_TOKEN="$CAIMASTER_API_TOKEN"
+  --dart-define=CAIMASTER_API_BASE_URL=https://api.cclloo.com
 ```
 
 免费 Personal Team 适合连接自己的 iPhone 调试；TestFlight 或长期分发需要 Apple Developer Program。
@@ -83,4 +74,4 @@ flutter build ipa \
 
 请在 Mac 的 Codex 中打开本目录，然后发送：
 
-> 接管竞球镜 Flutter iOS 真机测试。先阅读 MAC_IOS_HANDOFF.md，只检查环境和签名，不修改业务代码；配置完成后使用生产 dart-define 构建并安装到已连接的 iPhone。禁止输出或提交 Token。
+> 接管竞球镜 Flutter iOS 真机测试。先阅读 MAC_IOS_HANDOFF.md，只检查环境和签名，不修改业务代码；配置完成后使用生产 HTTPS 配置构建并安装到已连接的 iPhone。禁止输出或提交任何激活码、Token 或私钥。

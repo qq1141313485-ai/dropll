@@ -204,6 +204,7 @@
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
+				20533892152BE0E73F373226 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -303,6 +304,23 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		20533892152BE0E73F373226 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -332,7 +350,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "CAIMASTER_TOKEN_FILE=\"${SRCROOT}/../.dev-api-token\"\nif [ -f \"${CAIMASTER_TOKEN_FILE}\" ]; then\n  CAIMASTER_TOKEN=$(LC_ALL=C tr -d '\\357\\273\\277\\r\\n' < \"${CAIMASTER_TOKEN_FILE}\")\n  CAIMASTER_API_DEFINE=$(printf 'CAIMASTER_API_BASE_URL=https://api.cclloo.com' | /usr/bin/base64 | tr -d '\\n')\n  CAIMASTER_TOKEN_DEFINE=$(printf 'CAIMASTER_API_TOKEN=%s' \"${CAIMASTER_TOKEN}\" | /usr/bin/base64 | tr -d '\\n')\n  LEGACY_API_DEFINE=$(printf 'API_BASE_URL=https://api.cclloo.com' | /usr/bin/base64 | tr -d '\\n')\n  LEGACY_TOKEN_DEFINE=$(printf 'API_TOKEN=%s' \"${CAIMASTER_TOKEN}\" | /usr/bin/base64 | tr -d '\\n')\n  export DART_DEFINES=\"${DART_DEFINES:+${DART_DEFINES},}${CAIMASTER_API_DEFINE},${CAIMASTER_TOKEN_DEFINE},${LEGACY_API_DEFINE},${LEGACY_TOKEN_DEFINE}\"\n  echo \"[CAI_API][build] tokenFilePresent=true tokenInjected=true\"\n  unset CAIMASTER_TOKEN CAIMASTER_API_DEFINE CAIMASTER_TOKEN_DEFINE LEGACY_API_DEFINE LEGACY_TOKEN_DEFINE\nelse\n  echo \"[CAI_API][build] tokenFilePresent=false\"\nfi\n/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
+			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
 		};
 		F4B496EB591F6478514F06DB /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;

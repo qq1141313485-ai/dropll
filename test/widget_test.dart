@@ -12,6 +12,7 @@ import 'package:cai_tool_app/main.dart';
 void main() {
   testWidgets('App renders scoreboard', (WidgetTester tester) async {
     await tester.pumpWidget(const CaiToolApp());
+    await tester.pump(const Duration(seconds: 1));
     expect(find.text('即时'), findsOneWidget);
     expect(find.text('完场'), findsOneWidget);
   });

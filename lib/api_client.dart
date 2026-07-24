@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'auth_session.dart';
 import 'models.dart';
 
 class ApiException implements Exception {
@@ -17,23 +18,10 @@ class ApiException implements Exception {
 class CaiApiClient {
   CaiApiClient({http.Client? client}) : _client = client ?? http.Client();
 
-  static const baseUrl = String.fromEnvironment(
-    'CAIMASTER_API_BASE_URL',
-    defaultValue: String.fromEnvironment(
-      'API_BASE_URL',
-      defaultValue: 'https://api.cclloo.com',
-    ),
-  );
-  static const _rawToken = String.fromEnvironment(
-    'CAIMASTER_API_TOKEN',
-    defaultValue: String.fromEnvironment('API_TOKEN', defaultValue: ''),
-  );
-  static final token = _rawToken.replaceFirst('\ufeff', '').trim();
-
   final http.Client _client;
   static bool _didLogRuntimeConfig = false;
 
-  bool get isConfigured => baseUrl.isNotEmpty && token.isNotEmpty;
+  bool get isConfigured => ApiSession.instance.isConfigured;
 
   void _logRuntimeConfig(Uri uri) {
     if (_didLogRuntimeConfig) return;
@@ -42,10 +30,8 @@ class CaiApiClient {
     debugPrint(
       '[CAI_API][config] url=${_sanitizeUri(uri)} '
       'scheme=$scheme '
-      'tokenInjected=${token.isNotEmpty} '
-      'tokenLength=${token.length} '
-      'rawTokenLength=${_rawToken.length} '
-      'tokenHadBom=${_rawToken.startsWith('\ufeff')}',
+      'sessionConfigured=${ApiSession.instance.isConfigured} '
+      'legacyMigration=${ApiSession.instance.usesLegacyToken}',
     );
     if (scheme != 'https') {
       debugPrint('[CAI_API][transport] Non-HTTPS API URL detected.');
@@ -79,24 +65,27 @@ class CaiApiClient {
     String path, {
     Map<String, String>? queryParameters,
   }) async {
-    final uri = Uri.parse('$baseUrl$path').replace(queryParameters: {
+    final uri = Uri.parse('$apiBaseUrl$path').replace(queryParameters: {
       ...?queryParameters,
       '_ts': DateTime.now().millisecondsSinceEpoch.toString(),
     });
     _logRuntimeConfig(uri);
-    if (!isConfigured) {
+    var token = await ApiSession.instance.authorizationToken();
+    if (token == null || token.isEmpty) {
       debugPrint(
-        '[CAI_API][error] url=${_sanitizeUri(uri)} type=missing_config '
-        'tokenInjected=${token.isNotEmpty} tokenLength=${token.length}',
+        '[CAI_API][error] url=${_sanitizeUri(uri)} type=missing_session',
       );
-      throw const ApiException('API 尚未配置：Token 未注入');
+      throw const ApiException('设备尚未激活，请前往设置完成激活');
     }
     try {
-      final response = await _client.get(uri, headers: {
-        'Authorization': 'Bearer $token',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-      }).timeout(const Duration(seconds: 12));
+      var response = await _request(uri, token);
+      if (response.statusCode == 401 && !ApiSession.instance.usesLegacyToken) {
+        await ApiSession.instance.refreshAccessToken();
+        token = await ApiSession.instance.authorizationToken();
+        if (token != null && token.isNotEmpty) {
+          response = await _request(uri, token);
+        }
+      }
       debugPrint(
         '[CAI_API][response] url=${_sanitizeUri(uri)} '
         'status=${response.statusCode} type=${_classifyStatus(response.statusCode)}',
@@ -117,6 +106,13 @@ class CaiApiClient {
       throw ApiException('请求失败：${_classifyError(error)}');
     }
   }
+
+  Future<http.Response> _request(Uri uri, String token) =>
+      _client.get(uri, headers: {
+        'Authorization': 'Bearer $token',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+      }).timeout(const Duration(seconds: 12));
 
   Future<List<MatchItem>> fetchMatches(String scope, {DateTime? date}) async {
     final queryParameters = <String, String>{

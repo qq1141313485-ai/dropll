@@ -34,23 +34,12 @@ if (-not $hasEmulator) {
     }
 }
 
-$tokenFile = Join-Path $PSScriptRoot '.dev-api-token'
 $apiBaseUrl = $env:CAIMASTER_API_BASE_URL
 if ([string]::IsNullOrWhiteSpace($apiBaseUrl)) {
-    $apiBaseUrl = 'http://8.137.124.99:8787'
+    $apiBaseUrl = 'https://api.cclloo.com'
 }
-$runArgs = @('run', '-d', 'emulator-5554')
-if (Test-Path $tokenFile) {
-    $token = (Get-Content $tokenFile -Raw).Trim()
-    if ($token.StartsWith('CAIMASTER_API_TOKEN=')) {
-        $token = $token.Substring('CAIMASTER_API_TOKEN='.Length).Trim()
-    }
-    $runArgs += "--dart-define=API_BASE_URL=$apiBaseUrl"
-    $runArgs += "--dart-define=API_TOKEN=$token"
-    Write-Host "Live server data enabled: $apiBaseUrl"
-} else {
-    Write-Host 'Development token not found; using preview data.'
-}
+$runArgs = @('run', '-d', 'emulator-5554', "--dart-define=CAIMASTER_API_BASE_URL=$apiBaseUrl")
+Write-Host "Use Settings > Activate Device to connect live data: $apiBaseUrl"
 
 Write-Host 'Launching Flutter app on the emulator...'
 & $flutter @runArgs

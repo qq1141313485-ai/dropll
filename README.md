@@ -12,13 +12,13 @@
 
 ```powershell
 flutter pub get
-flutter run -d chrome --dart-define=CAIMASTER_API_BASE_URL=https://api.cclloo.com --dart-define=CAIMASTER_API_TOKEN=replace-me
+flutter run -d chrome --dart-define=CAIMASTER_API_BASE_URL=https://api.cclloo.com
 ```
 
 ## 打包
 
 ```powershell
-flutter build apk --release --dart-define=CAIMASTER_API_BASE_URL=https://api.cclloo.com --dart-define=CAIMASTER_API_TOKEN=replace-me
+flutter build apk --release --dart-define=CAIMASTER_API_BASE_URL=https://api.cclloo.com
 ```
 
 ## 开发约定
@@ -29,6 +29,6 @@ flutter build apk --release --dart-define=CAIMASTER_API_BASE_URL=https://api.ccl
 
 ## 配置方式
 
-- 服务器地址和 token 不再写死在代码里。
-- 本地预览和打包时通过 `--dart-define` 注入。
-- 换电脑时只要改命令里的 token，不用改源码。
+- 服务器地址可通过 `--dart-define` 覆盖；生产默认使用 `https://api.cclloo.com`。
+- 安装包不包含长期 API Token。首次启动在“设置 > 激活设备”输入一次性激活码。
+- 刷新凭据保存于设备 Keychain，访问凭据由服务器签发并短时失效。
