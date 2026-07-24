@@ -111,13 +111,17 @@ class MatchItem {
     String? parseScore(dynamic value) {
       if (value == null) return null;
       if (value is Map) {
+        final home = value['homeScore']?.toString().trim() ?? '';
+        final away = value['awayScore']?.toString().trim() ?? '';
+        if (RegExp(r'^\d+$').hasMatch(home) &&
+            RegExp(r'^\d+$').hasMatch(away)) {
+          return '$home:$away';
+        }
         for (final key in const [
           'score',
           'result',
           'value',
           'text',
-          'homeScore',
-          'awayScore',
           'sectionsNo999',
           'sectionsNo998',
           'sectionsNo997',
@@ -134,7 +138,6 @@ class MatchItem {
         final text = value.toString().trim();
         final match = RegExp(r'(\d+)\s*[:\-]\s*(\d+)').firstMatch(text);
         if (match != null) return '${match.group(1)}:${match.group(2)}';
-        if (text.isNotEmpty) return text;
       }
       return null;
     }
@@ -290,7 +293,7 @@ class MatchItem {
     final updated = titanLastUpdated;
     return updated != null &&
         DateTime.now().difference(updated.toLocal()) >
-            const Duration(seconds: 60);
+            const Duration(minutes: 2);
   }
 }
 

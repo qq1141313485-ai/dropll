@@ -3225,14 +3225,12 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
     if (mounted) setState(() => settling = true);
     try {
       final decoded = rawItems.map(_decode).toList(growable: false);
-      final pending = decoded.where((item) {
-        final settlement = item['settlement'];
-        final state = settlement is Map ? settlement['state']?.toString() : '';
-        return item['picks'] is List && state != 'won' && state != 'lost';
-      }).toList(growable: false);
-      if (pending.isEmpty) return;
+      final candidates = decoded
+          .where((item) => item['picks'] is List && _withinLastSevenDays(item))
+          .toList(growable: false);
+      if (candidates.isEmpty) return;
       final ids = <String>{
-        for (final item in pending)
+        for (final item in candidates)
           for (final pick
               in (item['picks'] is List ? item['picks'] as List : const []))
             if (pick is Map && pick['matchId']?.toString().isNotEmpty == true)
@@ -3260,9 +3258,7 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
         final currentState = currentSettlement is Map
             ? currentSettlement['state']?.toString()
             : '';
-        if (item['picks'] is! List ||
-            currentState == 'won' ||
-            currentState == 'lost') {
+        if (item['picks'] is! List || !_withinLastSevenDays(item)) {
           updated.add(raw);
           continue;
         }
@@ -3271,6 +3267,12 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
           for (final pick in picks)
             if (pick is Map) pick['matchId']?.toString() ?? '',
         ].where((id) => id.isNotEmpty).toSet();
+        // Do not replace an existing settlement while one of its results
+        // failed to load. The next refresh will retry the whole scheme.
+        if (matchIds.isEmpty || !matchIds.every(matches.containsKey)) {
+          updated.add(raw);
+          continue;
+        }
         final finishedMatches = matchIds
             .where((id) => matches[id] != null && _isFinished(matches[id]!))
             .length;

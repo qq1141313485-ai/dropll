@@ -78,27 +78,49 @@ class _HomePageContainerState extends State<HomePageContainer>
     if (loadingToday) return;
     if (mounted) setState(() => loadingToday = true);
     try {
-      final values = await Future.wait([
-        client.fetchLiveMatches(limit: 300),
-        client.fetchResultMatches(limit: 300),
+      List<dynamic>? liveItems;
+      List<dynamic>? resultItems;
+      Object? liveError;
+      Object? resultError;
+      await Future.wait([
+        () async {
+          try {
+            liveItems = await client.fetchLiveMatches(limit: 300);
+          } catch (error) {
+            liveError = error;
+          }
+        }(),
+        () async {
+          try {
+            resultItems = await client.fetchResultMatches(limit: 300);
+          } catch (error) {
+            resultError = error;
+          }
+        }(),
       ]);
       if (!mounted) return;
       setState(() {
-        today = values[0]
-            .whereType<Map<String, dynamic>>()
-            .map(MatchItem.fromJson)
-            .toList(growable: false);
-        finished = values[1]
-            .whereType<Map<String, dynamic>>()
-            .map(MatchItem.fromJson)
-            .toList(growable: false);
-        todayError = null;
-        finishedError = null;
+        if (liveItems != null) {
+          today = liveItems!
+              .whereType<Map<String, dynamic>>()
+              .map(MatchItem.fromJson)
+              .toList(growable: false);
+          todayError = null;
+        } else {
+          debugPrint('首页进行中数据加载失败: $liveError');
+          todayError = liveError?.toString();
+        }
+        if (resultItems != null) {
+          finished = resultItems!
+              .whereType<Map<String, dynamic>>()
+              .map(MatchItem.fromJson)
+              .toList(growable: false);
+          finishedError = null;
+        } else {
+          debugPrint('首页完场数据加载失败: $resultError');
+          finishedError = resultError?.toString();
+        }
       });
-    } catch (error) {
-      if (!mounted) return;
-      debugPrint('首页数据加载失败: $error');
-      setState(() => todayError = error.toString());
     } finally {
       if (mounted) {
         setState(() => loadingToday = false);

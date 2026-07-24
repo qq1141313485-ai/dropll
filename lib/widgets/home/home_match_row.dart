@@ -346,6 +346,7 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
   }
 
   String _displayStatus() {
+    if (match.isLiveDataStale) return '比分更新中';
     final status = _isLive ? (_minuteText() ?? _statusText()) : _statusText();
     return _isLive ? (_minuteText() ?? status) : status;
   }
