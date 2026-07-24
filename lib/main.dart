@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'api_client.dart';
-import 'auth_session.dart';
 import 'match_detail_page.dart';
 import 'selection_page.dart';
 import 'settings_page.dart';
@@ -10,23 +9,8 @@ import 'widgets/home/home_page_container.dart';
 
 void main() => runApp(const CaiToolApp());
 
-class CaiToolApp extends StatefulWidget {
+class CaiToolApp extends StatelessWidget {
   const CaiToolApp({super.key});
-
-  @override
-  State<CaiToolApp> createState() => _CaiToolAppState();
-}
-
-class _CaiToolAppState extends State<CaiToolApp> {
-  bool _sessionReady = false;
-
-  @override
-  void initState() {
-    super.initState();
-    ApiSession.instance.initialize().whenComplete(() {
-      if (mounted) setState(() => _sessionReady = true);
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +44,7 @@ class _CaiToolAppState extends State<CaiToolApp> {
           surfaceTintColor: Colors.transparent,
         ),
       ),
-      home: AppShell(key: ValueKey(_sessionReady)),
+      home: const AppShell(),
     );
   }
 }
@@ -74,31 +58,18 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int index = 0;
-  int _sessionVersion = 0;
 
-  List<Widget> get _pages => [
-        const ScoreBoardPage(),
-        const SelectionPage(),
-        const RankingPage(),
-        SettingsPage(onActivated: _handleActivated),
-      ];
-
-  void _handleActivated() {
-    setState(() {
-      _sessionVersion++;
-      index = 0;
-    });
-  }
+  static const pages = [
+    ScoreBoardPage(),
+    SelectionPage(),
+    RankingPage(),
+    SettingsPage(),
+  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: KeyedSubtree(
-          key: ValueKey(_sessionVersion),
-          child: _pages[index],
-        ),
-      ),
+      body: SafeArea(child: pages[index]),
       bottomNavigationBar: NavigationBar(
         height: 68,
         selectedIndex: index,

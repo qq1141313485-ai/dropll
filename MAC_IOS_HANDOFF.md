@@ -11,11 +11,11 @@
 - iOS 工程：`ios/Runner.xcworkspace`
 - Bundle Identifier：`com.caimaster.caiToolApp`
 - 最低 iOS 版本：13.0
-- 应用版本：`1.0.0+2`
+- 应用版本：`1.0.0+3`
 - 生产 API：`https://api.cclloo.com`
 - iOS `Info.plist` 使用默认 ATS 策略，无需 HTTP 例外
 - iOS AppIcon 已由 `assets/branding/app_icon.png` 生成
-- 安装包不包含长期 API Token；首次启动在“设置 > 激活设备”输入一次性激活码
+- App 使用公开只读赛事接口；安装后无需注册、登录或激活
 
 ## 严格限制
 
@@ -54,7 +54,7 @@
 
 ## 生产配置构建
 
-生产包默认使用 HTTPS API；不要传入或注入长期 API Token。首次启动后，从“设置 > 激活设备”输入经安全渠道取得的一次性激活码。
+生产包默认使用 HTTPS API；不要传入或注入 API Token。安装后可直接使用公开数据服务。
 
 ```bash
 flutter run \

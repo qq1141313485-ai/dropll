@@ -1,7 +1,7 @@
 name: cai_tool_app
 description: 彩数工具 - 纯净的竞彩数据与模型分析工具
 publish_to: none
-version: 1.0.0+2
+version: 1.0.0+3
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -16,7 +16,6 @@ dependencies:
   share_plus: ^11.0.0
   shared_preferences: ^2.5.3
   url_launcher: ^6.3.2
-  flutter_secure_storage: ^9.2.4
 
 dev_dependencies:
   flutter_test:

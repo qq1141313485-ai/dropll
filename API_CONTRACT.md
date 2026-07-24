@@ -1,23 +1,8 @@
-# 私有 API 约定
+# 公开只读 API 约定
 
-所有接口只返回数据，不提供购彩、代购或出票能力。
+所有接口只返回公开赛事、赔率和模型展示数据，不提供购彩、代购、出票、账户资金或用户资料服务。App 打开即可使用，不要求注册或登录。
 
-设备首次激活时请求：
-
-```http
-POST /v1/auth/enroll
-Content-Type: application/json
-
-{"enrollmentCode":"<device-activation-code>","deviceName":"iOS iPhone"}
-```
-
-服务器返回 15 分钟有效的 `accessToken` 与轮换的 `refreshToken`；刷新凭据仅由 App 存在 iOS Keychain。后续数据请求使用：
-
-```http
-Authorization: Bearer <short-lived-access-token>
-```
-
-`POST /v1/auth/refresh` 使用 `refreshToken` 换取新的访问凭据。激活与刷新接口按来源限流；服务端可通过凭据库撤销单台设备。
+服务器通过 HTTPS、Nginx 限流和只读数据库连接保护数据服务；客户端不携带 API Token。
 
 ## 比赛列表
 

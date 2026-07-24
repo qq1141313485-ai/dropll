@@ -5,8 +5,15 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import 'auth_session.dart';
 import 'models.dart';
+
+const apiBaseUrl = String.fromEnvironment(
+  'CAIMASTER_API_BASE_URL',
+  defaultValue: String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://api.cclloo.com',
+  ),
+);
 
 class ApiException implements Exception {
   const ApiException(this.message);
@@ -21,7 +28,7 @@ class CaiApiClient {
   final http.Client _client;
   static bool _didLogRuntimeConfig = false;
 
-  bool get isConfigured => ApiSession.instance.isConfigured;
+  bool get isConfigured => apiBaseUrl.isNotEmpty;
 
   void _logRuntimeConfig(Uri uri) {
     if (_didLogRuntimeConfig) return;
@@ -30,8 +37,7 @@ class CaiApiClient {
     debugPrint(
       '[CAI_API][config] url=${_sanitizeUri(uri)} '
       'scheme=$scheme '
-      'sessionConfigured=${ApiSession.instance.isConfigured} '
-      'legacyMigration=${ApiSession.instance.usesLegacyToken}',
+      'publicReadOnlyApi=true',
     );
     if (scheme != 'https') {
       debugPrint('[CAI_API][transport] Non-HTTPS API URL detected.');
@@ -70,22 +76,8 @@ class CaiApiClient {
       '_ts': DateTime.now().millisecondsSinceEpoch.toString(),
     });
     _logRuntimeConfig(uri);
-    var token = await ApiSession.instance.authorizationToken();
-    if (token == null || token.isEmpty) {
-      debugPrint(
-        '[CAI_API][error] url=${_sanitizeUri(uri)} type=missing_session',
-      );
-      throw const ApiException('设备尚未激活，请前往设置完成激活');
-    }
     try {
-      var response = await _request(uri, token);
-      if (response.statusCode == 401 && !ApiSession.instance.usesLegacyToken) {
-        await ApiSession.instance.refreshAccessToken();
-        token = await ApiSession.instance.authorizationToken();
-        if (token != null && token.isNotEmpty) {
-          response = await _request(uri, token);
-        }
-      }
+      final response = await _request(uri);
       debugPrint(
         '[CAI_API][response] url=${_sanitizeUri(uri)} '
         'status=${response.statusCode} type=${_classifyStatus(response.statusCode)}',
@@ -107,9 +99,7 @@ class CaiApiClient {
     }
   }
 
-  Future<http.Response> _request(Uri uri, String token) =>
-      _client.get(uri, headers: {
-        'Authorization': 'Bearer $token',
+  Future<http.Response> _request(Uri uri) => _client.get(uri, headers: {
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache',
       }).timeout(const Duration(seconds: 12));

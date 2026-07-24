@@ -30,5 +30,5 @@ flutter build apk --release --dart-define=CAIMASTER_API_BASE_URL=https://api.ccl
 ## 配置方式
 
 - 服务器地址可通过 `--dart-define` 覆盖；生产默认使用 `https://api.cclloo.com`。
-- 安装包不包含长期 API Token。首次启动在“设置 > 激活设备”输入一次性激活码。
-- 刷新凭据保存于设备 Keychain，访问凭据由服务器签发并短时失效。
+- App 打开即可访问公开只读赛事数据，不要求注册、登录或激活。
+- 服务器通过 HTTPS 与 Nginx 限流保护公开数据接口；客户端不携带 API Token。

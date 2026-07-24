@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'auth_session.dart';
-
 const _green = Color(0xff07885d);
 const _ink = Color(0xff161a1c);
 const _muted = Color(0xff7d8387);
 const _line = Color(0xffe8ebea);
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({this.onActivated, super.key});
-
-  final VoidCallback? onActivated;
+  const SettingsPage({super.key});
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -69,19 +65,8 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _openActivation(BuildContext context) async {
-    if (ApiSession.instance.isConfigured) return;
-    final activated = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const DeviceActivationPage()),
-    );
-    if (!mounted || activated != true) return;
-    widget.onActivated?.call();
-    setState(() {});
-  }
-
   @override
   Widget build(BuildContext context) {
-    final active = ApiSession.instance.isConfigured;
     return ListView(
       padding: const EdgeInsets.only(bottom: 28),
       children: [
@@ -97,12 +82,6 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
         const _SectionLabel('数据与使用说明'),
-        _SettingTile(
-          icon: active ? Icons.verified_user_outlined : Icons.lock_outline,
-          title: active ? '设备已激活' : '激活设备',
-          subtitle: active ? '此设备已获得安全数据访问权限' : '输入设备激活码后连接数据服务',
-          onTap: active ? null : () => _openActivation(context),
-        ),
         _SettingTile(
           icon: Icons.query_stats_outlined,
           title: '数据说明',
@@ -125,7 +104,7 @@ class _SettingsPageState extends State<SettingsPage> {
         const _SettingTile(
           icon: Icons.info_outline,
           title: '版本',
-          subtitle: '1.0.0（构建 2）',
+          subtitle: '1.0.0（构建 3）',
         ),
         const Padding(
           padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
@@ -137,107 +116,6 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
     );
   }
-}
-
-class DeviceActivationPage extends StatefulWidget {
-  const DeviceActivationPage({super.key});
-
-  @override
-  State<DeviceActivationPage> createState() => _DeviceActivationPageState();
-}
-
-class _DeviceActivationPageState extends State<DeviceActivationPage> {
-  final _codeController = TextEditingController();
-  bool _submitting = false;
-
-  @override
-  void dispose() {
-    _codeController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _activate() async {
-    if (_submitting) return;
-    FocusManager.instance.primaryFocus?.unfocus();
-    setState(() => _submitting = true);
-    try {
-      await ApiSession.instance.activate(_codeController.text);
-      if (!mounted) return;
-      Navigator.of(context).pop(true);
-    } on ApiSessionException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
-    } finally {
-      if (mounted) setState(() => _submitting = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xfff6f7f8),
-        appBar: AppBar(title: const Text('激活设备')),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  '设备激活码',
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  '仅首次配置此设备时使用。',
-                  style: TextStyle(color: _muted, fontSize: 13),
-                ),
-                const SizedBox(height: 18),
-                TextField(
-                  controller: _codeController,
-                  obscureText: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _activate(),
-                  decoration: const InputDecoration(
-                    hintText: '输入激活码',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _submitting ? null : _activate,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _green,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: _submitting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('完成激活'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
 }
 
 class _SectionLabel extends StatelessWidget {
