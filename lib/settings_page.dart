@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'service_center_page.dart';
+
 const _green = Color(0xff07885d);
 const _ink = Color(0xff161a1c);
 const _muted = Color(0xff7d8387);
@@ -15,10 +17,10 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   static final _privacyUri = Uri.parse(
-    'https://github.com/qq1141313485-ai/dropll/blob/main/docs/PRIVACY_POLICY.md',
+    'https://api.cclloo.com/privacy',
   );
   static final _feedbackUri = Uri.parse(
-    'https://github.com/qq1141313485-ai/dropll/issues/new',
+    'https://api.cclloo.com/support',
   );
 
   Future<void> _open(BuildContext context, Uri uri) async {
@@ -50,7 +52,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               SizedBox(height: 14),
               Text(
-                '比赛、赔率与赛果来自已接入的数据服务。直播比分可能受上游数据更新影响；显示“比分更新中”时，请以官方赛果为准。',
+                '比赛、赔率与赛果来自已接入的数据服务。直播比分可能受上游数据更新时间影响，请以官方赛果为准。',
                 style: TextStyle(color: _muted, fontSize: 14, height: 1.55),
               ),
               SizedBox(height: 10),
@@ -95,6 +97,16 @@ class _SettingsPageState extends State<SettingsPage> {
           onTap: () => _open(context, _privacyUri),
         ),
         const _SectionLabel('支持与关于'),
+        _SettingTile(
+          icon: Icons.support_agent_outlined,
+          title: '服务中心',
+          subtitle: '使用帮助、数据反馈与内容下架申请',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const ServiceCenterPage(),
+            ),
+          ),
+        ),
         _SettingTile(
           icon: Icons.feedback_outlined,
           title: '问题反馈',

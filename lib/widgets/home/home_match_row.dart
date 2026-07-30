@@ -62,7 +62,6 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
   static const _liveColor = Color(0xff20a95a);
   static const _resultColor = Color(0xffff3f70);
 
-  bool _starred = false;
   bool _goalFlash = false;
   int? _goalSide;
   Timer? _goalFlashTimer;
@@ -73,10 +72,7 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
     final raw = (item.score ?? item.finalScore ?? '').trim();
     final found = RegExp(r'(\d+)\s*[:\-]\s*(\d+)').firstMatch(raw);
     if (found == null) return null;
-    return (
-      home: int.parse(found.group(1)!),
-      away: int.parse(found.group(2)!),
-    );
+    return (home: int.parse(found.group(1)!), away: int.parse(found.group(2)!));
   }
 
   @override
@@ -184,8 +180,9 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
           if (found != null) return found;
         }
       } else if (value != null) {
-        final found =
-            RegExp(r'(\d+)\s*[:\-]\s*(\d+)').firstMatch(value.toString());
+        final found = RegExp(
+          r'(\d+)\s*[:\-]\s*(\d+)',
+        ).firstMatch(value.toString());
         if (found != null) return '${found.group(1)}:${found.group(2)}';
       }
       return null;
@@ -236,8 +233,11 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
     return double.tryParse(text)?.toStringAsFixed(2) ?? text;
   }
 
-  Widget _odds(List<String> values,
-      {required TextAlign align, String prefix = ''}) {
+  Widget _odds(
+    List<String> values, {
+    required TextAlign align,
+    String prefix = '',
+  }) {
     final text = '$prefix${values.join('  ')}';
     return FittedBox(
       fit: BoxFit.scaleDown,
@@ -288,11 +288,7 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
       match.league,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: const TextStyle(
-        color: _leagueColor,
-        fontSize: 10.5,
-        height: 1.0,
-      ),
+      style: const TextStyle(color: _leagueColor, fontSize: 10.5, height: 1.0),
     );
   }
 
@@ -346,9 +342,15 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
   }
 
   String _displayStatus() {
-    if (match.isLiveDataStale) return '比分更新中';
-    final status = _isLive ? (_minuteText() ?? _statusText()) : _statusText();
-    return _isLive ? (_minuteText() ?? status) : status;
+    if (_isLive) {
+      final status = _minuteText() ?? _statusText();
+      return status.isEmpty ? '进行中' : status;
+    }
+    if (_isHalfTime) {
+      final status = _statusText();
+      return status.isEmpty ? '中场' : status;
+    }
+    return _statusText();
   }
 
   String _displayScore() {
@@ -472,7 +474,7 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
             const leagueWidth = 56.0;
             const timeLeft = 104.0;
             const homeContentLeft = 58.0;
-            const starWidth = 22.0;
+            const rightInset = 4.0;
             const centerWidth = 78.0;
             const sideGap = 6.0;
             final centerX = constraints.maxWidth / 2;
@@ -570,7 +572,7 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
                 ),
                 Positioned(
                   left: awayLeft,
-                  right: starWidth,
+                  right: rightInset,
                   top: 8,
                   child: Text(
                     handicapDisplay,
@@ -597,7 +599,7 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
                 ),
                 Positioned(
                   left: awayLeft,
-                  right: starWidth,
+                  right: rightInset,
                   top: 27,
                   child: _awayTeam(),
                 ),
@@ -618,32 +620,12 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
                 ),
                 Positioned(
                   left: awayLeft,
-                  right: starWidth,
+                  right: rightInset,
                   bottom: 8,
                   child: _odds(
                     _awayOdds(),
                     align: TextAlign.left,
                     prefix: handicap.isEmpty ? '' : '($handicap) ',
-                  ),
-                ),
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: starWidth,
-                  child: Center(
-                    child: IconButton(
-                      iconSize: 19,
-                      padding: EdgeInsets.zero,
-                      splashRadius: 16,
-                      onPressed: () => setState(() => _starred = !_starred),
-                      icon: Icon(
-                        _starred ? Icons.star : Icons.star_border,
-                        color: _starred
-                            ? const Color(0xffffad21)
-                            : const Color(0xffc3c8cb),
-                      ),
-                    ),
                   ),
                 ),
               ],

@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'api_client.dart';
+import 'match_analysis.dart';
 import 'models.dart';
 import 'selection_page.dart';
 
@@ -29,20 +31,38 @@ class MatchDetailV2Page extends StatefulWidget {
 class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
   final CaiApiClient _client = CaiApiClient();
   late Future<_DetailData> _future;
+  _DetailData? _lastData;
+  Timer? _refreshTimer;
+  bool _reloading = false;
   int _tab = 0;
-  bool _followed = false;
 
   @override
   void initState() {
     super.initState();
-    if (_isFinishedMatch(widget.match)) _tab = 2;
-    _future = _load();
+    _future = _loadAndSchedule();
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _client.close();
     super.dispose();
+  }
+
+  Future<_DetailData> _loadAndSchedule() async {
+    final data = await _load();
+    _lastData = data;
+    if (mounted) _scheduleRefresh(data.match);
+    return data;
+  }
+
+  void _scheduleRefresh(MatchItem match) {
+    _refreshTimer?.cancel();
+    if (match.matchState != MatchState.live &&
+        match.matchState != MatchState.halftime) {
+      return;
+    }
+    _refreshTimer = Timer(const Duration(seconds: 10), _reload);
   }
 
   Future<_DetailData> _load() async {
@@ -50,15 +70,67 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
       return _DetailData(match: widget.match, error: '数据加载失败，请重试');
     }
     try {
-      final values = await Future.wait<Object>([
-        _client.fetchMatch(widget.match.id),
-        _client.fetchMatchPredictions(widget.match.id),
-        _client.fetchOddsHistory(widget.match.id),
+      final match = await _client.fetchMatch(widget.match.id);
+      var canSelect = false;
+      if (_canSelectMatch(match)) {
+        try {
+          final bettable = await _client.fetchBettableMatches();
+          canSelect = bettable.whereType<Map<String, dynamic>>().any(
+                (item) =>
+                    (item['id'] ?? item['matchId'])?.toString() == match.id,
+              );
+        } catch (_) {}
+      }
+      List<Map<String, dynamic>> predictions = const [];
+      List<Map<String, dynamic>> oddsHistory = const [];
+      MatchAnalysisData? analysis;
+      Map<String, TeamMetadata> teamMetadata = const {};
+      MatchStandings? fallbackStandings;
+      await Future.wait([
+        () async {
+          try {
+            predictions = await _client.fetchMatchPredictions(widget.match.id);
+          } catch (_) {}
+        }(),
+        () async {
+          try {
+            oddsHistory = await _client.fetchOddsHistory(widget.match.id);
+          } catch (_) {}
+        }(),
+        () async {
+          try {
+            final loaded = await _client.fetchMatchAnalysis(widget.match.id);
+            if (loaded.hasContent) analysis = loaded;
+          } catch (_) {}
+        }(),
+        () async {
+          try {
+            teamMetadata = await _client.fetchTeamMetadata([
+              match.home,
+              match.away,
+            ]);
+          } catch (_) {}
+        }(),
+        () async {
+          try {
+            final loaded = await _client
+                .fetchTeamStandings(home: match.home, away: match.away)
+                .timeout(const Duration(seconds: 3));
+            if (loaded.hasContent) fallbackStandings = loaded;
+          } catch (_) {}
+        }(),
       ]);
+      if (analysis?.standings.hasContent == true) {
+        fallbackStandings = null;
+      }
       return _DetailData(
-        match: values[0] as MatchItem,
-        predictions: values[1] as List<Map<String, dynamic>>,
-        oddsHistory: values[2] as List<Map<String, dynamic>>,
+        match: match,
+        predictions: predictions,
+        oddsHistory: oddsHistory,
+        analysis: analysis,
+        teamMetadata: teamMetadata,
+        fallbackStandings: fallbackStandings,
+        canSelect: canSelect,
         loadedAt: DateTime.now(),
       );
     } catch (_) {
@@ -67,8 +139,16 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
   }
 
   Future<void> _reload() async {
-    setState(() => _future = _load());
-    await _future;
+    if (_reloading) return;
+    _refreshTimer?.cancel();
+    _reloading = true;
+    final future = _loadAndSchedule();
+    if (mounted) setState(() => _future = future);
+    try {
+      await future;
+    } finally {
+      _reloading = false;
+    }
   }
 
   Future<void> _share(MatchItem match) async {
@@ -89,12 +169,12 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
     return FutureBuilder<_DetailData>(
       future: _future,
       builder: (context, snapshot) {
-        final data = snapshot.data ?? _DetailData(match: widget.match);
+        final data = snapshot.data ?? _lastData;
+        if (data == null) {
+          return const _DetailLoadingScaffold();
+        }
         final match = data.match;
-        final finished = match.matchState == MatchState.finished;
-        final showAnalysis = data.predictions.isNotEmpty;
-        final tabCount = 2 + (finished ? 1 : 0) + (showAnalysis ? 1 : 0);
-        final selectedTab = math.min(_tab, tabCount - 1);
+        final selectedTab = math.min(_tab, 1);
         return Scaffold(
           backgroundColor: _page,
           appBar: AppBar(
@@ -103,24 +183,15 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
             surfaceTintColor: Colors.white,
             backgroundColor: Colors.white,
             elevation: 0,
-            title: Text(
-              match.matchState == MatchState.finished ? '完场赛果' : '比赛详情',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            title: const Text(
+              '比赛详情',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
               onPressed: () => Navigator.maybePop(context),
             ),
             actions: [
-              IconButton(
-                tooltip: '关注',
-                onPressed: () => setState(() => _followed = !_followed),
-                icon: Icon(
-                  _followed ? Icons.star_rounded : Icons.star_border_rounded,
-                  size: 25,
-                  color: _followed ? const Color(0xffffae24) : _ink,
-                ),
-              ),
               IconButton(
                 tooltip: '分享',
                 onPressed: () => _share(match),
@@ -138,7 +209,14 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                  child: _MatchHero(match: match),
+                  child: _MatchHero(
+                    match: match,
+                    canSelect: data.canSelect,
+                    homeRank: data.analysis?.standings.home.total.ranking ?? 0,
+                    awayRank: data.analysis?.standings.away.total.ranking ?? 0,
+                    homeBadgeUrl: data.teamMetadata[match.home]?.badgeUrl,
+                    awayBadgeUrl: data.teamMetadata[match.away]?.badgeUrl,
+                  ),
                 ),
                 if (snapshot.connectionState == ConnectionState.waiting)
                   const LinearProgressIndicator(
@@ -150,15 +228,16 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
                   _LoadError(message: data.error!, onRetry: _reload),
                 _DetailTabs(
                   value: selectedTab,
-                  finished: finished,
-                  showAnalysis: showAnalysis,
                   onChanged: (value) => setState(() => _tab = value),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 22),
                   child: switch (selectedTab) {
-                    0 => _OverviewTab(
+                    0 => _ResearchTab(
                         match: match,
+                        analysis: data.analysis,
+                        fallbackStandings: data.fallbackStandings,
+                        predictions: data.predictions,
                         loadedAt: data.loadedAt,
                         onOpenOdds: () => setState(() => _tab = 1),
                       ),
@@ -167,16 +246,7 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
                         loadedAt: data.loadedAt,
                         history: data.oddsHistory,
                       ),
-                    2 => match.matchState == MatchState.finished
-                        ? _ResultsTab(match: match)
-                        : _AnalysisTab(
-                            match: match,
-                            predictions: data.predictions,
-                          ),
-                    _ => _AnalysisTab(
-                        match: match,
-                        predictions: data.predictions,
-                      ),
+                    _ => const SizedBox.shrink(),
                   },
                 ),
               ],
@@ -184,9 +254,119 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
           ),
           bottomNavigationBar: _BottomActions(
             match: match,
+            canSelect: data.canSelect,
           ),
         );
       },
+    );
+  }
+}
+
+class _DetailLoadingScaffold extends StatelessWidget {
+  const _DetailLoadingScaffold();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget block(double height, {double? width}) {
+      return Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: const Color(0xffecefee),
+          borderRadius: BorderRadius.circular(6),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: _page,
+      appBar: AppBar(
+        toolbarHeight: 56,
+        centerTitle: true,
+        surfaceTintColor: Colors.white,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: const Text(
+          '比赛详情',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          onPressed: () => Navigator.maybePop(context),
+        ),
+      ),
+      body: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 22),
+        children: [
+          Container(
+            height: 142,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xffedf0ef)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    block(12, width: 86),
+                    const Spacer(),
+                    block(12, width: 106),
+                  ],
+                ),
+                const Spacer(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    block(46, width: 42),
+                    block(20, width: 54),
+                    block(46, width: 42),
+                  ],
+                ),
+                const Spacer(),
+                block(10, width: 190),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            height: 54,
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 44, vertical: 18),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [block(16, width: 48), block(16, width: 48)],
+            ),
+          ),
+          const SizedBox(height: 10),
+          for (final height in const [156.0, 122.0, 138.0]) ...[
+            Container(
+              height: height,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  block(16, width: 92),
+                  const SizedBox(height: 14),
+                  block(10),
+                  const SizedBox(height: 10),
+                  block(10),
+                  const SizedBox(height: 10),
+                  block(10, width: 220),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -196,6 +376,10 @@ class _DetailData {
     required this.match,
     this.predictions = const [],
     this.oddsHistory = const [],
+    this.analysis,
+    this.teamMetadata = const {},
+    this.fallbackStandings,
+    this.canSelect = false,
     this.loadedAt,
     this.error,
   });
@@ -203,33 +387,42 @@ class _DetailData {
   final MatchItem match;
   final List<Map<String, dynamic>> predictions;
   final List<Map<String, dynamic>> oddsHistory;
+  final MatchAnalysisData? analysis;
+  final Map<String, TeamMetadata> teamMetadata;
+  final MatchStandings? fallbackStandings;
+  final bool canSelect;
   final DateTime? loadedAt;
   final String? error;
 }
 
 class _MatchHero extends StatelessWidget {
-  const _MatchHero({required this.match});
+  const _MatchHero({
+    required this.match,
+    required this.canSelect,
+    required this.homeRank,
+    required this.awayRank,
+    this.homeBadgeUrl,
+    this.awayBadgeUrl,
+  });
 
   final MatchItem match;
+  final bool canSelect;
+  final int homeRank;
+  final int awayRank;
+  final String? homeBadgeUrl;
+  final String? awayBadgeUrl;
 
   @override
   Widget build(BuildContext context) {
     final score = _displayScore(match);
     final half = (match.halfTimeScore ?? '').trim();
     return Container(
-      height: 154,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      height: 142,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xffedf0ef)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0a000000),
-            blurRadius: 14,
-            offset: Offset(0, 5),
-          ),
-        ],
       ),
       child: Column(
         children: [
@@ -258,20 +451,27 @@ class _MatchHero extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 11),
+          const SizedBox(height: 6),
           Expanded(
             child: Row(
               children: [
-                Expanded(child: _HeroTeam(team: match.home, home: true)),
+                Expanded(
+                  child: _HeroTeam(
+                    team: match.home,
+                    home: true,
+                    ranking: homeRank,
+                    badgeUrl: homeBadgeUrl,
+                  ),
+                ),
                 SizedBox(
-                  width: 84,
+                  width: 76,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
                         score ?? 'VS',
                         style: TextStyle(
-                          fontSize: score == null ? 25 : 23,
+                          fontSize: score == null ? 23 : 22,
                           height: 1,
                           fontWeight: FontWeight.w700,
                           color: score == null
@@ -279,7 +479,7 @@ class _MatchHero extends StatelessWidget {
                               : _statusColor(match),
                         ),
                       ),
-                      const SizedBox(height: 7),
+                      const SizedBox(height: 5),
                       Text(
                         _statusText(match),
                         style: TextStyle(
@@ -290,25 +490,32 @@ class _MatchHero extends StatelessWidget {
                       ),
                       if (half.isNotEmpty) ...[
                         const SizedBox(height: 2),
-                        Text('半场 $half',
-                            style: const TextStyle(fontSize: 9, color: _muted)),
+                        Text(
+                          '半场 $half',
+                          style: const TextStyle(fontSize: 9, color: _muted),
+                        ),
                       ],
                     ],
                   ),
                 ),
-                Expanded(child: _HeroTeam(team: match.away, home: false)),
+                Expanded(
+                  child: _HeroTeam(
+                    team: match.away,
+                    home: false,
+                    ranking: awayRank,
+                    badgeUrl: awayBadgeUrl,
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _Meta(
                 icon: Icons.storefront_outlined,
-                text: match.bettingStatus == BettingStatus.open
-                    ? '竞彩销售中'
-                    : '竞彩已停售',
+                text: canSelect ? '竞彩销售中' : '竞彩已停售',
               ),
               const SizedBox(width: 14),
               _Meta(
@@ -329,17 +536,24 @@ class _MatchHero extends StatelessWidget {
 }
 
 class _HeroTeam extends StatelessWidget {
-  const _HeroTeam({required this.team, required this.home});
+  const _HeroTeam({
+    required this.team,
+    required this.home,
+    required this.ranking,
+    this.badgeUrl,
+  });
 
   final String team;
   final bool home;
+  final int ranking;
+  final String? badgeUrl;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: home ? MainAxisAlignment.start : MainAxisAlignment.end,
       children: [
-        if (home) _TeamEmblem(team: team),
+        if (home) _TeamEmblem(team: team, badgeUrl: badgeUrl),
         if (home) const SizedBox(width: 8),
         Flexible(
           child: Column(
@@ -351,53 +565,52 @@ class _HeroTeam extends StatelessWidget {
                 team,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              const SizedBox(height: 3),
-              Text(home ? '（主队）' : '（客队）',
-                  style: const TextStyle(fontSize: 10, color: _muted)),
+              const SizedBox(height: 2),
+              Text(
+                ranking > 0
+                    ? '${home ? '主队' : '客队'} · 联赛第$ranking'
+                    : (home ? '主队' : '客队'),
+                style: const TextStyle(fontSize: 10, color: _muted),
+              ),
             ],
           ),
         ),
         if (!home) const SizedBox(width: 8),
-        if (!home) _TeamEmblem(team: team),
+        if (!home) _TeamEmblem(team: team, badgeUrl: badgeUrl),
       ],
     );
   }
 }
 
 class _TeamEmblem extends StatelessWidget {
-  const _TeamEmblem({required this.team});
+  const _TeamEmblem({required this.team, this.badgeUrl});
 
   final String team;
+  final String? badgeUrl;
 
   @override
   Widget build(BuildContext context) {
     final clean = team.trim();
     final initials =
         clean.isEmpty ? '队' : clean.substring(0, math.min(clean.length, 2));
-    return Container(
-      width: 48,
-      height: 52,
+    final fallback = Container(
+      width: 42,
+      height: 46,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xff163b55), _green],
-        ),
+        color: _greenDark,
         borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(12),
-          topRight: Radius.circular(12),
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
+          topLeft: Radius.circular(9),
+          topRight: Radius.circular(9),
+          bottomLeft: Radius.circular(15),
+          bottomRight: Radius.circular(15),
         ),
-        border: Border.all(color: Colors.white, width: 2),
-        boxShadow: const [
-          BoxShadow(
-              color: Color(0x18000000), blurRadius: 5, offset: Offset(0, 2)),
-        ],
+        border: Border.all(color: const Color(0xffd8eee6)),
       ),
       child: Text(
         initials,
@@ -406,6 +619,18 @@ class _TeamEmblem extends StatelessWidget {
           fontSize: 12,
           fontWeight: FontWeight.w800,
         ),
+      ),
+    );
+    final url = badgeUrl?.trim() ?? '';
+    if (url.isEmpty) return fallback;
+    return SizedBox(
+      width: 42,
+      height: 46,
+      child: Image.network(
+        url,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, __, ___) => fallback,
       ),
     );
   }
@@ -424,8 +649,10 @@ class _Meta extends StatelessWidget {
       children: [
         Icon(icon, size: 13, color: const Color(0xff5f666a)),
         const SizedBox(width: 3),
-        Text(text,
-            style: const TextStyle(fontSize: 9.5, color: Color(0xff555d61))),
+        Text(
+          text,
+          style: const TextStyle(fontSize: 9.5, color: Color(0xff555d61)),
+        ),
       ],
     );
   }
@@ -434,27 +661,18 @@ class _Meta extends StatelessWidget {
 class _DetailTabs extends StatelessWidget {
   const _DetailTabs({
     required this.value,
-    required this.finished,
-    required this.showAnalysis,
     required this.onChanged,
   });
 
   final int value;
-  final bool finished;
-  final bool showAnalysis;
   final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final labels = <String>[
-      '概览',
-      '赔率',
-      if (finished) '赛果',
-      if (showAnalysis) '模型',
-    ];
+    const labels = <String>['分析', '赔率'];
     return Container(
-      height: 51,
-      margin: const EdgeInsets.only(top: 8),
+      height: 47,
+      margin: const EdgeInsets.only(top: 6),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(bottom: BorderSide(color: _line)),
@@ -476,7 +694,7 @@ class _DetailTabs extends StatelessWidget {
                       color: selected ? _green : const Color(0xff363c40),
                     ),
                   ),
-                  const SizedBox(height: 11),
+                  const SizedBox(height: 9),
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 160),
                     width: selected ? 30 : 0,
@@ -491,6 +709,1169 @@ class _DetailTabs extends StatelessWidget {
             ),
           );
         }),
+      ),
+    );
+  }
+}
+
+class _ResearchTab extends StatelessWidget {
+  const _ResearchTab({
+    required this.match,
+    required this.analysis,
+    required this.fallbackStandings,
+    required this.predictions,
+    required this.loadedAt,
+    required this.onOpenOdds,
+  });
+
+  final MatchItem match;
+  final MatchAnalysisData? analysis;
+  final MatchStandings? fallbackStandings;
+  final List<Map<String, dynamic>> predictions;
+  final DateTime? loadedAt;
+  final VoidCallback onOpenOdds;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = analysis;
+    if ((data == null || !data.hasContent) &&
+        fallbackStandings?.hasContent != true) {
+      return _OverviewTab(
+        match: match,
+        loadedAt: loadedAt,
+        onOpenOdds: onOpenOdds,
+      );
+    }
+    final standings = data?.standings.hasContent == true
+        ? data!.standings
+        : fallbackStandings;
+    return Column(
+      children: [
+        if (data != null && data.hasContent) ...[
+          _DataSummaryPanel(
+            homeName: data.homeTeam.isEmpty ? match.home : data.homeTeam,
+            awayName: data.awayTeam.isEmpty ? match.away : data.awayTeam,
+            home: data.homeRecent,
+            away: data.awayRecent,
+            headToHead: data.headToHead,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (standings?.hasContent == true) ...[
+          _StandingsPanel(standings: standings!),
+          const SizedBox(height: 10),
+        ],
+        if (data?.injuries.hasContent == true) ...[
+          _PersonnelPanel(
+            title: '伤停信息',
+            sides: data!.injuries,
+            injuries: true,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (data?.keyPlayers.hasContent == true) ...[
+          _PersonnelPanel(
+            title: '关键球员',
+            sides: data!.keyPlayers,
+            injuries: false,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (data?.future.hasContent == true) ...[
+          _FutureSchedulePanel(
+            schedules: data!.future,
+            currentKickoff: match.kickoff,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (data != null && data.headToHead.matches.isNotEmpty) ...[
+          _RecordPanel(
+            title: '历史交锋',
+            group: data.headToHead,
+            perspective: data.homeTeam,
+            currentLeague: match.league,
+            filterKind: _RecordFilterKind.headToHead,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (data != null && data.homeRecent.matches.isNotEmpty) ...[
+          _RecordPanel(
+            title: '主队近期战绩',
+            group: MatchRecordGroup(
+              summary: data.homeRecent.summary,
+              matches: data.homeRecent.matches,
+            ),
+            perspective: data.homeRecent.team.isEmpty
+                ? match.home
+                : data.homeRecent.team,
+            team: data.homeRecent.team.isEmpty
+                ? match.home
+                : data.homeRecent.team,
+            currentLeague: match.league,
+            filterKind: _RecordFilterKind.homeRecent,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (data != null && data.awayRecent.matches.isNotEmpty) ...[
+          _RecordPanel(
+            title: '客队近期战绩',
+            group: MatchRecordGroup(
+              summary: data.awayRecent.summary,
+              matches: data.awayRecent.matches,
+            ),
+            perspective: data.awayRecent.team.isEmpty
+                ? match.away
+                : data.awayRecent.team,
+            team: data.awayRecent.team.isEmpty
+                ? match.away
+                : data.awayRecent.team,
+            currentLeague: match.league,
+            filterKind: _RecordFilterKind.awayRecent,
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (predictions.isNotEmpty)
+          _AnalysisTab(
+            match: match,
+            predictions: predictions,
+          ),
+        if (data?.stale == true) ...[
+          const SizedBox(height: 8),
+          const Text(
+            '部分资料来自最近一次成功更新',
+            style: TextStyle(fontSize: 10, color: _muted),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _FutureSchedulePanel extends StatelessWidget {
+  const _FutureSchedulePanel({
+    required this.schedules,
+    required this.currentKickoff,
+  });
+
+  final TeamFutureSchedules schedules;
+  final DateTime currentKickoff;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Surface(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(12, 12, 12, 9),
+            child: _SectionTitle(title: '未来赛程', trailing: '体能与轮换参考'),
+          ),
+          const Divider(height: 1, color: _line),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _TeamFutureSchedule(
+                    schedule: schedules.home,
+                    fallbackTeam: '主队',
+                    currentKickoff: currentKickoff,
+                  ),
+                ),
+                const VerticalDivider(width: 1, color: _line),
+                Expanded(
+                  child: _TeamFutureSchedule(
+                    schedule: schedules.away,
+                    fallbackTeam: '客队',
+                    currentKickoff: currentKickoff,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeamFutureSchedule extends StatelessWidget {
+  const _TeamFutureSchedule({
+    required this.schedule,
+    required this.fallbackTeam,
+    required this.currentKickoff,
+  });
+
+  final TeamFutureSchedule schedule;
+  final String fallbackTeam;
+  final DateTime currentKickoff;
+
+  @override
+  Widget build(BuildContext context) {
+    final matches = schedule.matches.take(2).toList(growable: false);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            schedule.team.isEmpty ? fallbackTeam : schedule.team,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: _ink,
+            ),
+          ),
+          const SizedBox(height: 7),
+          if (matches.isEmpty)
+            const Text(
+              '暂无官方赛程',
+              style: TextStyle(fontSize: 10, color: _muted),
+            )
+          else
+            for (final item in matches) ...[
+              _FutureMatchRow(item: item, currentKickoff: currentKickoff),
+              if (item != matches.last) const SizedBox(height: 8),
+            ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FutureMatchRow extends StatelessWidget {
+  const _FutureMatchRow({required this.item, required this.currentKickoff});
+
+  final FutureMatch item;
+  final DateTime currentKickoff;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = DateTime.tryParse(item.date.replaceFirst(' ', 'T'));
+    final days = date?.difference(currentKickoff).inDays;
+    final dateText = date == null
+        ? item.date
+        : '${date.month.toString().padLeft(2, '0')}-'
+            '${date.day.toString().padLeft(2, '0')}';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              dateText,
+              style: const TextStyle(fontSize: 9.5, color: _muted),
+            ),
+            const SizedBox(width: 5),
+            Expanded(
+              child: Text(
+                item.league,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 9.5, color: _greenDark),
+              ),
+            ),
+            if (days != null && days >= 0)
+              Text(
+                '${days + 1}天后',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: days <= 3 ? _orange : _muted,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '${item.home} vs ${item.away}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 10, color: _ink),
+        ),
+      ],
+    );
+  }
+}
+
+class _PersonnelPanel extends StatelessWidget {
+  const _PersonnelPanel({
+    required this.title,
+    required this.sides,
+    required this.injuries,
+  });
+
+  final String title;
+  final TeamPlayerSides sides;
+  final bool injuries;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Surface(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 9),
+            child: _SectionTitle(
+              title: title,
+              trailing: injuries ? '官方伤停资料' : '近3场表现',
+            ),
+          ),
+          const Divider(height: 1, color: _line),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _TeamPersonnel(
+                  group: sides.home,
+                  fallbackTeam: '主队',
+                  injuries: injuries,
+                ),
+              ),
+              const SizedBox(
+                height: 112,
+                child: VerticalDivider(width: 1, color: _line),
+              ),
+              Expanded(
+                child: _TeamPersonnel(
+                  group: sides.away,
+                  fallbackTeam: '客队',
+                  injuries: injuries,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeamPersonnel extends StatelessWidget {
+  const _TeamPersonnel({
+    required this.group,
+    required this.fallbackTeam,
+    required this.injuries,
+  });
+
+  final TeamPlayerGroup group;
+  final String fallbackTeam;
+  final bool injuries;
+
+  @override
+  Widget build(BuildContext context) {
+    final players = group.players.take(3).toList(growable: false);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            group.team.isEmpty ? fallbackTeam : group.team,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: _ink,
+            ),
+          ),
+          const SizedBox(height: 7),
+          if (players.isEmpty)
+            const Text(
+              '暂无官方记录',
+              style: TextStyle(fontSize: 10, color: _muted),
+            )
+          else
+            for (final player in players) ...[
+              _PersonnelRow(player: player, injuries: injuries),
+              if (player != players.last) const SizedBox(height: 7),
+            ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PersonnelRow extends StatelessWidget {
+  const _PersonnelRow({required this.player, required this.injuries});
+
+  final MatchPlayer player;
+  final bool injuries;
+
+  @override
+  Widget build(BuildContext context) {
+    final detail = injuries
+        ? (player.suspended ? '停赛' : '伤缺')
+        : '${player.appearances}场 ${player.goals}球 ${player.assists}助';
+    return Row(
+      children: [
+        if (player.number.isNotEmpty) ...[
+          SizedBox(
+            width: 22,
+            child: Text(
+              player.number,
+              style: const TextStyle(fontSize: 9, color: _muted),
+            ),
+          ),
+        ],
+        Expanded(
+          child: Text(
+            player.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 10.5, color: _ink),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          detail,
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: injuries ? FontWeight.w600 : FontWeight.w500,
+            color: injuries ? (player.suspended ? _orange : _red) : _muted,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DataSummaryPanel extends StatelessWidget {
+  const _DataSummaryPanel({
+    required this.homeName,
+    required this.awayName,
+    required this.home,
+    required this.away,
+    required this.headToHead,
+  });
+
+  final String homeName;
+  final String awayName;
+  final TeamRecentForm home;
+  final TeamRecentForm away;
+  final MatchRecordGroup headToHead;
+
+  String _average(double value) => value.toStringAsFixed(1);
+  String _percent(double value) => '${(value * 100).round()}%';
+
+  List<String> _observations(
+    TeamFormMetrics homeMetrics,
+    TeamFormMetrics awayMetrics,
+  ) {
+    final values = <String>[];
+    if (homeMetrics.matches > 0 && awayMetrics.matches > 0) {
+      final winDifference = homeMetrics.winRate - awayMetrics.winRate;
+      if (winDifference.abs() >= 0.2) {
+        values.add(
+          winDifference > 0 ? '$homeName近期胜率更高' : '$awayName近期胜率更高',
+        );
+      } else {
+        values.add('双方近期胜率接近');
+      }
+      final attackDifference =
+          homeMetrics.goalsForAverage - awayMetrics.goalsForAverage;
+      if (attackDifference.abs() >= 0.4) {
+        values.add(
+          attackDifference > 0 ? '$homeName近期场均进球更多' : '$awayName近期场均进球更多',
+        );
+      }
+      final defenseDifference =
+          homeMetrics.goalsAgainstAverage - awayMetrics.goalsAgainstAverage;
+      if (defenseDifference.abs() >= 0.4) {
+        values.add(
+          defenseDifference < 0 ? '$homeName近期场均失球更少' : '$awayName近期场均失球更少',
+        );
+      }
+    }
+    final sample = headToHead.matches.length;
+    if (sample == 1) {
+      values.add('历史交锋仅1场，样本较少');
+    } else if (sample > 1 && sample < 5) {
+      values.add('历史交锋共$sample场，样本有限');
+    }
+    return values.take(3).toList(growable: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final homeMetrics = home.metrics();
+    final awayMetrics = away.metrics();
+    final homeVenue = home.metrics(venue: TeamVenue.home);
+    final awayVenue = away.metrics(venue: TeamVenue.away);
+    final observations = _observations(homeMetrics, awayMetrics);
+    return _Surface(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(12, 12, 12, 9),
+            child: _SectionTitle(
+              title: '数据摘要',
+              trailing: '按最近有效比赛计算',
+            ),
+          ),
+          const Divider(height: 1, color: _line),
+          _SummaryHeader(home: homeName, away: awayName),
+          _SummaryRow(
+            label: '近况',
+            home: homeMetrics.matches == 0 ? '--' : homeMetrics.record,
+            away: awayMetrics.matches == 0 ? '--' : awayMetrics.record,
+          ),
+          _SummaryRow(
+            label: '场均进球',
+            home: homeMetrics.matches == 0
+                ? '--'
+                : _average(homeMetrics.goalsForAverage),
+            away: awayMetrics.matches == 0
+                ? '--'
+                : _average(awayMetrics.goalsForAverage),
+          ),
+          _SummaryRow(
+            label: '场均失球',
+            home: homeMetrics.matches == 0
+                ? '--'
+                : _average(homeMetrics.goalsAgainstAverage),
+            away: awayMetrics.matches == 0
+                ? '--'
+                : _average(awayMetrics.goalsAgainstAverage),
+          ),
+          _SummaryRow(
+            label: '大2.5球',
+            home: homeMetrics.matches == 0
+                ? '--'
+                : _percent(homeMetrics.overTwoAndHalfRate),
+            away: awayMetrics.matches == 0
+                ? '--'
+                : _percent(awayMetrics.overTwoAndHalfRate),
+          ),
+          _SummaryRow(
+            label: '双方进球',
+            home: homeMetrics.matches == 0
+                ? '--'
+                : _percent(homeMetrics.bothTeamsScoredRate),
+            away: awayMetrics.matches == 0
+                ? '--'
+                : _percent(awayMetrics.bothTeamsScoredRate),
+          ),
+          _SummaryRow(
+            label: '主/客场',
+            home: homeVenue.matches == 0 ? '--' : homeVenue.record,
+            away: awayVenue.matches == 0 ? '--' : awayVenue.record,
+          ),
+          if (observations.isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(12, 9, 12, 11),
+              color: const Color(0xfffafbfb),
+              child: Wrap(
+                spacing: 14,
+                runSpacing: 6,
+                children: [
+                  for (final value in observations)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.circle,
+                          size: 5,
+                          color: _green,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          value,
+                          style: const TextStyle(
+                            color: Color(0xff596063),
+                            fontSize: 10.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryHeader extends StatelessWidget {
+  const _SummaryHeader({required this.home, required this.away});
+
+  final String home;
+  final String away;
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(
+      color: _ink,
+      fontSize: 11,
+      fontWeight: FontWeight.w700,
+    );
+    return SizedBox(
+      height: 36,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              home,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: style,
+            ),
+          ),
+          const SizedBox(
+            width: 80,
+            child: Text(
+              '近10场',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _muted, fontSize: 10),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              away,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: style,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow({
+    required this.label,
+    required this.home,
+    required this.away,
+  });
+
+  final String label;
+  final String home;
+  final String away;
+
+  @override
+  Widget build(BuildContext context) {
+    const valueStyle = TextStyle(
+      color: _ink,
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      fontFeatures: [FontFeature.tabularFigures()],
+    );
+    return Container(
+      height: 34,
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: _line)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(home, textAlign: TextAlign.center, style: valueStyle),
+          ),
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: _muted, fontSize: 10),
+            ),
+          ),
+          Expanded(
+            child: Text(away, textAlign: TextAlign.center, style: valueStyle),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StandingsPanel extends StatelessWidget {
+  const _StandingsPanel({required this.standings});
+
+  final MatchStandings standings;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = [
+      standings.home.total,
+      standings.away.total,
+    ].where((row) => row.hasContent).toList(growable: false);
+    return _Surface(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 9),
+            child: _SectionTitle(
+              title: '积分排名',
+              trailing: [
+                standings.league,
+                standings.season,
+              ].where((item) => item.isNotEmpty).join(' '),
+            ),
+          ),
+          const Divider(height: 1, color: _line),
+          const _StandingTableRow(header: true),
+          for (final row in rows) _StandingTableRow(row: row),
+        ],
+      ),
+    );
+  }
+}
+
+class _StandingTableRow extends StatelessWidget {
+  const _StandingTableRow({this.row, this.header = false});
+
+  final StandingRow? row;
+  final bool header;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: header ? 10 : 11,
+      color: header ? _muted : _ink,
+      fontWeight: header ? FontWeight.w500 : FontWeight.w600,
+    );
+    Widget cell(String text,
+        {int flex = 1, TextAlign align = TextAlign.center}) {
+      return Expanded(
+        flex: flex,
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: align,
+          style: style,
+        ),
+      );
+    }
+
+    final value = row;
+    return Container(
+      height: header ? 32 : 42,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: _line)),
+      ),
+      child: Row(
+        children: [
+          cell(header ? '球队' : value?.team ?? '',
+              flex: 4, align: TextAlign.left),
+          cell(header ? '场' : '${value?.played ?? 0}'),
+          cell(
+            header
+                ? '胜-平-负'
+                : '${value?.wins ?? 0}-${value?.draws ?? 0}-${value?.losses ?? 0}',
+            flex: 3,
+          ),
+          cell(
+            header
+                ? '进失'
+                : '${value?.goalsFor ?? 0}/${value?.goalsAgainst ?? 0}',
+            flex: 2,
+          ),
+          cell(header ? '积分' : '${value?.points ?? 0}', flex: 2),
+          cell(header ? '排名' : '${value?.ranking ?? 0}', flex: 2),
+        ],
+      ),
+    );
+  }
+}
+
+enum _RecordFilterKind { none, headToHead, homeRecent, awayRecent }
+
+class _RecordPanel extends StatefulWidget {
+  const _RecordPanel({
+    required this.title,
+    required this.group,
+    required this.perspective,
+    this.team,
+    this.currentLeague = '',
+    this.filterKind = _RecordFilterKind.none,
+  });
+
+  final String title;
+  final MatchRecordGroup group;
+  final String perspective;
+  final String? team;
+  final String currentLeague;
+  final _RecordFilterKind filterKind;
+
+  @override
+  State<_RecordPanel> createState() => _RecordPanelState();
+}
+
+class _RecordPanelState extends State<_RecordPanel> {
+  bool _sameVenue = false;
+  bool _sameLeague = false;
+
+  List<MatchRecord> get _records {
+    return widget.group.matches.where((record) {
+      if (_sameLeague &&
+          widget.currentLeague.isNotEmpty &&
+          record.league != widget.currentLeague) {
+        return false;
+      }
+      if (!_sameVenue) return true;
+      return switch (widget.filterKind) {
+        _RecordFilterKind.headToHead ||
+        _RecordFilterKind.homeRecent =>
+          record.home == widget.perspective,
+        _RecordFilterKind.awayRecent => record.away == widget.perspective,
+        _RecordFilterKind.none => true,
+      };
+    }).toList(growable: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final records = _records;
+    final summary = _summaryForRecords(records, widget.perspective);
+    return _Surface(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 9),
+            child: _SectionTitle(
+              title: widget.title,
+              trailing: widget.team,
+            ),
+          ),
+          const Divider(height: 1, color: _line),
+          if (widget.filterKind != _RecordFilterKind.none)
+            _RecordFilters(
+              kind: widget.filterKind,
+              sameVenue: _sameVenue,
+              sameLeague: _sameLeague,
+              onVenueChanged: (value) => setState(() => _sameVenue = value),
+              onLeagueChanged: (value) => setState(() => _sameLeague = value),
+            ),
+          _FormSummary(summary: summary),
+          if (records.isEmpty)
+            const SizedBox(
+              height: 58,
+              child: Center(
+                child: Text(
+                  '暂无符合条件的比赛',
+                  style: TextStyle(fontSize: 11, color: _muted),
+                ),
+              ),
+            )
+          else
+            for (final record in records.take(5))
+              _MatchRecordRow(
+                record: record,
+                perspective: widget.perspective,
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecordFilters extends StatelessWidget {
+  const _RecordFilters({
+    required this.kind,
+    required this.sameVenue,
+    required this.sameLeague,
+    required this.onVenueChanged,
+    required this.onLeagueChanged,
+  });
+
+  final _RecordFilterKind kind;
+  final bool sameVenue;
+  final bool sameLeague;
+  final ValueChanged<bool> onVenueChanged;
+  final ValueChanged<bool> onLeagueChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final venueLabel = switch (kind) {
+      _RecordFilterKind.homeRecent => '仅主场',
+      _RecordFilterKind.awayRecent => '仅客场',
+      _ => '同主客',
+    };
+    return Container(
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      color: Colors.white,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          _CompactCheck(
+            label: venueLabel,
+            value: sameVenue,
+            onChanged: onVenueChanged,
+          ),
+          if (kind == _RecordFilterKind.headToHead) ...[
+            const SizedBox(width: 8),
+            _CompactCheck(
+              label: '同赛事',
+              value: sameLeague,
+              onChanged: onLeagueChanged,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactCheck extends StatelessWidget {
+  const _CompactCheck({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: Checkbox(
+              value: value,
+              onChanged: (next) => onChanged(next ?? false),
+              activeColor: _green,
+              side: const BorderSide(color: Color(0xff9aa19e)),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+          const SizedBox(width: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: value ? _green : const Color(0xff62696c),
+              fontWeight: value ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FormSummary extends StatelessWidget {
+  const _FormSummary({required this.summary});
+
+  final MatchFormSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      color: const Color(0xfffafbfb),
+      child: Row(
+        children: [
+          Text(
+            '近${summary.matches}场',
+            style: const TextStyle(fontSize: 10, color: _muted),
+          ),
+          const Spacer(),
+          _FormCount('${summary.wins}胜', _red),
+          const SizedBox(width: 10),
+          _FormCount('${summary.draws}平', const Color(0xff697174)),
+          const SizedBox(width: 10),
+          _FormCount('${summary.losses}负', const Color(0xff4875a3)),
+          if (summary.goalsFor > 0 || summary.goalsAgainst > 0) ...[
+            const SizedBox(width: 12),
+            Text(
+              '进失 ${summary.goalsFor}/${summary.goalsAgainst}',
+              style: const TextStyle(fontSize: 10, color: _muted),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FormCount extends StatelessWidget {
+  const _FormCount(this.text, this.color);
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 10,
+        color: color,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+}
+
+MatchFormSummary _summaryForRecords(
+  List<MatchRecord> records,
+  String perspective,
+) {
+  var wins = 0;
+  var draws = 0;
+  var losses = 0;
+  var goalsFor = 0;
+  var goalsAgainst = 0;
+  for (final record in records) {
+    switch (record.result) {
+      case '胜':
+        wins++;
+      case '平':
+        draws++;
+      case '负':
+        losses++;
+    }
+    final score = RegExp(r'(\d+)\s*[:\-]\s*(\d+)').firstMatch(record.fullScore);
+    if (score == null) continue;
+    final homeGoals = int.parse(score.group(1)!);
+    final awayGoals = int.parse(score.group(2)!);
+    if (record.home == perspective) {
+      goalsFor += homeGoals;
+      goalsAgainst += awayGoals;
+    } else if (record.away == perspective) {
+      goalsFor += awayGoals;
+      goalsAgainst += homeGoals;
+    }
+  }
+  return MatchFormSummary(
+    matches: records.length,
+    wins: wins,
+    draws: draws,
+    losses: losses,
+    goalsFor: goalsFor,
+    goalsAgainst: goalsAgainst,
+  );
+}
+
+class _MatchRecordRow extends StatelessWidget {
+  const _MatchRecordRow({required this.record, required this.perspective});
+
+  final MatchRecord record;
+  final String perspective;
+
+  @override
+  Widget build(BuildContext context) {
+    final resultColor = switch (record.result) {
+      '胜' => _red,
+      '负' => const Color(0xff4875a3),
+      _ => _muted,
+    };
+    final date =
+        record.date.length >= 10 ? record.date.substring(5, 10) : record.date;
+    return Container(
+      height: 50,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: _line)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 58,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  date,
+                  style: const TextStyle(fontSize: 10, color: _muted),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  record.league,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 9, color: _green),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Text(
+              record.home,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: record.home == perspective
+                    ? FontWeight.w700
+                    : FontWeight.w500,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 58,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  record.fullScore.isEmpty ? '--' : record.fullScore,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (record.halfScore.isNotEmpty)
+                  Text(
+                    '半 ${record.halfScore}',
+                    style: const TextStyle(fontSize: 8.5, color: _muted),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Text(
+              record.away,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: record.away == perspective
+                    ? FontWeight.w700
+                    : FontWeight.w500,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 22,
+            child: record.result.isEmpty
+                ? null
+                : Text(
+                    record.result,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: resultColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -577,14 +1958,19 @@ class _OddsProbabilityPanel extends StatelessWidget {
             children: [
               const Icon(Icons.insights_outlined, size: 17, color: _green),
               const SizedBox(width: 5),
-              const Text('当前 SP 倾向',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              const Text(
+                '当前 SP 倾向',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+              ),
               const Spacer(),
-              Text('重点 ${favorite.label}',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: favorite.color,
-                      fontWeight: FontWeight.w700)),
+              Text(
+                '重点 ${favorite.label}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: favorite.color,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 11),
@@ -594,15 +1980,18 @@ class _OddsProbabilityPanel extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: EdgeInsets.only(
-                        right: index == rows.length - 1 ? 0 : 7),
+                      right: index == rows.length - 1 ? 0 : 7,
+                    ),
                     child: _ProbabilityCell(data: rows[index]),
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 8),
-          const Text('按当前胜平负 SP 归一化换算，仅反映赔率倾向，不构成赛果预测。',
-              style: TextStyle(fontSize: 9.5, color: _muted)),
+          const Text(
+            '按当前胜平负 SP 归一化换算，仅反映赔率倾向，不构成赛果预测。',
+            style: TextStyle(fontSize: 9.5, color: _muted),
+          ),
         ],
       ),
     );
@@ -630,12 +2019,15 @@ class _ProbabilityCell extends StatelessWidget {
         children: [
           Text(data.label, style: const TextStyle(fontSize: 10, color: _muted)),
           const SizedBox(height: 2),
-          Text('$percentage%',
-              style: TextStyle(
-                  fontSize: 17,
-                  height: 1,
-                  color: data.color,
-                  fontWeight: FontWeight.w800)),
+          Text(
+            '$percentage%',
+            style: TextStyle(
+              fontSize: 17,
+              height: 1,
+              color: data.color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           const Spacer(),
           ClipRRect(
             borderRadius: BorderRadius.circular(20),
@@ -678,13 +2070,16 @@ class _CoreMarket extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(title,
-                style:
-                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
             if (handicap != null) ...[
               const SizedBox(width: 9),
-              Text('让($handicap)',
-                  style: const TextStyle(fontSize: 10, color: _green)),
+              Text(
+                '让($handicap)',
+                style: const TextStyle(fontSize: 10, color: _green),
+              ),
             ],
             const Spacer(),
             if (single) const _Badge(text: '单关'),
@@ -699,7 +2094,8 @@ class _CoreMarket extends StatelessWidget {
               child: Container(
                 height: 55,
                 margin: EdgeInsets.only(
-                    right: entry.key == entries.last.key ? 0 : 7),
+                  right: entry.key == entries.last.key ? 0 : 7,
+                ),
                 decoration: BoxDecoration(
                   color: emphasized ? _green : const Color(0xfff7f8f8),
                   borderRadius: BorderRadius.circular(7),
@@ -761,11 +2157,7 @@ class _MoreMarkets extends StatelessWidget {
         title: '半全场',
         subtitle: match.hafu.isEmpty ? '暂未开放' : '${match.hafu.length}种玩法',
       ),
-      (
-        icon: Icons.apps_rounded,
-        title: '更多玩法',
-        subtitle: '查看全部',
-      ),
+      (icon: Icons.apps_rounded, title: '更多玩法', subtitle: '查看全部'),
     ];
     return InkWell(
       onTap: onOpenOdds,
@@ -775,8 +2167,10 @@ class _MoreMarkets extends StatelessWidget {
         children: [
           const Row(
             children: [
-              Text('更多玩法',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              Text(
+                '更多玩法',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
               Spacer(),
               Icon(Icons.chevron_right_rounded, size: 18, color: _muted),
             ],
@@ -798,11 +2192,15 @@ class _MoreMarkets extends StatelessWidget {
                       child: Icon(item.icon, color: _greenDark, size: 19),
                     ),
                     const SizedBox(height: 5),
-                    Text(item.title,
-                        style: const TextStyle(fontSize: 10.5, color: _ink)),
+                    Text(
+                      item.title,
+                      style: const TextStyle(fontSize: 10.5, color: _ink),
+                    ),
                     const SizedBox(height: 1),
-                    Text(item.subtitle,
-                        style: const TextStyle(fontSize: 8.5, color: _muted)),
+                    Text(
+                      item.subtitle,
+                      style: const TextStyle(fontSize: 8.5, color: _muted),
+                    ),
                   ],
                 ),
               );
@@ -822,7 +2220,7 @@ class _RiskPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final notes = <String>[
-      '临场SP可能继续变化，请以出票时数据为准。',
+      '临场SP可能继续变化，请以官方最终公布数据为准。',
       '比赛延期、中断或取消时以体彩官方规则为准。',
       if (match.bettingStatus != BettingStatus.open) '当前比赛已停售，不能继续选号。',
     ];
@@ -839,8 +2237,10 @@ class _RiskPanel extends StatelessWidget {
                 color: _orange,
               ),
               const Spacer(),
-              Text('${notes.length}项',
-                  style: const TextStyle(fontSize: 10, color: _muted)),
+              Text(
+                '${notes.length}项',
+                style: const TextStyle(fontSize: 10, color: _muted),
+              ),
               const Icon(Icons.chevron_right_rounded, size: 17, color: _muted),
             ],
           ),
@@ -848,8 +2248,10 @@ class _RiskPanel extends StatelessWidget {
           for (final note in notes)
             Padding(
               padding: const EdgeInsets.only(bottom: 7),
-              child: Text('•  $note',
-                  style: const TextStyle(fontSize: 10.5, height: 1.35)),
+              child: Text(
+                '•  $note',
+                style: const TextStyle(fontSize: 10.5, height: 1.35),
+              ),
             ),
         ],
       ),
@@ -874,13 +2276,13 @@ class _OddsTab extends StatelessWidget {
       String title,
       String historyKey,
       Map<String, dynamic> values,
-      String? handicap
+      String? handicap,
     })>[
       (
         title: '胜平负',
         historyKey: 'had',
         values: Map<String, dynamic>.from(match.had),
-        handicap: null
+        handicap: null,
       ),
       (
         title: '让球胜平负',
@@ -892,19 +2294,19 @@ class _OddsTab extends StatelessWidget {
         title: '总进球',
         historyKey: 'ttg',
         values: Map<String, dynamic>.from(match.ttg),
-        handicap: null
+        handicap: null,
       ),
       (
         title: '比分',
         historyKey: 'crs',
         values: Map<String, dynamic>.from(match.crs),
-        handicap: null
+        handicap: null,
       ),
       (
         title: '半全场',
         historyKey: 'hafu',
         values: Map<String, dynamic>.from(match.hafu),
-        handicap: null
+        handicap: null,
       ),
     ].where((item) => item.values.isNotEmpty).toList();
     return Column(
@@ -949,8 +2351,10 @@ class _OddsTab extends StatelessWidget {
   }
 
   Map<String, dynamic> _initialValues(String historyKey) {
-    final values =
-        _historyMarket(history.isEmpty ? null : history.first, historyKey);
+    final values = _historyMarket(
+      history.isEmpty ? null : history.first,
+      historyKey,
+    );
     values.remove('让球');
     return values;
   }
@@ -980,19 +2384,17 @@ class _ChangeTable extends StatelessWidget {
         ),
         if (had.isNotEmpty)
           _ChangeRow(
-              label: '即时',
-              values: had.map((e) => _odd(e.value)).toList(),
-              strong: true),
+            label: '即时',
+            values: had.map((e) => _odd(e.value)).toList(),
+            strong: true,
+          ),
         if (hhad.isNotEmpty)
           _ChangeRow(
             label: '让${match.hhad['让球'] ?? ''}',
             values: hhad.map((e) => _odd(e.value)).toList(),
           ),
         if (hhad.isNotEmpty && initialHhad.isNotEmpty)
-          _ChangeRow(
-            label: '让球初始',
-            values: _historyOdds(initialHhad),
-          ),
+          _ChangeRow(label: '让球初始', values: _historyOdds(initialHhad)),
         Padding(
           padding: const EdgeInsets.only(top: 8),
           child: Align(
@@ -1011,8 +2413,11 @@ class _ChangeTable extends StatelessWidget {
 }
 
 class _ChangeRow extends StatelessWidget {
-  const _ChangeRow(
-      {required this.label, required this.values, this.strong = false});
+  const _ChangeRow({
+    required this.label,
+    required this.values,
+    this.strong = false,
+  });
 
   final String label;
   final List<String> values;
@@ -1022,27 +2427,32 @@ class _ChangeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 34,
-      decoration:
-          const BoxDecoration(border: Border(bottom: BorderSide(color: _line))),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: _line)),
+      ),
       child: Row(
         children: [
           SizedBox(
             width: 54,
-            child: Text(label,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: strong ? _green : _muted,
-                  fontWeight: strong ? FontWeight.w700 : FontWeight.w400,
-                )),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: strong ? _green : _muted,
+                fontWeight: strong ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
           ),
           for (final value in values.take(3))
             Expanded(
               child: Center(
-                child: Text(value,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: strong ? FontWeight.w700 : FontWeight.w400,
-                    )),
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: strong ? FontWeight.w700 : FontWeight.w400,
+                  ),
+                ),
               ),
             ),
         ],
@@ -1071,13 +2481,20 @@ class _OddsMarketTable extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w700, color: _green)),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: _green,
+              ),
+            ),
             if (handicap != null) ...[
               const SizedBox(width: 8),
-              Text('让($handicap)',
-                  style: const TextStyle(fontSize: 10, color: _green)),
+              Text(
+                '让($handicap)',
+                style: const TextStyle(fontSize: 10, color: _green),
+              ),
             ],
           ],
         ),
@@ -1085,78 +2502,92 @@ class _OddsMarketTable extends StatelessWidget {
         const Row(
           children: [
             SizedBox(
-                width: 94,
-                child:
-                    Text('选项', style: TextStyle(fontSize: 9, color: _muted))),
+              width: 94,
+              child: Text('选项', style: TextStyle(fontSize: 9, color: _muted)),
+            ),
             Expanded(
-                child: Center(
-                    child: Text('即时',
-                        style: TextStyle(fontSize: 9, color: _muted)))),
+              child: Center(
+                child: Text('即时', style: TextStyle(fontSize: 9, color: _muted)),
+              ),
+            ),
             Expanded(
-                child: Center(
-                    child: Text('初始',
-                        style: TextStyle(fontSize: 9, color: _muted)))),
+              child: Center(
+                child: Text('初始', style: TextStyle(fontSize: 9, color: _muted)),
+              ),
+            ),
             Expanded(
-                child: Center(
-                    child: Text('变化',
-                        style: TextStyle(fontSize: 9, color: _muted)))),
+              child: Center(
+                child: Text('变化', style: TextStyle(fontSize: 9, color: _muted)),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 4),
         for (final entry in _orderedMarket(title, values))
-          Builder(builder: (_) {
-            final initial = initialValues[entry.key];
-            final change = _oddChange(entry.value, initial);
-            return Container(
-              height: 34,
-              decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: _line))),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 94,
-                    child: Text(_marketLabel(title, entry.key),
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 10.5)),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Text(_odd(entry.value),
-                          style: const TextStyle(
-                              fontSize: 11, fontWeight: FontWeight.w600)),
-                    ),
-                  ),
-                  Expanded(
-                    child: Center(
+          Builder(
+            builder: (_) {
+              final initial = initialValues[entry.key];
+              final change = _oddChange(entry.value, initial);
+              return Container(
+                height: 34,
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: _line)),
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 94,
                       child: Text(
-                        initial == null ? '--' : _odd(initial),
-                        style: const TextStyle(fontSize: 10, color: _muted),
+                        _marketLabel(title, entry.key),
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 10.5),
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        change.label,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: change.color,
-                          fontWeight: change.emphasized
-                              ? FontWeight.w700
-                              : FontWeight.w400,
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          _odd(entry.value),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          }),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          initial == null ? '--' : _odd(initial),
+                          style: const TextStyle(fontSize: 10, color: _muted),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          change.label,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: change.color,
+                            fontWeight: change.emphasized
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
       ],
     );
   }
 }
 
+// Kept as reusable result-market content while the standalone result tab is hidden.
+// ignore: unused_element
 class _ResultsTab extends StatelessWidget {
   const _ResultsTab({required this.match});
 
@@ -1217,9 +2648,10 @@ class _ResultsTab extends StatelessWidget {
                 children: [
                   Icon(Icons.emoji_events_outlined, size: 17, color: _red),
                   SizedBox(width: 5),
-                  Text('官方赛果',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  Text(
+                    '官方赛果',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
                   Spacer(),
                   _Badge(text: '已完场'),
                 ],
@@ -1236,9 +2668,10 @@ class _ResultsTab extends StatelessWidget {
               ),
               const SizedBox(height: 7),
               Text(
-                  '${match.home}  ${_normalOutcome(full.$1, full.$2)}  ${match.away}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 11, color: _muted)),
+                '${match.home}  ${_normalOutcome(full.$1, full.$2)}  ${match.away}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11, color: _muted),
+              ),
               const SizedBox(height: 14),
               Wrap(
                 spacing: 7,
@@ -1246,10 +2679,14 @@ class _ResultsTab extends StatelessWidget {
                 alignment: WrapAlignment.center,
                 children: [
                   _ResultStat(
-                      label: '半场', value: _scoreText(match.halfTimeScore)),
+                    label: '半场',
+                    value: _scoreText(match.halfTimeScore),
+                  ),
                   if ((match.extraTimeScore ?? '').trim().isNotEmpty)
                     _ResultStat(
-                        label: '加时', value: match.extraTimeScore!.trim()),
+                      label: '加时',
+                      value: match.extraTimeScore!.trim(),
+                    ),
                   if ((match.penaltyScore ?? '').trim().isNotEmpty)
                     _ResultStat(label: '点球', value: match.penaltyScore!.trim()),
                 ],
@@ -1349,8 +2786,10 @@ class _ResultSpStrip extends StatelessWidget {
             children: [
               Icon(Icons.confirmation_number_outlined, size: 16, color: _red),
               SizedBox(width: 5),
-              Text('赛果 SP',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              Text(
+                '赛果 SP',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
               Spacer(),
               Text('以官方固定奖金为准', style: TextStyle(fontSize: 9, color: _muted)),
             ],
@@ -1364,7 +2803,9 @@ class _ResultSpStrip extends StatelessWidget {
                   _ResultSpItem(
                     title: _shortTitle(markets[index].title),
                     outcome: _marketLabel(
-                        markets[index].title, markets[index].selectedKey),
+                      markets[index].title,
+                      markets[index].selectedKey,
+                    ),
                     odd: _odd(markets[index].selectedOdd),
                     note: markets[index].note,
                   ),
@@ -1407,14 +2848,23 @@ class _ResultSpItem extends StatelessWidget {
         children: [
           Text(title, style: const TextStyle(fontSize: 9, color: _muted)),
           const SizedBox(height: 3),
-          Text(outcome,
-              style: const TextStyle(
-                  fontSize: 12, color: _red, fontWeight: FontWeight.w800)),
-          Text('SP $odd',
-              style: const TextStyle(fontSize: 10, color: Color(0xff8a4e55))),
+          Text(
+            outcome,
+            style: const TextStyle(
+              fontSize: 12,
+              color: _red,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            'SP $odd',
+            style: const TextStyle(fontSize: 10, color: Color(0xff8a4e55)),
+          ),
           if (note != null)
-            Text(note!,
-                style: const TextStyle(fontSize: 8, color: Color(0xff9c777b))),
+            Text(
+              note!,
+              style: const TextStyle(fontSize: 8, color: Color(0xff9c777b)),
+            ),
         ],
       ),
     );
@@ -1449,11 +2899,14 @@ class _ResultReview extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('赛果复盘 · $label',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: matched ? _greenDark : const Color(0xff9b6419),
-                        fontWeight: FontWeight.w700)),
+                Text(
+                  '赛果复盘 · $label',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: matched ? _greenDark : const Color(0xff9b6419),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   '赛前最低 SP：${_outcomeLabel(favorite.$1)} ${_odd(favorite.$2)}  ·  实际赛果：$actualOutcome',
@@ -1488,18 +2941,29 @@ class _ResolvedMarket extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(data.title,
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w700)),
+              Text(
+                data.title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               if (data.note != null) ...[
                 const SizedBox(width: 7),
-                Text(data.note!,
-                    style: const TextStyle(fontSize: 10, color: _muted)),
+                Text(
+                  data.note!,
+                  style: const TextStyle(fontSize: 10, color: _muted),
+                ),
               ],
               const Spacer(),
-              Text('开奖结果：${data.winner}',
-                  style: const TextStyle(
-                      fontSize: 11, color: _red, fontWeight: FontWeight.w700)),
+              Text(
+                '开奖结果：${data.winner}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: _red,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -1549,14 +3013,19 @@ class _ResultOption extends StatelessWidget {
             const Icon(Icons.check_circle_rounded, size: 13, color: _red),
             const SizedBox(width: 4),
           ],
-          Text(label,
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? _red : _ink)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? _red : _ink,
+            ),
+          ),
           const SizedBox(width: 6),
-          Text(odd,
-              style: TextStyle(fontSize: 10, color: selected ? _red : _muted)),
+          Text(
+            odd,
+            style: TextStyle(fontSize: 10, color: selected ? _red : _muted),
+          ),
         ],
       ),
     );
@@ -1578,8 +3047,10 @@ class _ResultStat extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: const Color(0xffffdadd)),
       ),
-      child: Text('$label  $value',
-          style: const TextStyle(fontSize: 10, color: Color(0xff6d454b))),
+      child: Text(
+        '$label  $value',
+        style: const TextStyle(fontSize: 10, color: Color(0xff6d454b)),
+      ),
     );
   }
 }
@@ -1609,16 +3080,21 @@ class _OfficialResultRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(label.isEmpty ? '--' : label,
-                style:
-                    const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+            child: Text(
+              label.isEmpty ? '--' : label,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+            ),
           ),
           if (handicap.isNotEmpty)
-            Text('让$handicap  ',
-                style: const TextStyle(fontSize: 10, color: _muted)),
+            Text(
+              '让$handicap  ',
+              style: const TextStyle(fontSize: 10, color: _muted),
+            ),
           if (odds.isNotEmpty)
-            Text('SP $odds',
-                style: const TextStyle(fontSize: 10, color: _muted)),
+            Text(
+              'SP $odds',
+              style: const TextStyle(fontSize: 10, color: _muted),
+            ),
           if (code.isNotEmpty && odds.isEmpty)
             Text(code, style: const TextStyle(fontSize: 10, color: _muted)),
         ],
@@ -1643,7 +3119,10 @@ class _ResultRuleNotice extends StatelessWidget {
             child: Text(
               '竞彩赛果以官方公布为准。90分钟内（含伤停补时）比分用于胜平负、让球胜平负、总进球、比分和半全场开奖。',
               style: TextStyle(
-                  fontSize: 10, height: 1.4, color: Color(0xff6f5a39)),
+                fontSize: 10,
+                height: 1.4,
+                color: Color(0xff6f5a39),
+              ),
             ),
           ),
         ],
@@ -1708,15 +3187,20 @@ class _PredictionRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(value('model_name'),
-                style:
-                    const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+            child: Text(
+              value('model_name'),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            ),
           ),
-          Text('方向 ${value('predicted_direction')}',
-              style: const TextStyle(fontSize: 10)),
+          Text(
+            '方向 ${value('predicted_direction')}',
+            style: const TextStyle(fontSize: 10),
+          ),
           const SizedBox(width: 12),
-          Text('比分 ${value('predicted_score')}',
-              style: const TextStyle(fontSize: 10)),
+          Text(
+            '比分 ${value('predicted_score')}',
+            style: const TextStyle(fontSize: 10),
+          ),
         ],
       ),
     );
@@ -1724,10 +3208,11 @@ class _PredictionRow extends StatelessWidget {
 }
 
 class _Surface extends StatelessWidget {
-  const _Surface(
-      {required this.child,
-      this.padding = const EdgeInsets.all(12),
-      this.color = Colors.white});
+  const _Surface({
+    required this.child,
+    this.padding = const EdgeInsets.all(12),
+    this.color = Colors.white,
+  });
 
   final Widget child;
   final EdgeInsets padding;
@@ -1740,7 +3225,7 @@ class _Surface extends StatelessWidget {
       padding: padding,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xffedf0ef)),
       ),
       child: child,
@@ -1758,8 +3243,10 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(title,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        ),
         const Spacer(),
         if (trailing != null)
           Text(trailing!, style: const TextStyle(fontSize: 9, color: _muted)),
@@ -1769,8 +3256,11 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _SectionIconTitle extends StatelessWidget {
-  const _SectionIconTitle(
-      {required this.icon, required this.title, required this.color});
+  const _SectionIconTitle({
+    required this.icon,
+    required this.title,
+    required this.color,
+  });
 
   final IconData icon;
   final String title;
@@ -1783,9 +3273,14 @@ class _SectionIconTitle extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: color),
         const SizedBox(width: 5),
-        Text(title,
-            style: TextStyle(
-                fontSize: 13, color: color, fontWeight: FontWeight.w700)),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 13,
+            color: color,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ],
     );
   }
@@ -1801,29 +3296,39 @@ class _Badge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-          color: _greenSoft, borderRadius: BorderRadius.circular(5)),
-      child: Text(text,
-          style: const TextStyle(
-              fontSize: 9, color: _green, fontWeight: FontWeight.w600)),
+        color: _greenSoft,
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 9,
+          color: _green,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }
 
 class _BottomActions extends StatelessWidget {
-  const _BottomActions({
-    required this.match,
-  });
+  const _BottomActions({required this.match, required this.canSelect});
 
   final MatchItem match;
+  final bool canSelect;
 
   @override
   Widget build(BuildContext context) {
-    final open = match.bettingStatus == BettingStatus.open;
+    final actionText = switch (match.matchState) {
+      MatchState.live || MatchState.halftime => '比赛进行中',
+      MatchState.finished => '比赛已结束',
+      _ => canSelect ? '去选号' : '已停售',
+    };
     return SafeArea(
       top: false,
       child: Container(
-        height: 68,
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        height: 60,
+        padding: const EdgeInsets.fromLTRB(12, 7, 12, 7),
         decoration: const BoxDecoration(
           color: Colors.white,
           border: Border(top: BorderSide(color: _line)),
@@ -1832,28 +3337,34 @@ class _BottomActions extends StatelessWidget {
           children: [
             Expanded(
               child: SizedBox(
-                height: 49,
+                height: 45,
                 child: FilledButton(
-                  onPressed: open
+                  onPressed: canSelect
                       ? () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (_) =>
-                                    SelectionPage(focusMatchId: match.id)),
+                              builder: (_) =>
+                                  SelectionPage(focusMatchId: match.id),
+                            ),
                           )
                       : null,
                   style: FilledButton.styleFrom(
                     backgroundColor: _green,
                     disabledBackgroundColor: const Color(0xffcbd3d0),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(open ? '去选号' : '已停售',
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w700)),
+                      Text(
+                        actionText,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1880,8 +3391,10 @@ class _LoadError extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(message,
-                style: const TextStyle(fontSize: 10, color: Color(0xff9a5a1f))),
+            child: Text(
+              message,
+              style: const TextStyle(fontSize: 10, color: Color(0xff9a5a1f)),
+            ),
           ),
           TextButton(onPressed: onRetry, child: const Text('重试')),
         ],
@@ -1900,8 +3413,8 @@ class _Empty extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 22),
       child: Center(
-          child:
-              Text(text, style: const TextStyle(fontSize: 10, color: _muted))),
+        child: Text(text, style: const TextStyle(fontSize: 10, color: _muted)),
+      ),
     );
   }
 }
@@ -1913,9 +3426,7 @@ String _mdhm(DateTime time) =>
 String _statusText(MatchItem match) {
   return switch (match.matchState) {
     MatchState.notStarted => '未开赛',
-    MatchState.live => (match.liveStatusText ?? '').trim().isEmpty
-        ? '进行中'
-        : match.liveStatusText!.trim(),
+    MatchState.live => _liveStatusText(match.liveStatusText),
     MatchState.halftime => '中场',
     MatchState.finished => '完场',
     MatchState.postponed => '延期',
@@ -1925,6 +3436,21 @@ String _statusText(MatchItem match) {
         ? '状态未知'
         : match.matchStateText.trim(),
   };
+}
+
+String _liveStatusText(String? value) {
+  final text = value?.trim() ?? '';
+  if (text.isEmpty) return '进行中';
+  return RegExp(r'^\d+$').hasMatch(text) ? '$text′' : text;
+}
+
+bool _canSelectMatch(MatchItem match) {
+  if (match.matchState != MatchState.notStarted ||
+      match.bettingStatus != BettingStatus.open ||
+      !match.kickoff.isAfter(DateTime.now())) {
+    return false;
+  }
+  return match.canParlay || match.singleSupported;
 }
 
 Color _statusColor(MatchItem match) {
@@ -1947,6 +3473,7 @@ String? _displayScore(MatchItem match) {
   return text.isEmpty ? null : text;
 }
 
+// ignore: unused_element
 bool _isFinishedMatch(MatchItem match) =>
     match.matchState == MatchState.finished ||
     match.status == MatchStatus.finished ||
@@ -1971,10 +3498,10 @@ String _normalOutcome(int home, int away) => home > away
 
 String _handicapOutcome(int home, int away, dynamic rawHandicap) {
   final handicap = double.tryParse(rawHandicap?.toString() ?? '') ?? 0;
-  return _normalOutcome(home + handicap.round(), away)
-      .replaceFirst('胜', '让胜')
-      .replaceFirst('平', '让平')
-      .replaceFirst('负', '让负');
+  return _normalOutcome(
+    home + handicap.round(),
+    away,
+  ).replaceFirst('胜', '让胜').replaceFirst('平', '让平').replaceFirst('负', '让负');
 }
 
 String _totalGoalsOutcome(int home, int away) {
@@ -1997,8 +3524,11 @@ List<Map<String, dynamic>> _officialResultRows(Map<String, dynamic>? raw) {
   if (items is! Iterable) return const [];
   return items
       .whereType<Map>()
-      .map((item) => item.map<String, dynamic>(
-          (key, value) => MapEntry(key.toString(), value)))
+      .map(
+        (item) => item.map<String, dynamic>(
+          (key, value) => MapEntry(key.toString(), value),
+        ),
+      )
       .toList(growable: false);
 }
 
@@ -2083,7 +3613,7 @@ List<String> _historyOdds(Map<String, dynamic> values) {
       : (
           label: '↓${delta.abs().toStringAsFixed(2)}',
           color: _green,
-          emphasized: true
+          emphasized: true,
         );
 }
 
@@ -2093,7 +3623,9 @@ DateTime? _historyTime(Map<String, dynamic>? snapshot) {
 }
 
 List<MapEntry<String, dynamic>> _orderedMarket(
-    String title, Map<String, dynamic> source) {
+  String title,
+  Map<String, dynamic> source,
+) {
   if (title == '胜平负' || title == '让球胜平负') return _orderedOutcomes(source);
   return source.entries.toList();
 }

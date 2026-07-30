@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'api_client.dart';
 import 'match_detail_page.dart';
+import 'plan_page.dart';
 import 'selection_page.dart';
 import 'settings_page.dart';
 import 'widgets/home/home_page_container.dart';
@@ -24,6 +24,22 @@ class CaiToolApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      builder: (context, child) => LayoutBuilder(
+        builder: (context, constraints) {
+          final content = child ?? const SizedBox.shrink();
+          if (constraints.maxWidth <= 600) return content;
+          return ColoredBox(
+            color: const Color(0xffe9eeeb),
+            child: Center(
+              child: SizedBox(
+                width: 560,
+                height: constraints.maxHeight,
+                child: content,
+              ),
+            ),
+          );
+        },
+      ),
       theme: ThemeData(
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xfff6f7f8),
@@ -58,22 +74,39 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int index = 0;
+  final Set<int> _visitedPages = {0};
 
   static const pages = [
     ScoreBoardPage(),
     SelectionPage(),
-    RankingPage(),
+    PlanCenterPage(),
     SettingsPage(),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(child: pages[index]),
+      body: SafeArea(
+        child: IndexedStack(
+          index: index,
+          children: List.generate(
+            pages.length,
+            (pageIndex) => _visitedPages.contains(pageIndex)
+                ? pages[pageIndex]
+                : const SizedBox.shrink(),
+          ),
+        ),
+      ),
       bottomNavigationBar: NavigationBar(
         height: 68,
         selectedIndex: index,
-        onDestinationSelected: (value) => setState(() => index = value),
+        onDestinationSelected: (value) {
+          if (value == index) return;
+          setState(() {
+            index = value;
+            _visitedPages.add(value);
+          });
+        },
         destinations: const [
           NavigationDestination(
               icon: Icon(Icons.sports_soccer_outlined),
@@ -84,9 +117,9 @@ class _AppShellState extends State<AppShell> {
               selectedIcon: Icon(Icons.checklist),
               label: '选号'),
           NavigationDestination(
-              icon: Icon(Icons.leaderboard_outlined),
-              selectedIcon: Icon(Icons.leaderboard),
-              label: '榜单'),
+              icon: Icon(Icons.collections_bookmark_outlined),
+              selectedIcon: Icon(Icons.collections_bookmark),
+              label: '计划'),
           NavigationDestination(
               icon: Icon(Icons.settings_outlined),
               selectedIcon: Icon(Icons.settings),
@@ -111,9 +144,7 @@ class PageTitle extends StatelessWidget {
         children: [
           Text(title,
               style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.8)),
+                  fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: 0)),
           if (subtitle != null) ...[
             const SizedBox(width: 10),
             Padding(
@@ -137,192 +168,6 @@ class ScoreBoardPage extends StatelessWidget {
     return HomePageContainer(
       onMatchTap: (match) => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => MatchDetailV2Page(match: match)),
-      ),
-    );
-  }
-}
-
-class RankingPage extends StatefulWidget {
-  const RankingPage({super.key});
-
-  @override
-  State<RankingPage> createState() => _RankingPageState();
-}
-
-class _RankingPageState extends State<RankingPage> {
-  final CaiApiClient client = CaiApiClient();
-  late Future<List<Map<String, dynamic>>> future;
-
-  @override
-  void initState() {
-    super.initState();
-    future = client.isConfigured
-        ? client.fetchModelRankings()
-        : Future.value(const <Map<String, dynamic>>[]);
-  }
-
-  @override
-  void dispose() {
-    client.close();
-    super.dispose();
-  }
-
-  Future<void> _reload() async {
-    if (!client.isConfigured) return;
-    setState(() {
-      future = client.fetchModelRankings();
-    });
-    await future;
-  }
-
-  String _asPercent(dynamic value) {
-    final ratio = value is num
-        ? value.toDouble()
-        : double.tryParse(value?.toString() ?? '');
-    if (ratio == null) return '--';
-    return '${(ratio * 100).round()}%';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const SizedBox(height: 12),
-        const PageTitle('首页战绩榜', subtitle: '以命中率和连黑连红为核心'),
-        const SizedBox(height: 8),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: _reload,
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xff079669),
-                    ),
-                  );
-                }
-                final items = snapshot.data ?? const <Map<String, dynamic>>[];
-                if (items.isEmpty) {
-                  return ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(18),
-                    children: const [
-                      SizedBox(height: 120),
-                      Center(
-                        child: Text('暂无竞彩场次'),
-                      ),
-                    ],
-                  );
-                }
-                return ListView.separated(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    return _RankingRow(
-                      rank: index + 1,
-                      name: item['model_name']?.toString() ?? '-',
-                      samples: (item['samples'] as num?)?.toInt() ?? 0,
-                      hits: (item['hits'] as num?)?.toInt() ?? 0,
-                      losingStreak:
-                          (item['current_black_streak'] as num?)?.toInt() ??
-                              (item['losing_streak'] as num?)?.toInt() ??
-                              0,
-                      winningStreak:
-                          (item['current_red_streak'] as num?)?.toInt() ??
-                              (item['winning_streak'] as num?)?.toInt() ??
-                              0,
-                      hitRate: _asPercent(item['hitRate']),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RankingRow extends StatelessWidget {
-  const _RankingRow({
-    required this.rank,
-    required this.name,
-    required this.samples,
-    required this.hits,
-    required this.losingStreak,
-    required this.winningStreak,
-    required this.hitRate,
-  });
-
-  final int rank;
-  final String name;
-  final int samples;
-  final int hits;
-  final int losingStreak;
-  final int winningStreak;
-  final String hitRate;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xffe6e8ea)),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: const Color(0xffeefaf6),
-            child: Text(
-              '$rank',
-              style: const TextStyle(
-                color: Color(0xff079669),
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '闂備礁鎼粔褰掑绩閸楃儑鑰?$samples 闁?闂備礁鎲＄粙鎺楀垂濠靛鍤?$hits 闁?闂佸搫顦弲婵嬪磻閵堝洤鍨?$losingStreak 闁?闂佸搫顦弲婵嬪磻閻旇　鍋?$winningStreak',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xff80878d),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            hitRate,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: Color(0xff079669),
-            ),
-          ),
-        ],
       ),
     );
   }

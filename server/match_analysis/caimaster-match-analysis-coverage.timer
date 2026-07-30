@@ -1,0 +1,12 @@
+[Unit]
+Description=Audit CaiMaster match analysis coverage every six hours
+
+[Timer]
+OnBootSec=7min
+OnUnitActiveSec=6h
+RandomizedDelaySec=5min
+Persistent=true
+Unit=caimaster-match-analysis-coverage.service
+
+[Install]
+WantedBy=timers.target

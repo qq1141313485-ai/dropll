@@ -100,12 +100,14 @@ class MatchItem {
 
     Map<String, double> toDoubleMap(dynamic source) {
       final map = source is Map ? source : const {};
-      return map.map<String, double>((key, value) => MapEntry(
-            key.toString(),
-            value is num
-                ? value.toDouble()
-                : double.tryParse(value.toString()) ?? 0,
-          ));
+      return map.map<String, double>(
+        (key, value) => MapEntry(
+          key.toString(),
+          value is num
+              ? value.toDouble()
+              : double.tryParse(value.toString()) ?? 0,
+        ),
+      );
     }
 
     String? parseScore(dynamic value) {
@@ -194,6 +196,11 @@ class MatchItem {
     final bettingStatusText =
         json['bettingStatusText']?.toString().trim() ?? '';
     final singlePlayTypesRaw = json['singlePlayTypes'];
+    final explicitlyLive = rawStatus == 'LIVE' ||
+        rawMatchState == 'live' ||
+        rawMatchState == 'halftime' ||
+        rawMatchState == 'half_time' ||
+        rawMatchState == 'half-time';
 
     return MatchItem(
       id: json['id']?.toString() ?? '',
@@ -206,7 +213,7 @@ class MatchItem {
       kickoffRaw: json['kickoff']?.toString() ?? '',
       status: shouldTreatAsFinished
           ? MatchStatus.finished
-          : (hasLiveScore || liveStatusText.isNotEmpty
+          : (explicitlyLive || hasLiveScore || liveStatusText.isNotEmpty
               ? MatchStatus.live
               : MatchStatus.pending),
       matchState: shouldTreatAsFinished
@@ -249,15 +256,16 @@ class MatchItem {
       finalScore: finalScore ?? officialFinalScore,
       halfTimeScore: json['halfTimeScore']?.toString(),
       liveStatusText: liveStatusText.isEmpty ? null : liveStatusText,
-      titanLastUpdated:
-          DateTime.tryParse(json['titanLastUpdated']?.toString() ?? ''),
+      titanLastUpdated: DateTime.tryParse(
+        json['titanLastUpdated']?.toString() ?? '',
+      ),
       extraTimeScore: findStageScore(
         officialResults,
         const [
           'extraTimeScore',
           'overtimeScore',
           'aetScore',
-          'afterExtraTimeScore'
+          'afterExtraTimeScore',
         ],
         codeHints: const ['AET', 'ET', 'EXTRA', 'OVERTIME'],
         labelHints: const ['加时'],
@@ -276,8 +284,9 @@ class MatchItem {
       ),
       officialResults: officialResults.isEmpty ? null : officialResults,
       had: toDoubleMap(odds['had']),
-      hhad: (odds['hhad'] as Map?)
-              ?.map((key, value) => MapEntry(key.toString(), value)) ??
+      hhad: (odds['hhad'] as Map?)?.map(
+            (key, value) => MapEntry(key.toString(), value),
+          ) ??
           const {},
       ttg: toDoubleMap(odds['ttg']),
       crs: toDoubleMap(odds['crs']),

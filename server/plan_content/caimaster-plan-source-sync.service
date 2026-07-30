@@ -1,0 +1,16 @@
+[Unit]
+Description=Caimaster authorized plan source sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/caimaster-api
+EnvironmentFile=/opt/caimaster-api/api.env
+ExecStart=/opt/caimaster-api/.venv/bin/python3.11 /opt/caimaster-api/plan_source_sync.py
+User=root
+Group=root
+Nice=10
+PrivateTmp=true
+NoNewPrivileges=true
+

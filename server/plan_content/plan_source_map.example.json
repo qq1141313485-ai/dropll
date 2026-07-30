@@ -1,0 +1,26 @@
+{
+  "allowAutoCreate": false,
+  "allowedNames": [
+    "凤凰",
+    "公牛",
+    "CC"
+  ],
+  "aliases": {
+    "凤凰计划": "凤凰",
+    "牛哥": "公牛"
+  },
+  "imageAssignments": {
+    "扫地僧，辉哥中赔": [
+      "辉哥",
+      "扫地僧"
+    ]
+  },
+  "ignoredNames": [
+    "测试",
+    "临时通知"
+  ],
+  "excludedTitleWords": [
+    "APP",
+    "客服"
+  ]
+}

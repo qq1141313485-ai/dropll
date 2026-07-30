@@ -1,0 +1,11 @@
+[Unit]
+Description=Caimaster public match data consistency audit
+After=network-online.target caimaster-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/caimaster-api
+ExecStart=/opt/caimaster-api/.venv/bin/python3.11 /opt/caimaster-api/match_data_audit.py --base-url https://api.cclloo.com --history-file /opt/caimaster-api/audit/match-data-history.jsonl --retention-days 8
+User=root
+Group=root

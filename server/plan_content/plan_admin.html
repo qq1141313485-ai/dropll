@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>竞球镜计划管理</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f5f7f6; color: #171a19; font: 15px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; }
+    header { height: 58px; display: flex; align-items: center; padding: 0 24px; background: #fff; border-bottom: 1px solid #e2e7e4; }
+    header strong { font-size: 19px; }
+    main { width: min(960px, calc(100% - 28px)); margin: 22px auto 48px; }
+    section { margin-bottom: 18px; padding: 18px; background: #fff; border: 1px solid #e2e7e4; border-radius: 8px; }
+    h2 { margin: 0 0 14px; font-size: 17px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
+    label { display: grid; gap: 6px; color: #5f6864; font-size: 13px; }
+    input, select { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #ccd5d0; border-radius: 6px; background: #fff; font: inherit; }
+    input[type=file] { height: auto; padding: 9px; }
+    button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 6px; background: #0b8f55; color: #fff; font-weight: 700; cursor: pointer; }
+    button.secondary { background: #fff; color: #0b8f55; border: 1px solid #0b8f55; }
+    button.danger { background: #fff; color: #b24a4a; border: 1px solid #dfbcbc; }
+    .auth { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+    .plans { display: grid; gap: 8px; }
+    .plan { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 11px 0; border-bottom: 1px solid #edf0ee; }
+    .plan:last-child { border-bottom: 0; }
+    .sync-item { display: grid; gap: 5px; padding: 11px 0; border-bottom: 1px solid #edf0ee; }
+    .sync-item:last-child { border-bottom: 0; }
+    .sync-title { font-weight: 700; }
+    .sync-actions { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 8px; align-items: end; margin-top: 6px; }
+    .summary { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill { padding: 6px 9px; border-radius: 6px; background: #eef4f1; color: #43504a; font-size: 12px; }
+    .pill.ok { background: #eaf6ef; color: #1f6845; }
+    .pill.warn { background: #fff4db; color: #875b00; }
+    .pill.error { background: #fde9e9; color: #a33b3b; }
+    .health { display: grid; gap: 6px; margin-top: 10px; }
+    .health-row { display: grid; grid-template-columns: 70px 180px 1fr; gap: 8px; align-items: start; font-size: 12px; }
+    .run { display: grid; grid-template-columns: 132px 84px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid #edf0ee; font-size: 12px; }
+    .run:last-child { border-bottom: 0; }
+    .muted { color: #87908c; font-size: 12px; }
+    .status { min-height: 22px; margin-top: 10px; color: #0b8f55; }
+    .status.error { color: #b64242; }
+    @media (max-width: 680px) {
+      header { padding: 0 16px; }
+      .row { grid-template-columns: 1fr; }
+      .auth { grid-template-columns: 1fr; }
+      .sync-actions { grid-template-columns: 1fr; }
+      .health-row { grid-template-columns: 1fr; }
+      .run { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header><strong>竞球镜计划管理</strong></header>
+  <main>
+    <section>
+      <h2>管理员验证</h2>
+      <div class="auth">
+        <input id="token" type="password" placeholder="输入管理员密钥">
+        <button id="login">进入管理</button>
+      </div>
+      <div id="localNotice" class="status error" hidden></div>
+      <div id="authStatus" class="status"></div>
+    </section>
+
+    <div id="workspace" hidden>
+      <section>
+        <h2>自动同步状态</h2>
+        <div id="syncSummary" class="summary"></div>
+        <div id="syncSummaryMeta" class="muted" style="margin-top:8px"></div>
+        <div id="syncRuns" style="margin-top:12px"></div>
+      </section>
+
+      <section>
+        <h2>健康检查</h2>
+        <div id="syncHealth" class="health"></div>
+      </section>
+
+      <section>
+        <h2>新建计划</h2>
+        <div class="row">
+          <label>计划名称<input id="planName" placeholder="例如：单刀"></label>
+          <span></span>
+          <button id="createPlan">新建</button>
+        </div>
+        <div id="createStatus" class="status"></div>
+      </section>
+
+      <section>
+        <h2>上传今日图片</h2>
+        <div class="row">
+          <label>选择计划<select id="planSelect"></select></label>
+          <label>更新时间<input id="publishedAt" type="datetime-local"></label>
+          <span></span>
+        </div>
+        <div style="height:10px"></div>
+        <div class="row">
+          <label>批次名称<input id="batchTitle" value="今日更新"></label>
+          <label>计划图片<input id="images" type="file" accept="image/*" multiple></label>
+          <button id="upload">上传图片</button>
+        </div>
+        <div id="uploadStatus" class="status"></div>
+      </section>
+
+      <section>
+        <h2>计划列表</h2>
+        <div id="plans" class="plans"></div>
+      </section>
+
+      <section>
+        <h2>合并重复计划</h2>
+        <div class="row">
+          <label>来源计划<select id="mergeSource"></select></label>
+          <label>保留为标准计划<select id="mergeTarget"></select></label>
+          <button id="mergePlan" class="danger">预览并合并</button>
+        </div>
+        <div class="muted" style="margin-top:8px">旧计划 ID 会保留为重定向，App 收藏将在刷新时自动迁移。</div>
+        <div id="mergeStatus" class="status"></div>
+      </section>
+
+      <section>
+        <h2>待治理名称</h2>
+        <div id="syncPending" class="plans"></div>
+      </section>
+
+      <section>
+        <h2>失败文章</h2>
+        <div style="margin-bottom:10px">
+          <button class="secondary" id="retryAllFailed">全部重试</button>
+        </div>
+        <div id="syncFailed" class="plans"></div>
+      </section>
+    </div>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let token = sessionStorage.getItem("planAdminToken") || "";
+    let plans = [];
+    let pendingItems = [];
+    let failedItems = [];
+
+    if (location.protocol === "file:") {
+      $("localNotice").hidden = false;
+      $("localNotice").textContent = "当前是本地文件预览，请打开服务器 /admin/plans 管理入口后再登录。";
+    }
+
+    function status(id, text, error = false) {
+      const node = $(id);
+      node.textContent = text;
+      node.classList.toggle("error", error);
+    }
+
+    function escapeHtml(value) {
+      return String(value || "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[char]);
+    }
+
+    async function api(path, options = {}) {
+      const headers = new Headers(options.headers || {});
+      headers.set("Authorization", `Bearer ${token}`);
+      if (options.body && !(options.body instanceof FormData)) {
+        headers.set("Content-Type", "application/json");
+      }
+      const response = await fetch(path, {...options, headers});
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.detail || `请求失败 ${response.status}`);
+      return body;
+    }
+
+    function localDateTime() {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      return now.toISOString().slice(0, 16);
+    }
+
+    async function loadPlans() {
+      const body = await api("/v1/admin/plans");
+      plans = body.items || [];
+      $("planSelect").innerHTML = plans
+        .filter((plan) => plan.isActive)
+        .map((plan) => `<option value="${escapeHtml(plan.id)}">${escapeHtml(plan.name)}</option>`)
+        .join("");
+      const canonicalPlans = plans.filter((plan) => plan.isActive && !plan.canonicalPlanId);
+      const planOptions = canonicalPlans
+        .map((plan) => `<option value="${escapeHtml(plan.id)}">${escapeHtml(plan.name)} (#${escapeHtml(plan.id)})</option>`)
+        .join("");
+      $("mergeSource").innerHTML = planOptions;
+      $("mergeTarget").innerHTML = planOptions;
+      $("plans").innerHTML = plans.length ? plans.map((plan) => `
+        <div class="plan">
+          <div>
+            <strong>${escapeHtml(plan.name)}</strong>
+            <div class="muted">${escapeHtml(plan.updateCount)} 次更新 · ${plan.isActive ? "展示中" : "已下架"}${plan.canonicalPlanId ? ` · 已合并到 #${escapeHtml(plan.canonicalPlanId)}` : plan.aliasCount ? ` · 接收 ${escapeHtml(plan.aliasCount)} 个旧 ID` : ""}</div>
+          </div>
+          <button class="${plan.isActive ? "danger" : "secondary"}" data-id="${escapeHtml(plan.id)}" data-active="${plan.isActive}">
+            ${plan.isActive ? "下架" : "恢复"}
+          </button>
+        </div>
+      `).join("") : '<div class="muted">还没有计划</div>';
+      document.querySelectorAll("[data-id]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          try {
+            await api(`/v1/admin/plans/${button.dataset.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({isActive: button.dataset.active !== "true"})
+            });
+            await loadPlans();
+          } catch (error) {
+            status("authStatus", error.message, true);
+          }
+        });
+      });
+    }
+
+    async function loadSyncSummary() {
+      const body = await api("/v1/admin/plan-sync/summary");
+      const runsBody = await api("/v1/admin/plan-sync/runs?limit=5");
+      const items = body.items || {};
+      const labels = {
+        imported: "已导入",
+        duplicate: "重复",
+        failed: "失败",
+        ignored: "已忽略",
+        name_configured: "已配置待重跑",
+        pending_name: "待治理",
+        retry_queued: "失败待重跑"
+      };
+      $("syncSummary").innerHTML = Object.keys(labels).map((key) => (
+        `<span class="pill">${labels[key]} ${escapeHtml(items[key] || 0)}</span>`
+      )).join("");
+      $("syncSummaryMeta").textContent = body.lastSyncedAt
+        ? `最后同步：${body.lastSyncedAt} · 规则文件：${body.rulesPath}`
+        : `尚无同步记录 · 规则文件：${body.rulesPath}`;
+      const runs = runsBody.items || [];
+      $("syncRuns").innerHTML = runs.length ? runs.map((run) => {
+        const counts = run.counts || {};
+        const countText = [
+          `候选 ${run.candidates}`,
+          `导入 ${counts.imported || 0}`,
+          `待治理 ${counts.pending_name || 0}`,
+          `失败 ${counts.failed || 0}`
+        ].join(" · ");
+        return `<div class="run">
+          <strong>${escapeHtml(run.status)}</strong>
+          <span>${escapeHtml(run.startedAt)}</span>
+          <span>${escapeHtml(countText)}${run.error ? ` · ${escapeHtml(run.error)}` : ""}</span>
+        </div>`;
+      }).join("") : '<div class="muted">暂无运行记录</div>';
+    }
+
+    async function loadSyncHealth() {
+      const body = await api("/v1/admin/plan-sync/health");
+      const checks = body.checks || [];
+      $("syncHealth").innerHTML = checks.length ? checks.map((check) => `
+        <div class="health-row">
+          <span class="pill ${escapeHtml(check.level)}">${escapeHtml(check.level)}</span>
+          <strong>${escapeHtml(check.name)}</strong>
+          <span class="muted">${escapeHtml(check.detail)}</span>
+        </div>
+      `).join("") : '<div class="muted">暂无健康检查结果</div>';
+    }
+
+    async function loadSyncPending() {
+      const body = await api("/v1/admin/plan-sync/articles?status=pending_name&limit=80");
+      pendingItems = body.items || [];
+      $("syncPending").innerHTML = pendingItems.length ? pendingItems.map((item, index) => `
+        <div class="sync-item">
+          <div class="sync-title">${escapeHtml(item.rawPlanName || "未识别名称")}</div>
+          <div>${escapeHtml(item.sourceTitle)}</div>
+          <div class="muted">${escapeHtml(item.sourceName)} #${escapeHtml(item.sourceArticleId)} · ${escapeHtml(item.syncedAt)}</div>
+          <div class="muted">${escapeHtml(item.error)}</div>
+          <div class="sync-actions">
+            <label>标准名称<input data-sync-standard="${index}" value="${escapeHtml(item.rawPlanName)}"></label>
+            <label>映射到计划<select data-sync-plan="${index}">
+              <option value="">不映射</option>
+              ${plans.map((plan) => `<option value="${escapeHtml(plan.name)}">${escapeHtml(plan.name)}</option>`).join("")}
+            </select></label>
+            <button data-sync-action="allow" data-index="${index}">保存规则</button>
+            <button class="danger" data-sync-action="ignore" data-index="${index}">忽略</button>
+          </div>
+        </div>
+      `).join("") : '<div class="muted">暂无待治理名称</div>';
+      document.querySelectorAll("[data-sync-action]").forEach((button) => {
+        button.addEventListener("click", () => applyNameRule(button));
+      });
+    }
+
+    async function loadSyncFailed() {
+      const body = await api("/v1/admin/plan-sync/articles?status=failed&limit=50");
+      failedItems = body.items || [];
+      $("syncFailed").innerHTML = failedItems.length ? failedItems.map((item, index) => `
+        <div class="sync-item">
+          <div class="sync-title">${escapeHtml(item.rawPlanName || item.resolvedPlanName || "同步失败")}</div>
+          <div>${escapeHtml(item.sourceTitle)}</div>
+          <div class="muted">${escapeHtml(item.sourceName)} #${escapeHtml(item.sourceArticleId)} · ${escapeHtml(item.syncedAt)}</div>
+          <div class="muted">${escapeHtml(item.error)}</div>
+          <div>
+            <button class="secondary" data-retry-index="${index}">重试</button>
+          </div>
+        </div>
+      `).join("") : '<div class="muted">暂无失败文章</div>';
+      document.querySelectorAll("[data-retry-index]").forEach((button) => {
+        button.addEventListener("click", () => retryFailedArticle(button));
+      });
+    }
+
+    async function retryFailedArticle(button) {
+      const item = failedItems[Number(button.dataset.retryIndex)];
+      if (!item) return;
+      button.disabled = true;
+      try {
+        await api("/v1/admin/plan-sync/articles/retry", {
+          method: "POST",
+          body: JSON.stringify({sourceArticleId: item.sourceArticleId})
+        });
+        status("authStatus", "已加入失败重试队列");
+        await loadSyncSummary();
+        await loadSyncHealth();
+        await loadSyncFailed();
+      } catch (error) {
+        status("authStatus", error.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function retryAllFailed() {
+      try {
+        await api("/v1/admin/plan-sync/articles/retry", {
+          method: "POST",
+          body: JSON.stringify({all: true})
+        });
+        status("authStatus", "失败文章已加入重试队列");
+        await loadSyncSummary();
+        await loadSyncHealth();
+        await loadSyncFailed();
+      } catch (error) {
+        status("authStatus", error.message, true);
+      }
+    }
+
+    async function applyNameRule(button) {
+      const item = pendingItems[Number(button.dataset.index)];
+      if (!item) return;
+      const action = button.dataset.syncAction;
+      const standardInput = document.querySelector(`[data-sync-standard="${button.dataset.index}"]`);
+      const planSelect = document.querySelector(`[data-sync-plan="${button.dataset.index}"]`);
+      const standardName = (planSelect.value || standardInput.value || item.rawPlanName).trim();
+      button.disabled = true;
+      try {
+        await api("/v1/admin/plan-sync/name-rules/actions", {
+          method: "POST",
+          body: JSON.stringify({
+            action,
+            rawName: item.rawPlanName,
+            standardName
+          })
+        });
+        status("authStatus", action === "ignore" ? "已加入忽略名单" : "名称规则已保存，等待下次同步");
+        await loadSyncSummary();
+        await loadSyncHealth();
+        await loadSyncPending();
+      } catch (error) {
+        status("authStatus", error.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function login() {
+      token = $("token").value.trim() || token;
+      if (!token) return status("authStatus", "请输入管理员密钥", true);
+      try {
+        await loadSyncSummary();
+        await loadSyncHealth();
+        await loadPlans();
+        await loadSyncPending();
+        await loadSyncFailed();
+        sessionStorage.setItem("planAdminToken", token);
+        $("workspace").hidden = false;
+        status("authStatus", "验证成功");
+      } catch (error) {
+        $("workspace").hidden = true;
+        status("authStatus", error.message, true);
+      }
+    }
+
+    $("login").addEventListener("click", login);
+    $("createPlan").addEventListener("click", async () => {
+      const name = $("planName").value.trim();
+      if (!name) return status("createStatus", "请输入计划名称", true);
+      try {
+        await api("/v1/admin/plans", {method: "POST", body: JSON.stringify({name})});
+        $("planName").value = "";
+        status("createStatus", "计划已新建");
+        await loadSyncSummary();
+        await loadSyncHealth();
+        await loadPlans();
+        await loadSyncPending();
+        await loadSyncFailed();
+      } catch (error) {
+        status("createStatus", error.message, true);
+      }
+    });
+
+    $("mergePlan").addEventListener("click", async () => {
+      const sourceId = $("mergeSource").value;
+      const targetId = $("mergeTarget").value;
+      if (!sourceId || !targetId || sourceId === targetId) {
+        return status("mergeStatus", "请选择两个不同的计划", true);
+      }
+      try {
+        const preview = await api(`/v1/admin/plans/${sourceId}/merge`, {
+          method: "POST",
+          body: JSON.stringify({targetPlanId: targetId, execute: false})
+        });
+        const message = `确认把“${preview.source.name}”合并到“${preview.target.name}”？\n将迁移 ${preview.updateCount} 次更新、${preview.imageCount} 张图片。此操作需要用数据库备份回滚。`;
+        if (!window.confirm(message)) return;
+        await api(`/v1/admin/plans/${sourceId}/merge`, {
+          method: "POST",
+          body: JSON.stringify({targetPlanId: targetId, execute: true})
+        });
+        status("mergeStatus", "合并完成，旧 ID 重定向已生效");
+        await loadPlans();
+      } catch (error) {
+        status("mergeStatus", error.message, true);
+      }
+    });
+
+    $("upload").addEventListener("click", async () => {
+      const planId = $("planSelect").value;
+      const files = $("images").files;
+      if (!planId) return status("uploadStatus", "请先新建计划", true);
+      if (!files.length) return status("uploadStatus", "请选择图片", true);
+      const form = new FormData();
+      for (const file of files) form.append("files", file);
+      const query = new URLSearchParams({
+        title: $("batchTitle").value.trim() || "今日更新",
+        published_at: $("publishedAt").value
+      });
+      status("uploadStatus", "正在上传…");
+      try {
+        const result = await api(`/v1/admin/plans/${planId}/updates?${query}`, {
+          method: "POST",
+          body: form
+        });
+        $("images").value = "";
+        status("uploadStatus", `上传成功，共 ${result.imageCount} 张`);
+        await loadSyncSummary();
+        await loadSyncHealth();
+        await loadPlans();
+        await loadSyncPending();
+        await loadSyncFailed();
+      } catch (error) {
+        status("uploadStatus", error.message, true);
+      }
+    });
+
+    $("publishedAt").value = localDateTime();
+    $("retryAllFailed").addEventListener("click", retryAllFailed);
+    $("token").value = token;
+    if (token) login();
+  </script>
+</body>
+</html>

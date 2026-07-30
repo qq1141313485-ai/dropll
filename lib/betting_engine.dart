@@ -62,8 +62,12 @@ class MatchPick {
 }
 
 class PassMethod {
-  const PassMethod(this.matches, this.tickets, this.subPassSizes,
-      {this.displayLabel});
+  const PassMethod(
+    this.matches,
+    this.tickets,
+    this.subPassSizes, {
+    this.displayLabel,
+  });
   final int matches;
   final int tickets;
   final List<int> subPassSizes;
@@ -142,7 +146,8 @@ class AtomicBet {
 
   double get spProduct =>
       picks.fold(1, (value, item) => value * item.option.sp);
-  double get unitReturn => _roundHalfEven(2 * spProduct);
+  double get unitReturn =>
+      lotteryUnitReturn(spProduct: spProduct, passSize: passSize);
   String get description => picks.map((item) {
         final match = item.match;
         final play = item.option.play ?? match.play;
@@ -151,27 +156,74 @@ class AtomicBet {
       }).join(' × ');
 }
 
+double lotteryUnitReturn({required double spProduct, required int passSize}) {
+  final cap = switch (passSize) {
+    1 => 100000.0,
+    2 || 3 => 200000.0,
+    4 || 5 => 500000.0,
+    _ => 1000000.0,
+  };
+  return math.min(_roundHalfEven(2 * spProduct), cap);
+}
+
+const _directScoreResults = {
+  '1:0',
+  '2:0',
+  '2:1',
+  '3:0',
+  '3:1',
+  '3:2',
+  '4:0',
+  '4:1',
+  '4:2',
+  '5:0',
+  '5:1',
+  '5:2',
+  '0:0',
+  '1:1',
+  '2:2',
+  '3:3',
+  '0:1',
+  '0:2',
+  '1:2',
+  '0:3',
+  '1:3',
+  '2:3',
+  '0:4',
+  '1:4',
+  '2:4',
+  '0:5',
+  '1:5',
+  '2:5',
+};
+
+String footballScoreResultLabel(int home, int away) {
+  final score = '$home:$away';
+  if (_directScoreResults.contains(score)) return score;
+  return home > away
+      ? '胜其他'
+      : home == away
+          ? '平其他'
+          : '负其他';
+}
+
 class SplitTicket {
   const SplitTicket({required this.bet, required this.multiple});
   final AtomicBet bet;
   final int multiple;
   double get amount => 2.0 * multiple;
-  double get theoreticalReturn {
-    final cap = switch (bet.passSize) {
-      1 => 100000.0,
-      2 || 3 => 200000.0,
-      4 || 5 => 500000.0,
-      _ => 1000000.0,
-    };
-    return math.min(bet.unitReturn, cap) * multiple;
-  }
+  double get theoreticalReturn => _roundHalfEven(bet.unitReturn * multiple);
 }
 
 enum OptimizeMode { balanced, hot, cold }
 
 class BettingResult {
-  const BettingResult(this.atomicBets, this.tickets,
-      {this.principalProtected, this.isSplit = false});
+  const BettingResult(
+    this.atomicBets,
+    this.tickets, {
+    this.principalProtected,
+    this.isSplit = false,
+  });
   final List<AtomicBet> atomicBets;
   final List<SplitTicket> tickets;
   final bool? principalProtected;
@@ -181,8 +233,11 @@ class BettingResult {
   Map<AtomicBet, double> get returnsByCombination {
     final values = <AtomicBet, double>{};
     for (final ticket in tickets) {
-      values.update(ticket.bet, (value) => value + ticket.theoreticalReturn,
-          ifAbsent: () => ticket.theoreticalReturn);
+      values.update(
+        ticket.bet,
+        (value) => value + ticket.theoreticalReturn,
+        ifAbsent: () => ticket.theoreticalReturn,
+      );
     }
     return values;
   }
@@ -193,37 +248,124 @@ class BettingResult {
   double get maxReturn {
     final returns = returnsByCombination;
     if (returns.isEmpty) return 0;
-    final optionsByMatch = <String, List<BetOption?>>{};
+    final picksByMatch = <String, MatchPick>{};
     for (final bet in atomicBets) {
       for (final item in bet.picks) {
-        final values = optionsByMatch.putIfAbsent(
-            item.match.matchId, () => <BetOption?>[null]);
-        if (!values.contains(item.option)) values.add(item.option);
+        picksByMatch.putIfAbsent(item.match.matchId, () => item.match);
       }
     }
-    final entries = optionsByMatch.entries.toList(growable: false);
+    final entries = picksByMatch.entries
+        .map(
+          (entry) => MapEntry(
+            entry.key,
+            _possibleWinningOptions(entry.value),
+          ),
+        )
+        .toList(growable: false);
     var maximum = 0.0;
-    final chosen = <String, BetOption?>{};
+    final chosen = <String, Set<BetOption>>{};
     void visit(int index) {
       if (index == entries.length) {
         var total = 0.0;
         for (final entry in returns.entries) {
           final wins = entry.key.picks.every(
-              (item) => identical(chosen[item.match.matchId], item.option));
+            (item) => chosen[item.match.matchId]!.contains(item.option),
+          );
           if (wins) total += entry.value;
         }
         if (total > maximum) maximum = total;
         return;
       }
       final entry = entries[index];
-      for (final option in entry.value) {
-        chosen[entry.key] = option;
+      for (final options in entry.value) {
+        chosen[entry.key] = options;
         visit(index + 1);
       }
     }
 
     visit(0);
     return maximum;
+  }
+}
+
+List<Set<BetOption>> _possibleWinningOptions(MatchPick pick) {
+  final outcomes = <Set<BetOption>>[<BetOption>{}];
+  final signatures = <String>{''};
+  final recognized = <BetOption>{};
+
+  void addOutcome(int home, int away, int halfHome, int halfAway) {
+    final winners = <BetOption>{};
+    for (final option in pick.options) {
+      final play = option.play ?? pick.play;
+      if (_optionWinsOutcome(
+        option.label,
+        play,
+        pick.handicap,
+        home,
+        away,
+        halfHome,
+        halfAway,
+      )) {
+        winners.add(option);
+        recognized.add(option);
+      }
+    }
+    final signature = [
+      for (var index = 0; index < pick.options.length; index++)
+        if (winners.contains(pick.options[index])) index,
+    ].join(',');
+    if (signatures.add(signature)) outcomes.add(winners);
+  }
+
+  for (var home = 0; home <= 8; home++) {
+    for (var away = 0; away <= 8; away++) {
+      for (var halfHome = 0; halfHome <= home; halfHome++) {
+        for (var halfAway = 0; halfAway <= away; halfAway++) {
+          addOutcome(home, away, halfHome, halfAway);
+        }
+      }
+    }
+  }
+
+  // Legacy schemes and tests may contain labels outside the official pools.
+  // Preserve their former mutually-exclusive behavior instead of dropping them.
+  for (final option in pick.options) {
+    if (!recognized.contains(option)) outcomes.add({option});
+  }
+  return outcomes;
+}
+
+bool _optionWinsOutcome(
+  String rawLabel,
+  FootballPlay play,
+  String handicap,
+  int home,
+  int away,
+  int halfHome,
+  int halfAway,
+) {
+  final label = rawLabel.trim().replaceAll('其它', '其他').replaceAll('-', ':');
+  String outcome(int left, int right) => left > right
+      ? '胜'
+      : left == right
+          ? '平'
+          : '负';
+
+  switch (play) {
+    case FootballPlay.had:
+      return label == outcome(home, away);
+    case FootballPlay.hhad:
+      final value = double.tryParse(handicap.trim())?.round() ?? 0;
+      final winner = outcome(home + value, away);
+      return label == winner || label == '让$winner';
+    case FootballPlay.ttg:
+      final total = home + away;
+      return label.replaceAll('球', '') == (total >= 7 ? '7+' : '$total');
+    case FootballPlay.crs:
+      return label == footballScoreResultLabel(home, away);
+    case FootballPlay.hafu:
+      final compact = label.replaceAll('/', '').replaceAll(' ', '');
+      return compact == '${outcome(halfHome, halfAway)}${outcome(home, away)}';
   }
 }
 
@@ -242,16 +384,15 @@ class BettingEngine {
     _validate(picks, pass, multiple);
     final atomic = _expand(picks, pass);
     return BettingResult(
-      atomic,
-      [
-        for (final bet in atomic)
-          if (splitTickets)
-            ..._splitByTicketLimit(bet, multiple)
-          else
-            SplitTicket(bet: bet, multiple: multiple)
-      ],
-      isSplit: splitTickets,
-    );
+        atomic,
+        [
+          for (final bet in atomic)
+            if (splitTickets)
+              ..._splitByTicketLimit(bet, multiple)
+            else
+              SplitTicket(bet: bet, multiple: multiple),
+        ],
+        isSplit: splitTickets);
   }
 
   BettingResult calculateMultiple({
@@ -267,16 +408,15 @@ class BettingEngine {
       atomic.addAll(_expand(picks, pass));
     }
     return BettingResult(
-      atomic,
-      [
-        for (final bet in atomic)
-          if (splitTickets)
-            ..._splitByTicketLimit(bet, multiple)
-          else
-            SplitTicket(bet: bet, multiple: multiple)
-      ],
-      isSplit: splitTickets,
-    );
+        atomic,
+        [
+          for (final bet in atomic)
+            if (splitTickets)
+              ..._splitByTicketLimit(bet, multiple)
+            else
+              SplitTicket(bet: bet, multiple: multiple),
+        ],
+        isSplit: splitTickets);
   }
 
   BettingResult split(BettingResult result) => BettingResult(
@@ -284,10 +424,11 @@ class BettingEngine {
         [
           for (final entry in result.returnsByCombination.keys)
             ..._splitByTicketLimit(
-                entry,
-                result.tickets
-                    .where((ticket) => identical(ticket.bet, entry))
-                    .fold(0, (sum, ticket) => sum + ticket.multiple))
+              entry,
+              result.tickets
+                  .where((ticket) => identical(ticket.bet, entry))
+                  .fold(0, (sum, ticket) => sum + ticket.multiple),
+            ),
         ],
         principalProtected: result.principalProtected,
         isSplit: true,
@@ -328,7 +469,10 @@ class BettingEngine {
   }
 
   BettingResult _optimizeAtomic(
-      List<AtomicBet> atomic, int units, OptimizeMode mode) {
+    List<AtomicBet> atomic,
+    int units,
+    OptimizeMode mode,
+  ) {
     final multiples = List<int>.filled(atomic.length, 1);
     if (mode == OptimizeMode.balanced) {
       _allocateAverage(atomic, multiples, units - atomic.length);
@@ -363,7 +507,10 @@ class BettingEngine {
   }
 
   void _allocateAverage(
-      List<AtomicBet> atomic, List<int> multiples, int remaining) {
+    List<AtomicBet> atomic,
+    List<int> multiples,
+    int remaining,
+  ) {
     while (remaining > 0) {
       var best = 0;
       var bestReturn = double.infinity;
@@ -397,15 +544,17 @@ class BettingEngine {
   }
 
   BettingResult _optimizedResult(
-      List<AtomicBet> atomic, List<int> multiples, bool? protected) {
+    List<AtomicBet> atomic,
+    List<int> multiples,
+    bool? protected,
+  ) {
     return BettingResult(
-      atomic,
-      [
-        for (var i = 0; i < atomic.length; i++)
-          SplitTicket(bet: atomic[i], multiple: multiples[i])
-      ],
-      principalProtected: protected,
-    );
+        atomic,
+        [
+          for (var i = 0; i < atomic.length; i++)
+            SplitTicket(bet: atomic[i], multiple: multiples[i]),
+        ],
+        principalProtected: protected);
   }
 
   void _validate(List<MatchPick> picks, PassMethod pass, int multiple) {
@@ -417,8 +566,10 @@ class BettingEngine {
       throw ArgumentError('每场至少选择一个结果');
     }
     final maxPass = picks
-        .expand((item) =>
-            item.options.map((option) => (option.play ?? item.play).maxPass))
+        .expand(
+          (item) =>
+              item.options.map((option) => (option.play ?? item.play).maxPass),
+        )
         .reduce(math.min);
     if (pass.subPassSizes.any((size) => size > maxPass)) {
       throw ArgumentError('当前玩法最高支持 $maxPass 关');
@@ -448,15 +599,18 @@ class BettingEngine {
       final need = size - bankers.length;
       for (final subset in _combinations(drags, need)) {
         final matches = [...bankers, ...subset];
-        for (final options
-            in _cartesian(matches.map((item) => item.options).toList())) {
-          result.add(AtomicBet(
-            passSize: size,
-            picks: [
-              for (var i = 0; i < matches.length; i++)
-                (match: matches[i], option: options[i])
-            ],
-          ));
+        for (final options in _cartesian(
+          matches.map((item) => item.options).toList(),
+        )) {
+          result.add(
+            AtomicBet(
+              passSize: size,
+              picks: [
+                for (var i = 0; i < matches.length; i++)
+                  (match: matches[i], option: options[i]),
+              ],
+            ),
+          );
         }
       }
     }
@@ -498,7 +652,7 @@ List<List<T>> _cartesian<T>(List<List<T>> groups) {
   for (final group in groups) {
     result = [
       for (final prefix in result)
-        for (final item in group) [...prefix, item]
+        for (final item in group) [...prefix, item],
     ];
   }
   return result;

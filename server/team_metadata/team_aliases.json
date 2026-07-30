@@ -1,0 +1,58 @@
+{
+  "哈茨": {
+    "provider": "thesportsdb",
+    "query": "Heart of Midlothian",
+    "sourceTeamId": "133643",
+    "sourceName": "Heart of Midlothian",
+    "country": "Scotland"
+  },
+  "奥胡斯": {
+    "provider": "thesportsdb",
+    "query": "AGF Aarhus",
+    "sourceTeamId": "133899",
+    "sourceName": "AGF Aarhus",
+    "country": "Denmark"
+  },
+  "奥莫尼亚": {
+    "provider": "thesportsdb",
+    "query": "Omonia Nicosia",
+    "sourceTeamId": "133986",
+    "sourceName": "Omonia Nicosia",
+    "country": "Cyprus"
+  },
+  "库奥皮奥": {
+    "provider": "thesportsdb",
+    "query": "KuPS",
+    "sourceTeamId": "134018",
+    "sourceName": "KuPS",
+    "country": "Finland"
+  },
+  "格风暴": {
+    "provider": "thesportsdb",
+    "query": "Sturm Graz",
+    "sourceTeamId": "137743",
+    "sourceName": "Sturm Graz",
+    "country": "Austria"
+  },
+  "波兹南": {
+    "provider": "thesportsdb",
+    "query": "Lech Poznan",
+    "sourceTeamId": "134010",
+    "sourceName": "Lech Poznań",
+    "country": "Poland"
+  },
+  "萨巴赫": {
+    "provider": "thesportsdb",
+    "query": "Sabah Baku",
+    "sourceTeamId": "138341",
+    "sourceName": "Sabah Baku",
+    "country": "Azerbaijan"
+  },
+  "阿拉木图": {
+    "provider": "thesportsdb",
+    "query": "Kairat Almaty",
+    "sourceTeamId": "134602",
+    "sourceName": "Kairat Almaty",
+    "country": "Kazakhstan"
+  }
+}

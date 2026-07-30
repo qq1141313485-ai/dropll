@@ -1,0 +1,14 @@
+[Unit]
+Description=CaiMaster team metadata coverage audit
+After=network-online.target caimaster-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=admin
+Group=admin
+WorkingDirectory=/opt/caimaster-api/team_metadata
+ExecStart=/opt/caimaster-api/.venv/bin/python3.11 /opt/caimaster-api/team_metadata/audit_team_metadata_coverage.py --output /opt/caimaster-api/team_metadata/work/coverage.json
+
+[Install]
+WantedBy=multi-user.target

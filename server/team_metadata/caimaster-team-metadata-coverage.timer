@@ -1,0 +1,12 @@
+[Unit]
+Description=Audit CaiMaster team metadata coverage every six hours
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=6h
+RandomizedDelaySec=5min
+Persistent=true
+Unit=caimaster-team-metadata-coverage.service
+
+[Install]
+WantedBy=timers.target

@@ -225,6 +225,14 @@ class _HomeMatchListState extends State<HomeMatchList> {
             style: const TextStyle(fontSize: 12, color: Color(0xffb45309)),
           ),
         ));
+        widgets.add(const SizedBox(height: 6));
+        widgets.add(Center(
+          child: TextButton.icon(
+            onPressed: widget.onRefresh,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('重新加载'),
+          ),
+        ));
       }
     }
     return RefreshIndicator(
