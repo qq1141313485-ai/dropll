@@ -6,7 +6,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -101,11 +100,13 @@ class _SelectionPageState extends State<SelectionPage> {
         final refreshed = data
             .whereType<Map<String, dynamic>>()
             .map(MatchItem.fromJson)
-            .where((match) =>
-                match.matchState == MatchState.notStarted &&
-                match.bettingStatus == BettingStatus.open &&
-                match.kickoff.isAfter(now) &&
-                FootballPlay.values.any((play) => _enabled(match, play)))
+            .where(
+              (match) =>
+                  match.matchState == MatchState.notStarted &&
+                  match.bettingStatus == BettingStatus.open &&
+                  match.kickoff.isAfter(now) &&
+                  FootballPlay.values.any((play) => _enabled(match, play)),
+            )
             .toList()
           ..sort(_compareMatchNumber);
         final activeIds = refreshed.map((match) => match.id).toSet();
@@ -122,8 +123,9 @@ class _SelectionPageState extends State<SelectionPage> {
       debugPrint('选号数据加载失败: $error');
       if (mounted && !silent) {
         setState(() => loadError = error.toString());
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('比赛数据加载失败')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('比赛数据加载失败')));
       }
     } finally {
       if (mounted && !silent) setState(() => loading = false);
@@ -138,9 +140,9 @@ class _SelectionPageState extends State<SelectionPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (index < 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('该比赛当前不在可选号列表，可能已停售')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('该比赛当前不在可选号列表，可能已停售')));
         return;
       }
       _openMore(refreshed[index]);
@@ -166,7 +168,7 @@ class _SelectionPageState extends State<SelectionPage> {
         FootballPlay.hhad => {
             for (final e in m.hhad.entries)
               if (e.key != '让球' && e.value is num)
-                e.key: (e.value as num).toDouble()
+                e.key: (e.value as num).toDouble(),
           },
         FootballPlay.ttg => m.ttg,
         FootballPlay.crs => m.crs,
@@ -192,27 +194,29 @@ class _SelectionPageState extends State<SelectionPage> {
         for (final m in matches)
           if (drafts[m.id] case final d? when d.hasSelection)
             MatchPick(
-                matchId: m.id,
-                number: m.number,
-                home: m.home,
-                away: m.away,
-                league: m.league,
-                kickoff: m.kickoff,
-                play: d.firstPlay,
-                banker: d.banker,
-                availableOdds: {
-                  for (final play in d.selected.keys) play: _odds(m, play),
-                },
-                handicap: m.hhad['让球']?.toString() ?? '',
-                options: [
-                  for (final entry in d.selected.entries)
-                    for (final k in entry.value)
-                      if (_odds(m, entry.key)[k] != null)
-                        BetOption(
-                            label: k,
-                            sp: _odds(m, entry.key)[k]!,
-                            play: entry.key)
-                ])
+              matchId: m.id,
+              number: m.number,
+              home: m.home,
+              away: m.away,
+              league: m.league,
+              kickoff: m.kickoff,
+              play: d.firstPlay,
+              banker: d.banker,
+              availableOdds: {
+                for (final play in d.selected.keys) play: _odds(m, play),
+              },
+              handicap: m.hhad['让球']?.toString() ?? '',
+              options: [
+                for (final entry in d.selected.entries)
+                  for (final k in entry.value)
+                    if (_odds(m, entry.key)[k] != null)
+                      BetOption(
+                        label: k,
+                        sp: _odds(m, entry.key)[k]!,
+                        play: entry.key,
+                      ),
+              ],
+            ),
       ];
 
   void _toggle(MatchItem m, FootballPlay p, String key) => setState(() {
@@ -237,23 +241,30 @@ class _SelectionPageState extends State<SelectionPage> {
             final pool = m.pools[play.poolCode];
             return pool is! Map || pool['single'] != true;
           })) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('当前玩法不支持单关')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('当前玩法不支持单关')));
         return;
       }
     }
-    Navigator.of(context).push(MaterialPageRoute<void>(
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
         builder: (_) => _SchemePage(
-            picks: selected,
-            initialPasses: quickPasses,
-            initialMultiple: quickMultiple,
-            initialBudget: _quickResult(selected)?.amount,
-            optimizationOnly: optimize)));
+          picks: selected,
+          initialPasses: quickPasses,
+          initialMultiple: quickMultiple,
+          initialBudget: _quickResult(selected)?.amount,
+          optimizationOnly: optimize,
+        ),
+      ),
+    );
   }
 
   int _maxPassFor(List<MatchPick> selected) => selected
-      .expand((item) =>
-          item.options.map((option) => (option.play ?? item.play).maxPass))
+      .expand(
+        (item) =>
+            item.options.map((option) => (option.play ?? item.play).maxPass),
+      )
       .reduce((a, b) => a < b ? a : b);
 
   bool _supportsSingle(MatchPick pick) {
@@ -296,8 +307,11 @@ class _SelectionPageState extends State<SelectionPage> {
       return;
     }
     final freeMethods = methods
-        .where((method) =>
-            method.matches == 1 || method.displayLabel?.endsWith('串1') == true)
+        .where(
+          (method) =>
+              method.matches == 1 ||
+              method.displayLabel?.endsWith('串1') == true,
+        )
         .toList(growable: false);
     quickPasses = [freeMethods.isEmpty ? methods.first : freeMethods.last];
   }
@@ -306,9 +320,13 @@ class _SelectionPageState extends State<SelectionPage> {
     final selected = picks;
     final methods = _quickMethods(selected);
     if (methods.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
           content: Text(
-              selected.length == 1 ? '当前选择不支持单关，请至少选择2场' : '当前玩法组合暂无可用过关方式')));
+            selected.length == 1 ? '当前选择不支持单关，请至少选择2场' : '当前玩法组合暂无可用过关方式',
+          ),
+        ),
+      );
       return;
     }
     final freeMethods = methods
@@ -316,56 +334,76 @@ class _SelectionPageState extends State<SelectionPage> {
         .toList(growable: false);
     var selectedMethods = [
       for (final method in freeMethods)
-        if (quickPasses.any((item) => _samePass(item, method))) method
+        if (quickPasses.any((item) => _samePass(item, method))) method,
     ];
     final chosen = await showModalBottomSheet<List<PassMethod>>(
-        context: context,
-        useSafeArea: true,
-        builder: (sheetContext) => StatefulBuilder(builder: (_, updateSheet) {
-              return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Row(children: [
-                      const Text('过关方式',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w700)),
-                      const Spacer(),
-                      Text('已选${selected.length}场，可多选',
-                          style: const TextStyle(
-                              fontSize: 11, color: Color(0xff7f8783)))
-                    ]),
-                    const SizedBox(height: 14),
-                    Wrap(spacing: 8, runSpacing: 8, children: [
-                      for (final method in freeMethods)
-                        FilterChip(
-                            label: Text(method.label),
-                            selected: selectedMethods
-                                .any((item) => _samePass(item, method)),
-                            onSelected: (value) => updateSheet(() {
-                                  if (value) {
-                                    selectedMethods = [
-                                      ...selectedMethods,
-                                      method
-                                    ];
-                                  } else {
-                                    selectedMethods = selectedMethods
-                                        .where(
-                                            (item) => !_samePass(item, method))
-                                        .toList(growable: false);
-                                  }
-                                }))
-                    ]),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                            onPressed: selectedMethods.isEmpty
-                                ? null
-                                : () => Navigator.pop(
-                                    sheetContext, selectedMethods),
-                            child: const Text('确定')))
-                  ]));
-            }));
+      context: context,
+      useSafeArea: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (_, updateSheet) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      '过关方式',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '已选${selected.length}场，可多选',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xff7f8783),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final method in freeMethods)
+                      FilterChip(
+                        label: Text(method.label),
+                        selected: selectedMethods.any(
+                          (item) => _samePass(item, method),
+                        ),
+                        onSelected: (value) => updateSheet(() {
+                          if (value) {
+                            selectedMethods = [...selectedMethods, method];
+                          } else {
+                            selectedMethods = selectedMethods
+                                .where((item) => !_samePass(item, method))
+                                .toList(growable: false);
+                          }
+                        }),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: selectedMethods.isEmpty
+                        ? null
+                        : () => Navigator.pop(sheetContext, selectedMethods),
+                    child: const Text('确定'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
     if (chosen != null && mounted) {
       setState(() {
         quickPasses = chosen;
@@ -377,7 +415,10 @@ class _SelectionPageState extends State<SelectionPage> {
     if (quickPasses.isEmpty) return null;
     try {
       return const BettingEngine().calculateMultiple(
-          picks: selected, passes: quickPasses, multiple: quickMultiple);
+        picks: selected,
+        passes: quickPasses,
+        multiple: quickMultiple,
+      );
     } catch (_) {
       return null;
     }
@@ -397,136 +438,175 @@ class _SelectionPageState extends State<SelectionPage> {
     // Keep the display at 1x, but let a typed value replace it rather than append.
     var input = '';
     final chosen = await showModalBottomSheet<int>(
-        context: context,
-        useSafeArea: true,
-        builder: (sheetContext) => StatefulBuilder(
-            builder: (context, updateSheet) => Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Row(children: [
-                    const Text('方案总倍数',
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700)),
-                    const Spacer(),
-                    Text('$input 倍',
-                        style: const TextStyle(
-                            fontSize: 18,
-                            color: Color(0xff168f62),
-                            fontWeight: FontWeight.w700))
-                  ]),
-                  const SizedBox(height: 10),
-                  Row(children: [
-                    for (final value in const [20, 50, 100, 500])
+      context: context,
+      useSafeArea: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, updateSheet) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  const Text(
+                    '方案总倍数',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '$input 倍',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      color: Color(0xff168f62),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  for (final value in const [20, 50, 100, 500])
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 3),
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 42),
+                          ),
+                          onPressed: () =>
+                              updateSheet(() => input = value.toString()),
+                          child: Text(
+                            '$value倍',
+                            maxLines: 1,
+                            softWrap: false,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 3,
+                childAspectRatio: 2.25,
+                children: [
+                  for (final key in const [
+                    '1',
+                    '2',
+                    '3',
+                    '4',
+                    '5',
+                    '6',
+                    '7',
+                    '8',
+                    '9',
+                    '清空',
+                    '0',
+                    '⌫',
+                  ])
+                    InkWell(
+                      onTap: () => updateSheet(() {
+                        if (key == '清空') {
+                          input = '';
+                        } else if (key == '⌫') {
+                          if (input.isNotEmpty) {
+                            input = input.substring(0, input.length - 1);
+                          }
+                        } else {
+                          final next = '$input$key'.replaceFirst(
+                            RegExp(r'^0+'),
+                            '',
+                          );
+                          final parsed = int.tryParse(next) ?? 0;
+                          if (parsed <= BettingEngine.maxSchemeMultiple) {
+                            input = next;
+                          }
+                        }
+                      }),
+                      child: Container(
+                        margin: const EdgeInsets.all(2),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0xfff4f6f5),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Text(key, style: const TextStyle(fontSize: 16)),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Builder(
+                builder: (_) {
+                  BettingResult? preview;
+                  final multiple = int.tryParse(input) ?? 0;
+                  if (multiple > 0 && quickPasses.isNotEmpty) {
+                    try {
+                      preview = const BettingEngine().calculateMultiple(
+                        picks: picks,
+                        passes: quickPasses,
+                        multiple: multiple,
+                      );
+                    } catch (_) {}
+                  }
+                  return Row(
+                    children: [
                       Expanded(
-                          child: Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 3),
-                              child: OutlinedButton(
-                                  style: OutlinedButton.styleFrom(
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: const Size(0, 42)),
-                                  onPressed: () => updateSheet(
-                                      () => input = value.toString()),
-                                  child: Text('$value倍',
-                                      maxLines: 1,
-                                      softWrap: false,
-                                      style: const TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600)))))
-                  ]),
-                  const SizedBox(height: 8),
-                  GridView.count(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: 3,
-                      childAspectRatio: 2.25,
-                      children: [
-                        for (final key in const [
-                          '1',
-                          '2',
-                          '3',
-                          '4',
-                          '5',
-                          '6',
-                          '7',
-                          '8',
-                          '9',
-                          '清空',
-                          '0',
-                          '⌫'
-                        ])
-                          InkWell(
-                              onTap: () => updateSheet(() {
-                                    if (key == '清空') {
-                                      input = '';
-                                    } else if (key == '⌫') {
-                                      if (input.isNotEmpty) {
-                                        input = input.substring(
-                                            0, input.length - 1);
-                                      }
-                                    } else {
-                                      final next = '$input$key'
-                                          .replaceFirst(RegExp(r'^0+'), '');
-                                      final parsed = int.tryParse(next) ?? 0;
-                                      if (parsed <=
-                                          BettingEngine.maxSchemeMultiple) {
-                                        input = next;
-                                      }
-                                    }
-                                  }),
-                              child: Container(
-                                  margin: const EdgeInsets.all(2),
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                      color: const Color(0xfff4f6f5),
-                                      borderRadius: BorderRadius.circular(5)),
-                                  child: Text(key,
-                                      style: const TextStyle(fontSize: 16))))
-                      ]),
-                  const SizedBox(height: 8),
-                  Builder(builder: (_) {
-                    BettingResult? preview;
-                    final multiple = int.tryParse(input) ?? 0;
-                    if (multiple > 0 && quickPasses.isNotEmpty) {
-                      try {
-                        preview = const BettingEngine().calculateMultiple(
-                            picks: picks,
-                            passes: quickPasses,
-                            multiple: multiple);
-                      } catch (_) {}
-                    }
-                    return Row(children: [
-                      Expanded(
-                          child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                            Text(preview == null
-                                ? '金额 --'
-                                : '金额 ${preview.amount.toStringAsFixed(0)}元'),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              preview == null
+                                  ? '金额 --'
+                                  : '金额 ${preview.amount.toStringAsFixed(0)}元',
+                            ),
                             const SizedBox(height: 2),
                             Text(
-                                preview == null
-                                    ? '最高奖金 --'
-                                    : '最高奖金 ${preview.maxReturn.toStringAsFixed(2)}元',
-                                style: const TextStyle(
-                                    color: Color(0xffdf4162), fontSize: 11))
-                          ])),
+                              preview == null
+                                  ? '最高奖金 --'
+                                  : '最高奖金 ${preview.maxReturn.toStringAsFixed(2)}元',
+                              style: const TextStyle(
+                                color: Color(0xffdf4162),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       SizedBox(
-                          width: 116,
-                          child: FilledButton(
-                              onPressed: () {
-                                final value = int.tryParse(input) ?? 0;
-                                if (value >= 1 &&
-                                    value <= BettingEngine.maxSchemeMultiple) {
-                                  Navigator.pop(sheetContext, value);
-                                }
-                              },
-                              child: const Text('完成')))
-                    ]);
-                  }),
-                  const Text('输入倍数后按完成更新方案金额与奖金测算',
-                      style: TextStyle(fontSize: 10, color: Color(0xff8a918e)))
-                ]))));
+                        width: 116,
+                        child: FilledButton(
+                          onPressed: () {
+                            final value = int.tryParse(input) ?? 0;
+                            if (value >= 1 &&
+                                value <= BettingEngine.maxSchemeMultiple) {
+                              Navigator.pop(sheetContext, value);
+                            }
+                          },
+                          child: const Text('完成'),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const Text(
+                '输入倍数后按完成更新方案金额与奖金测算',
+                style: TextStyle(fontSize: 10, color: Color(0xff8a918e)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
     if (chosen != null && mounted) {
       setState(() => quickMultiple = chosen);
     }
@@ -566,50 +646,54 @@ class _SelectionPageState extends State<SelectionPage> {
                 width: selected ? 1.1 : 1,
               ),
             ),
-            child: Stack(fit: StackFit.expand, children: [
-              Center(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Center(
                   child: Text(
-                text ?? '$key ${sp.toStringAsFixed(2)}',
-                maxLines: 1,
-                style: TextStyle(
-                  fontSize: 11.25,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? Colors.white : const Color(0xff555d59),
+                    text ?? '$key ${sp.toStringAsFixed(2)}',
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 11.25,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected ? Colors.white : const Color(0xff555d59),
+                    ),
+                  ),
                 ),
-              )),
-              if (showSingleBadge)
-                Positioned(
+                if (showSingleBadge)
+                  Positioned(
                     left: 2,
                     top: 1,
                     child: Container(
-                        width: 13,
-                        height: 11,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                            color: selected
-                                ? Colors.white
-                                : const Color(0xffdf6574),
-                            borderRadius: BorderRadius.circular(2)),
-                        child: Text('单',
-                            style: TextStyle(
-                                fontSize: 7,
-                                height: 1,
-                                color: selected
-                                    ? const Color(0xff168f62)
-                                    : Colors.white,
-                                fontWeight: FontWeight.w700))))
-            ]),
+                      width: 13,
+                      height: 11,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color:
+                            selected ? Colors.white : const Color(0xffdf6574),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      child: Text(
+                        '单',
+                        style: TextStyle(
+                          fontSize: 7,
+                          height: 1,
+                          color:
+                              selected ? const Color(0xff168f62) : Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _unavailableOptionCell(
-    String key, {
-    double spacing = 2,
-  }) =>
-      Expanded(
+  Widget _unavailableOptionCell(String key, {double spacing = 2}) => Expanded(
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: spacing),
           child: Container(
@@ -620,10 +704,11 @@ class _SelectionPageState extends State<SelectionPage> {
               borderRadius: BorderRadius.circular(4),
               border: Border.all(color: const Color(0xffdfe5e2)),
             ),
-            child: Text('$key 未受注',
-                maxLines: 1,
-                style:
-                    const TextStyle(fontSize: 9.5, color: Color(0xffa4aaa7))),
+            child: Text(
+              '$key 未受注',
+              maxLines: 1,
+              style: const TextStyle(fontSize: 9.5, color: Color(0xffa4aaa7)),
+            ),
           ),
         ),
       );
@@ -634,40 +719,52 @@ class _SelectionPageState extends State<SelectionPage> {
     final spfSingle = play == FootballPlay.had && match.spfSingleSupported;
     const keys = ['胜', '平', '负'];
     final hasAnyOdds = keys.any((key) => _odds(match, play)[key] != null);
-    return Row(children: [
-      SizedBox(
+    return Row(
+      children: [
+        SizedBox(
           width: 42,
-          child: Text(play == FootballPlay.had ? '0' : '${handicap ?? ''}',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w600,
-                  color: play == FootballPlay.hhad
-                      ? const Color(0xff16a36a)
-                      : const Color(0xff9aa19d)))),
-      Expanded(
+          child: Text(
+            play == FootballPlay.had ? '0' : '${handicap ?? ''}',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              color: play == FootballPlay.hhad
+                  ? const Color(0xff16a36a)
+                  : const Color(0xff9aa19d),
+            ),
+          ),
+        ),
+        Expanded(
           child: SizedBox(
-              height: 36,
-              child: !enabled || !hasAnyOdds
-                  ? Center(
-                      child: Text(
-                          play == FootballPlay.had ? '胜平负未受注' : '让球胜平负未受注',
-                          style: const TextStyle(
-                              fontSize: 9.5, color: Color(0xffa4aaa7))))
-                  : Stack(children: [
-                      Row(children: [
-                        for (var index = 0; index < 3; index++) ...[
-                          if (_odds(match, play)[keys[index]] == null)
-                            _unavailableOptionCell(keys[index])
-                          else
-                            _optionCell(
-                              match,
-                              play,
-                              keys[index],
-                              showSingleBadge: spfSingle && index == 0,
-                            )
-                        ]
-                      ]),
+            height: 36,
+            child: !enabled || !hasAnyOdds
+                ? Center(
+                    child: Text(
+                      play == FootballPlay.had ? '胜平负未受注' : '让球胜平负未受注',
+                      style: const TextStyle(
+                        fontSize: 9.5,
+                        color: Color(0xffa4aaa7),
+                      ),
+                    ),
+                  )
+                : Stack(
+                    children: [
+                      Row(
+                        children: [
+                          for (var index = 0; index < 3; index++) ...[
+                            if (_odds(match, play)[keys[index]] == null)
+                              _unavailableOptionCell(keys[index])
+                            else
+                              _optionCell(
+                                match,
+                                play,
+                                keys[index],
+                                showSingleBadge: spfSingle && index == 0,
+                              ),
+                          ],
+                        ],
+                      ),
                       if (spfSingle)
                         Positioned.fill(
                           left: 2,
@@ -676,14 +773,20 @@ class _SelectionPageState extends State<SelectionPage> {
                             child: DecoratedBox(
                               decoration: BoxDecoration(
                                 border: Border.all(
-                                    color: const Color(0xffe89aa3), width: 1.1),
+                                  color: const Color(0xffe89aa3),
+                                  width: 1.1,
+                                ),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                             ),
                           ),
-                        )
-                    ])))
-    ]);
+                        ),
+                    ],
+                  ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildMatch(MatchItem match) {
@@ -692,8 +795,11 @@ class _SelectionPageState extends State<SelectionPage> {
 
     final draft = drafts[match.id];
     final moreSelectionCount = draft?.selected.entries
-            .where((entry) =>
-                entry.key != FootballPlay.had && entry.key != FootballPlay.hhad)
+            .where(
+              (entry) =>
+                  entry.key != FootballPlay.had &&
+                  entry.key != FootballPlay.hhad,
+            )
             .fold<int>(0, (sum, entry) => sum + entry.value.length) ??
         0;
     final showHandicap = _odds(match, FootballPlay.hhad).isNotEmpty ||
@@ -703,132 +809,197 @@ class _SelectionPageState extends State<SelectionPage> {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 4, 10, 5),
       decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(bottom: BorderSide(color: Color(0xffedf0ee)))),
-      child: Column(children: [
-        Row(children: [
-          Text(match.number,
-              style: const TextStyle(fontSize: 11, color: Color(0xff737b77))),
-          const SizedBox(width: 6),
-          Container(
-              constraints: const BoxConstraints(maxWidth: 76),
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xffedf0ee))),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text(
+                match.number,
+                style: const TextStyle(fontSize: 11, color: Color(0xff737b77)),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                constraints: const BoxConstraints(maxWidth: 76),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
                   color: const Color(0xffeef8f3),
-                  borderRadius: BorderRadius.circular(3)),
-              child: Text(match.league,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                child: Text(
+                  match.league,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 10,
-                      color: Color(0xff2f9d75),
-                      fontWeight: FontWeight.w600))),
-          const Spacer(),
-          Text(time,
-              style: const TextStyle(fontSize: 11, color: Color(0xff8a918d))),
-          if (draft != null && draft.hasSelection) ...[
-            const SizedBox(width: 8),
-            InkWell(
-                onTap: () => setState(() => draft.banker = !draft.banker),
-                child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    fontSize: 10,
+                    color: Color(0xff2f9d75),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                time,
+                style: const TextStyle(fontSize: 11, color: Color(0xff8a918d)),
+              ),
+              if (draft != null && draft.hasSelection) ...[
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: () => setState(() => draft.banker = !draft.banker),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
+                      color: draft.banker
+                          ? const Color(0xfffff0f3)
+                          : const Color(0xfff3f5f4),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text(
+                      draft.banker ? '胆' : '设胆',
+                      style: TextStyle(
+                        fontSize: 9,
                         color: draft.banker
-                            ? const Color(0xfffff0f3)
-                            : const Color(0xfff3f5f4),
-                        borderRadius: BorderRadius.circular(3)),
-                    child: Text(draft.banker ? '胆' : '设胆',
-                        style: TextStyle(
-                            fontSize: 9,
-                            color: draft.banker
-                                ? const Color(0xffe24b63)
-                                : const Color(0xff777f7b)))))
-          ]
-        ]),
-        const SizedBox(height: 4),
-        Row(children: [
-          const SizedBox(width: 42),
-          Expanded(
-              child: Text(match.home,
+                            ? const Color(0xffe24b63)
+                            : const Color(0xff777f7b),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const SizedBox(width: 42),
+              Expanded(
+                child: Text(
+                  match.home,
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 13.5, fontWeight: FontWeight.w600))),
-          const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8),
-              child: Text('VS',
-                  style: TextStyle(fontSize: 10.5, color: Color(0xffa0a6a3)))),
-          Expanded(
-              child: Text(match.away,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  'VS',
+                  style: TextStyle(fontSize: 10.5, color: Color(0xffa0a6a3)),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  match.away,
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 13.5, fontWeight: FontWeight.w600))),
-          const SizedBox(width: 54)
-        ]),
-        const SizedBox(height: 4),
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(
-              child: Column(children: [
-            _mainOddsRow(match, FootballPlay.had),
-            if (showHandicap) ...[_mainOddsRow(match, FootballPlay.hhad)]
-          ])),
-          const SizedBox(width: 4),
-          InkWell(
-              onTap: () => _openMore(match),
-              child: Container(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 54),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  children: [
+                    _mainOddsRow(match, FootballPlay.had),
+                    if (showHandicap) ...[
+                      _mainOddsRow(match, FootballPlay.hhad),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              InkWell(
+                onTap: () => _openMore(match),
+                child: Container(
                   width: 50,
                   height: showHandicap ? 72 : 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
+                    color: moreSelectionCount > 0
+                        ? const Color(0xffe6f5ed)
+                        : const Color(0xfffbfdfc),
+                    border: Border.all(
                       color: moreSelectionCount > 0
-                          ? const Color(0xffe6f5ed)
-                          : const Color(0xfffbfdfc),
-                      border: Border.all(
-                          color: moreSelectionCount > 0
-                              ? const Color(0xff43aa80)
-                              : const Color(0xffdfe5e2),
-                          width: moreSelectionCount > 0 ? 1.2 : .8)),
+                          ? const Color(0xff43aa80)
+                          : const Color(0xffdfe5e2),
+                      width: moreSelectionCount > 0 ? 1.2 : .8,
+                    ),
+                  ),
                   child: showHandicap
                       ? Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                              Text(
-                                  moreSelectionCount > 0
-                                      ? '已选$moreSelectionCount项'
-                                      : '更多',
-                                  style: TextStyle(
-                                      fontSize:
-                                          moreSelectionCount > 0 ? 9 : 10.5,
-                                      height: 1.15,
-                                      color: const Color(0xff2f8f6d),
-                                      fontWeight: FontWeight.w600)),
-                              const Text('玩法',
-                                  style: TextStyle(
-                                      fontSize: 10.5,
-                                      height: 1.15,
-                                      color: Color(0xff2f8f6d),
-                                      fontWeight: FontWeight.w600)),
-                              const Icon(Icons.chevron_right,
-                                  size: 13, color: Color(0xff7d9b8d))
-                            ])
-                      : Row(mainAxisSize: MainAxisSize.min, children: [
-                          Text(
+                            Text(
+                              moreSelectionCount > 0
+                                  ? '已选$moreSelectionCount项'
+                                  : '更多',
+                              style: TextStyle(
+                                fontSize: moreSelectionCount > 0 ? 9 : 10.5,
+                                height: 1.15,
+                                color: const Color(0xff2f8f6d),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const Text(
+                              '玩法',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                height: 1.15,
+                                color: Color(0xff2f8f6d),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right,
+                              size: 13,
+                              color: Color(0xff7d9b8d),
+                            ),
+                          ],
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
                               moreSelectionCount > 0
                                   ? '已选$moreSelectionCount项'
                                   : '更多',
                               style: const TextStyle(
-                                  fontSize: 10.5,
-                                  color: Color(0xff2f8f6d),
-                                  fontWeight: FontWeight.w600)),
-                          const Icon(Icons.chevron_right,
-                              size: 13, color: Color(0xff7d9b8d))
-                        ])))
-        ])
-      ]),
+                                fontSize: 10.5,
+                                color: Color(0xff2f8f6d),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right,
+                              size: 13,
+                              color: Color(0xff7d9b8d),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -920,337 +1091,418 @@ class _SelectionPageState extends State<SelectionPage> {
       _ => 3,
     };
     return Container(
-        padding: const EdgeInsets.fromLTRB(12, 7, 10, 9),
-        decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(bottom: BorderSide(color: Color(0xffedf0ee)))),
-        child: Column(children: [
-          Row(children: [
-            Text(match.number,
-                style: const TextStyle(fontSize: 11, color: Color(0xff737b77))),
-            const SizedBox(width: 6),
-            Text(match.league,
+      padding: const EdgeInsets.fromLTRB(12, 7, 10, 9),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xffedf0ee))),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text(
+                match.number,
+                style: const TextStyle(fontSize: 11, color: Color(0xff737b77)),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                match.league,
                 style: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0xff2f9d75),
-                    fontWeight: FontWeight.w600)),
-            const Spacer(),
-            Text(time,
-                style: const TextStyle(fontSize: 11, color: Color(0xff8a918d))),
-            if (draft != null && draft.hasSelection) ...[
-              const SizedBox(width: 8),
-              InkWell(
+                  fontSize: 10,
+                  color: Color(0xff2f9d75),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                time,
+                style: const TextStyle(fontSize: 11, color: Color(0xff8a918d)),
+              ),
+              if (draft != null && draft.hasSelection) ...[
+                const SizedBox(width: 8),
+                InkWell(
                   onTap: () => setState(() => draft.banker = !draft.banker),
-                  child: Text(draft.banker ? '胆' : '设胆',
-                      style: TextStyle(
-                          fontSize: 9,
-                          color: draft.banker
-                              ? const Color(0xffe24b63)
-                              : const Color(0xff777f7b))))
-            ]
-          ]),
+                  child: Text(
+                    draft.banker ? '胆' : '设胆',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: draft.banker
+                          ? const Color(0xffe24b63)
+                          : const Color(0xff777f7b),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
           const SizedBox(height: 7),
-          Row(children: [
-            Expanded(
-                child: Text(match.home,
-                    textAlign: TextAlign.right,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600))),
-            const Padding(
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  match.home,
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 14),
-                child: Text('VS',
-                    style: TextStyle(fontSize: 11, color: Color(0xffa0a6a3)))),
-            Expanded(
-                child: Text(match.away,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600)))
-          ]),
+                child: Text(
+                  'VS',
+                  style: TextStyle(fontSize: 11, color: Color(0xffa0a6a3)),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  match.away,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           if (order.isEmpty || !enabled)
             Container(
-                height: 42,
-                alignment: Alignment.center,
-                color: const Color(0xfff3f5f4),
-                child: Text(order.isEmpty ? '暂未开售（暂无官方SP）' : '未受注',
-                    style: const TextStyle(
-                        fontSize: 11, color: Color(0xffa1a7a4))))
+              height: 42,
+              alignment: Alignment.center,
+              color: const Color(0xfff3f5f4),
+              child: Text(
+                order.isEmpty ? '暂未开售（暂无官方SP）' : '未受注',
+                style: const TextStyle(fontSize: 11, color: Color(0xffa1a7a4)),
+              ),
+            )
           else
             GridView.count(
-                crossAxisCount: columns,
-                childAspectRatio: play == FootballPlay.crs ? 1.25 : 1.65,
-                mainAxisSpacing: 2,
-                crossAxisSpacing: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  for (final key in order)
-                    InkWell(
-                        onTap: enabled ? () => _toggle(match, play, key) : null,
-                        child: Builder(builder: (_) {
-                          final selected = _isSelected(match, play, key);
-                          return Container(
-                              alignment: Alignment.center,
-                              color: selected
-                                  ? const Color(0xff16a36a)
-                                  : enabled
-                                      ? const Color(0xfff6f7f7)
-                                      : const Color(0xfff1f2f2),
-                              child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(_playOptionLabel(play, key),
-                                        maxLines: 1,
-                                        style: TextStyle(
-                                            fontSize: play == FootballPlay.crs
-                                                ? 10.5
-                                                : 11.5,
-                                            height: 1,
-                                            color: selected
-                                                ? Colors.white
-                                                : const Color(0xff3f4743),
-                                            fontWeight: FontWeight.w600)),
-                                    const SizedBox(height: 3),
-                                    Text(odds[key]!.toStringAsFixed(2),
-                                        maxLines: 1,
-                                        style: TextStyle(
-                                            fontSize: 9.5,
-                                            height: 1,
-                                            color: selected
-                                                ? Colors.white
-                                                    .withValues(alpha: .9)
-                                                : const Color(0xff929995)))
-                                  ]));
-                        }))
-                ])
-        ]));
+              crossAxisCount: columns,
+              childAspectRatio: play == FootballPlay.crs ? 1.25 : 1.65,
+              mainAxisSpacing: 2,
+              crossAxisSpacing: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                for (final key in order)
+                  InkWell(
+                    onTap: enabled ? () => _toggle(match, play, key) : null,
+                    child: Builder(
+                      builder: (_) {
+                        final selected = _isSelected(match, play, key);
+                        return Container(
+                          alignment: Alignment.center,
+                          color: selected
+                              ? const Color(0xff16a36a)
+                              : enabled
+                                  ? const Color(0xfff6f7f7)
+                                  : const Color(0xfff1f2f2),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                _playOptionLabel(play, key),
+                                maxLines: 1,
+                                style: TextStyle(
+                                  fontSize:
+                                      play == FootballPlay.crs ? 10.5 : 11.5,
+                                  height: 1,
+                                  color: selected
+                                      ? Colors.white
+                                      : const Color(0xff3f4743),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                odds[key]!.toStringAsFixed(2),
+                                maxLines: 1,
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  height: 1,
+                                  color: selected
+                                      ? Colors.white.withValues(alpha: .9)
+                                      : const Color(0xff929995),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openMore(MatchItem match) async {
     await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (sheetContext) => StatefulBuilder(builder: (_, refreshSheet) {
-              Widget section(FootballPlay play, List<String> order) {
-                final odds = _odds(match, play);
-                final pool = match.pools[play.poolCode];
-                final supportsSingle = pool is Map && pool['single'] == true;
-                final supportsParlay = pool is Map && pool['allUp'] == true;
-                final enabled = _enabled(match, play);
-                final poolStatus = pool is Map
-                    ? '${pool['status'] ?? ''}'.trim().toLowerCase()
-                    : '';
-                final statusLabel = enabled
-                    ? null
-                    : odds.isEmpty || poolStatus.isEmpty
-                        ? '暂未开售'
-                        : '已停售';
-                final handicap = play == FootballPlay.hhad
-                    ? match.hhad['让球']?.toString()
-                    : null;
-                return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            Text(
-                                handicap == null
-                                    ? play.label
-                                    : '${play.label}  $handicap',
-                                style: const TextStyle(
-                                    fontSize: 13, fontWeight: FontWeight.w700)),
-                            if (supportsSingle) ...[
-                              const SizedBox(width: 6),
-                              const _PlayCapabilityTag(label: '单关')
-                            ],
-                            if (supportsParlay) ...[
-                              const SizedBox(width: 5),
-                              const _PlayCapabilityTag(label: '过关')
-                            ],
-                            if (statusLabel != null) ...[
-                              const Spacer(),
-                              Text(statusLabel,
-                                  style: const TextStyle(
-                                      fontSize: 10, color: Color(0xffa4aaa7)))
-                            ]
-                          ]),
-                          const SizedBox(height: 6),
-                          if (odds.isEmpty)
-                            Container(
-                                height: 34,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                    color: const Color(0xfff5f6f6),
-                                    borderRadius: BorderRadius.circular(3)),
-                                child: const Text('暂未开售（暂无官方SP）',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: Color(0xffa1a7a4))))
-                          else
-                            GridView.count(
-                                crossAxisCount: play == FootballPlay.crs ||
-                                        play == FootballPlay.ttg
-                                    ? 4
-                                    : 3,
-                                childAspectRatio:
-                                    play == FootballPlay.crs ? 1.75 : 2.45,
-                                mainAxisSpacing: 1.5,
-                                crossAxisSpacing: 1.5,
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                children: [
-                                  for (final key in order)
-                                    if (odds[key] != null)
-                                      Builder(builder: (_) {
-                                        final selected =
-                                            _isSelected(match, play, key);
-                                        return InkWell(
-                                            onTap: enabled
-                                                ? () {
-                                                    _toggle(match, play, key);
-                                                    refreshSheet(() {});
-                                                  }
-                                                : null,
-                                            child: Container(
-                                                alignment: Alignment.center,
-                                                decoration: BoxDecoration(
-                                                    color: selected
-                                                        ? const Color(
-                                                            0xff16a36a)
-                                                        : enabled
-                                                            ? const Color(
-                                                                0xfff6f7f7)
-                                                            : const Color(
-                                                                0xfff1f2f2),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            3)),
-                                                child: Column(
-                                                    mainAxisAlignment:
-                                                        MainAxisAlignment
-                                                            .center,
-                                                    children: [
-                                                      Text(key,
-                                                          maxLines: 1,
-                                                          style: TextStyle(
-                                                              fontSize: 10.5,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                              color: selected
-                                                                  ? Colors.white
-                                                                  : enabled
-                                                                      ? const Color(
-                                                                          0xff353b38)
-                                                                      : const Color(
-                                                                          0xffaeb3b0))),
-                                                      const SizedBox(height: 1),
-                                                      Text(
-                                                          odds[key]!
-                                                              .toStringAsFixed(
-                                                                  2),
-                                                          style: TextStyle(
-                                                              fontSize: 9.5,
-                                                              color: selected
-                                                                  ? Colors
-                                                                      .white70
-                                                                  : const Color(
-                                                                      0xff8f9692)))
-                                                    ])));
-                                      })
-                                ])
-                        ]));
-              }
-
-              return DraggableScrollableSheet(
-                  expand: false,
-                  initialChildSize: .86,
-                  maxChildSize: .95,
-                  builder: (_, controller) => Column(children: [
-                        Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-                            child: Row(children: [
-                              Expanded(
-                                  child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (_, refreshSheet) {
+          Widget section(FootballPlay play, List<String> order) {
+            final odds = _odds(match, play);
+            final pool = match.pools[play.poolCode];
+            final supportsSingle = pool is Map && pool['single'] == true;
+            final supportsParlay = pool is Map && pool['allUp'] == true;
+            final enabled = _enabled(match, play);
+            final poolStatus = pool is Map
+                ? '${pool['status'] ?? ''}'.trim().toLowerCase()
+                : '';
+            final statusLabel = enabled
+                ? null
+                : odds.isEmpty || poolStatus.isEmpty
+                    ? '暂未开售'
+                    : '已停售';
+            final handicap =
+                play == FootballPlay.hhad ? match.hhad['让球']?.toString() : null;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        handicap == null
+                            ? play.label
+                            : '${play.label}  $handicap',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (supportsSingle) ...[
+                        const SizedBox(width: 6),
+                        const _PlayCapabilityTag(label: '单关'),
+                      ],
+                      if (supportsParlay) ...[
+                        const SizedBox(width: 5),
+                        const _PlayCapabilityTag(label: '过关'),
+                      ],
+                      if (statusLabel != null) ...[
+                        const Spacer(),
+                        Text(
+                          statusLabel,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Color(0xffa4aaa7),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  if (odds.isEmpty)
+                    Container(
+                      height: 34,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xfff5f6f6),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: const Text(
+                        '暂未开售（暂无官方SP）',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xffa1a7a4),
+                        ),
+                      ),
+                    )
+                  else
+                    GridView.count(
+                      crossAxisCount:
+                          play == FootballPlay.crs || play == FootballPlay.ttg
+                              ? 4
+                              : 3,
+                      childAspectRatio: play == FootballPlay.crs ? 2.05 : 2.7,
+                      mainAxisSpacing: 1,
+                      crossAxisSpacing: 1.5,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: [
+                        for (final key in order)
+                          if (odds[key] != null)
+                            Builder(
+                              builder: (_) {
+                                final selected = _isSelected(match, play, key);
+                                return InkWell(
+                                  onTap: enabled
+                                      ? () {
+                                          _toggle(match, play, key);
+                                          refreshSheet(() {});
+                                        }
+                                      : null,
+                                  child: Container(
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: selected
+                                          ? const Color(0xff16a36a)
+                                          : enabled
+                                              ? const Color(0xfff6f7f7)
+                                              : const Color(0xfff1f2f2),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
-                                    Text('${match.home}  VS  ${match.away}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w700)),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                        '${match.number} · ${match.league} · ${match.kickoffDisplayTime}',
-                                        style: const TextStyle(
-                                            fontSize: 10,
-                                            color: Color(0xff858d89)))
-                                  ])),
-                              IconButton(
-                                  onPressed: () => Navigator.pop(sheetContext),
-                                  icon: const Icon(Icons.close))
-                            ])),
-                        Expanded(
-                            child: ListView(
-                                controller: controller,
-                                padding:
-                                    const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                                children: [
-                              section(FootballPlay.had, const ['胜', '平', '负']),
-                              section(FootballPlay.hhad, const ['胜', '平', '负']),
-                              section(FootballPlay.ttg, const [
-                                '0',
-                                '1',
-                                '2',
-                                '3',
-                                '4',
-                                '5',
-                                '6',
-                                '7+'
-                              ]),
-                              section(FootballPlay.crs,
-                                  _playOrder(FootballPlay.crs, match)),
-                              section(FootballPlay.hafu, const [
-                                '胜胜',
-                                '胜平',
-                                '胜负',
-                                '平胜',
-                                '平平',
-                                '平负',
-                                '负胜',
-                                '负平',
-                                '负负'
-                              ]),
-                            ])),
-                        Container(
-                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                            decoration: const BoxDecoration(
-                                color: Colors.white,
-                                border: Border(
-                                    top: BorderSide(color: Color(0xffe7eae8)))),
-                            child: Row(children: [
-                              Expanded(
-                                  child: Text(
-                                      '已选 ${drafts[match.id]?.selected.values.fold<int>(0, (sum, values) => sum + values.length) ?? 0} 项',
-                                      style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Color(0xff69716d)))),
-                              SizedBox(
-                                  width: 132,
-                                  child: FilledButton(
-                                      onPressed: () =>
-                                          Navigator.pop(sheetContext),
-                                      child: const Text('确定')))
-                            ]))
-                      ]));
-            }));
+                                        Text(
+                                          key,
+                                          maxLines: 1,
+                                          style: TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: selected
+                                                ? Colors.white
+                                                : enabled
+                                                    ? const Color(0xff353b38)
+                                                    : const Color(0xffaeb3b0),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 1),
+                                        Text(
+                                          odds[key]!.toStringAsFixed(2),
+                                          style: TextStyle(
+                                            fontSize: 9.5,
+                                            color: selected
+                                                ? Colors.white70
+                                                : const Color(0xff8f9692),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                      ],
+                    ),
+                ],
+              ),
+            );
+          }
+
+          return DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: .86,
+            maxChildSize: .95,
+            builder: (_, controller) => Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${match.home}  VS  ${match.away}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '${match.number} · ${match.league} · ${match.kickoffDisplayTime}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Color(0xff858d89),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    controller: controller,
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                    children: [
+                      section(FootballPlay.had, const ['胜', '平', '负']),
+                      section(FootballPlay.hhad, const ['胜', '平', '负']),
+                      section(FootballPlay.ttg, const [
+                        '0',
+                        '1',
+                        '2',
+                        '3',
+                        '4',
+                        '5',
+                        '6',
+                        '7+',
+                      ]),
+                      section(
+                        FootballPlay.crs,
+                        _playOrder(FootballPlay.crs, match),
+                      ),
+                      section(FootballPlay.hafu, const [
+                        '胜胜',
+                        '胜平',
+                        '胜负',
+                        '平胜',
+                        '平平',
+                        '平负',
+                        '负胜',
+                        '负平',
+                        '负负',
+                      ]),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border: Border(top: BorderSide(color: Color(0xffe7eae8))),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '已选 ${drafts[match.id]?.selected.values.fold<int>(0, (sum, values) => sum + values.length) ?? 0} 项',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xff69716d),
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 132,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(sheetContext),
+                          child: const Text('确定'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   String _dateLabel(String value) {
@@ -1268,21 +1520,33 @@ class _SelectionPageState extends State<SelectionPage> {
         currentDate = match.businessDate;
         final count =
             matches.where((item) => item.businessDate == currentDate).length;
-        children.add(Container(
+        children.add(
+          Container(
             height: 29,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             color: const Color(0xfff5f7f6),
-            child: Row(children: [
-              Text(_dateLabel(currentDate),
+            child: Row(
+              children: [
+                Text(
+                  _dateLabel(currentDate),
                   style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xff4d5551),
-                      fontWeight: FontWeight.w600)),
-              const Spacer(),
-              Text('$count场比赛',
-                  style:
-                      const TextStyle(fontSize: 10, color: Color(0xff929995)))
-            ])));
+                    fontSize: 12,
+                    color: Color(0xff4d5551),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '$count场比赛',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xff929995),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
       }
       children.add(_buildMatch(match));
     }
@@ -1291,155 +1555,213 @@ class _SelectionPageState extends State<SelectionPage> {
 
   Future<void> _openSavedSchemes() async {
     await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (_) => const _SavedSchemesSheet());
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => const _SavedSchemesSheet(),
+    );
   }
 
   Widget _buildBottomBar(List<MatchPick> selected) {
     final hasSelection = selected.isNotEmpty;
-    final optionCount =
-        selected.fold<int>(0, (sum, item) => sum + item.options.length);
+    final optionCount = selected.fold<int>(
+      0,
+      (sum, item) => sum + item.options.length,
+    );
     final preview = _quickResult(selected);
     return Container(
-        height: 104,
-        padding: const EdgeInsets.fromLTRB(8, 4, 10, 6),
-        decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Color(0xffe4e8e6)))),
-        child: Column(children: [
+      height: 104,
+      padding: const EdgeInsets.fromLTRB(8, 4, 10, 6),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xffe4e8e6))),
+      ),
+      child: Column(
+        children: [
           SizedBox(
-              height: 38,
-              child: Row(children: [
+            height: 38,
+            child: Row(
+              children: [
                 IconButton(
-                    visualDensity: VisualDensity.compact,
-                    tooltip: '清空选号',
-                    onPressed: hasSelection
-                        ? () => setState(() {
-                              drafts.clear();
-                              quickPasses = const [];
-                              quickMultiple = 1;
-                            })
-                        : null,
-                    icon: const Icon(Icons.delete_outline,
-                        size: 21, color: Color(0xff6f7773))),
-                Text('已选${selected.length}场/$optionCount项',
-                    style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xff4f5753),
-                        fontWeight: FontWeight.w600)),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: '清空选号',
+                  onPressed: hasSelection
+                      ? () => setState(() {
+                            drafts.clear();
+                            quickPasses = const [];
+                            quickMultiple = 1;
+                          })
+                      : null,
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    size: 21,
+                    color: Color(0xff6f7773),
+                  ),
+                ),
+                Text(
+                  '已选${selected.length}场/$optionCount项',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xff4f5753),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
-                    child: InkWell(
-                        onTap: hasSelection ? _chooseQuickPass : null,
-                        child: Container(
-                            height: 32,
-                            padding: const EdgeInsets.symmetric(horizontal: 9),
-                            decoration: BoxDecoration(
-                                border: Border.all(
-                                    color: const Color(0xffdfe4e1), width: .8),
-                                borderRadius: BorderRadius.circular(4)),
-                            child: Row(children: [
-                              Expanded(
-                                  child: Text(_quickPassLabel,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color: !hasSelection
-                                              ? const Color(0xffb3b9b6)
-                                              : quickPasses.isEmpty
-                                                  ? const Color(0xff7c8480)
-                                                  : const Color(0xff216f50)))),
-                              Icon(Icons.arrow_drop_down,
-                                  size: 17,
-                                  color: hasSelection
-                                      ? const Color(0xff7e8682)
-                                      : const Color(0xffc4c9c7))
-                            ])))),
-                const SizedBox(width: 8),
-                const Text('倍数',
-                    style: TextStyle(fontSize: 11, color: Color(0xff59615d))),
-                IconButton(
-                    visualDensity: VisualDensity.compact,
-                    onPressed: hasSelection && quickMultiple > 1
-                        ? () => _changeQuickMultiple(-1)
-                        : null,
-                    icon: const Icon(Icons.remove, size: 17)),
-                InkWell(
-                    onTap: hasSelection ? _editQuickMultiple : null,
-                    child: SizedBox(
-                        width: 31,
-                        height: 30,
-                        child: Center(
-                            child: Text('$quickMultiple',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: hasSelection
-                                        ? const Color(0xff303733)
-                                        : const Color(0xffb3b9b6),
-                                    fontWeight: FontWeight.w600))))),
-                IconButton(
-                    visualDensity: VisualDensity.compact,
-                    onPressed:
-                        hasSelection ? () => _changeQuickMultiple(1) : null,
-                    icon: const Icon(Icons.add, size: 17))
-              ])),
-          const SizedBox(height: 4),
-          Expanded(
-              child: Row(children: [
-            Expanded(
-                child: Padding(
-                    padding: const EdgeInsets.only(left: 5),
-                    child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  child: InkWell(
+                    onTap: hasSelection ? _chooseQuickPass : null,
+                    child: Container(
+                      height: 32,
+                      padding: const EdgeInsets.symmetric(horizontal: 9),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: const Color(0xffdfe4e1),
+                          width: .8,
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
                         children: [
-                          Text(
-                              !hasSelection
-                                  ? '请选择比赛'
-                                  : preview == null
-                                      ? '请选择过关方式'
-                                      : '${preview.notes}注  ${preview.amount.toStringAsFixed(0)}元',
-                              style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xff3f4743),
-                                  fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 2),
-                          Text(
-                              preview == null
-                                  ? '预计奖金：--'
-                                  : '预计奖金：${_prizeText(preview.minReturn, preview.maxReturn)}',
+                          Expanded(
+                            child: Text(
+                              _quickPassLabel,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 9.5, color: Color(0xffe0526e)))
-                        ]))),
-            SizedBox(
-                height: 38,
-                child: OutlinedButton(
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: !hasSelection
+                                    ? const Color(0xffb3b9b6)
+                                    : quickPasses.isEmpty
+                                        ? const Color(0xff7c8480)
+                                        : const Color(0xff216f50),
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_drop_down,
+                            size: 17,
+                            color: hasSelection
+                                ? const Color(0xff7e8682)
+                                : const Color(0xffc4c9c7),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  '倍数',
+                  style: TextStyle(fontSize: 11, color: Color(0xff59615d)),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: hasSelection && quickMultiple > 1
+                      ? () => _changeQuickMultiple(-1)
+                      : null,
+                  icon: const Icon(Icons.remove, size: 17),
+                ),
+                InkWell(
+                  onTap: hasSelection ? _editQuickMultiple : null,
+                  child: SizedBox(
+                    width: 31,
+                    height: 30,
+                    child: Center(
+                      child: Text(
+                        '$quickMultiple',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: hasSelection
+                              ? const Color(0xff303733)
+                              : const Color(0xffb3b9b6),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed:
+                      hasSelection ? () => _changeQuickMultiple(1) : null,
+                  icon: const Icon(Icons.add, size: 17),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 5),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          !hasSelection
+                              ? '请选择比赛'
+                              : preview == null
+                                  ? '请选择过关方式'
+                                  : '${preview.notes}注  ${preview.amount.toStringAsFixed(0)}元',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xff3f4743),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          preview == null
+                              ? '预计奖金：--'
+                              : '预计奖金：${_prizeText(preview.minReturn, preview.maxReturn)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 9.5,
+                            color: Color(0xffe0526e),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  height: 38,
+                  child: OutlinedButton(
                     onPressed: hasSelection && quickPasses.isNotEmpty
                         ? () => _calculate(optimize: true)
                         : null,
                     style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 10)),
-                    child: const Text('奖金优化', style: TextStyle(fontSize: 11)))),
-            const SizedBox(width: 7),
-            SizedBox(
-                height: 38,
-                child: FilledButton(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    child: const Text('奖金优化', style: TextStyle(fontSize: 11)),
+                  ),
+                ),
+                const SizedBox(width: 7),
+                SizedBox(
+                  height: 38,
+                  child: FilledButton(
                     onPressed: !hasSelection
                         ? null
                         : quickPasses.isEmpty
                             ? _chooseQuickPass
                             : () => _calculate(),
                     style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 13)),
-                    child: const Text('生成方案', style: TextStyle(fontSize: 11))))
-          ]))
-        ]));
+                      padding: const EdgeInsets.symmetric(horizontal: 13),
+                    ),
+                    child: const Text('生成方案', style: TextStyle(fontSize: 11)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1447,105 +1769,174 @@ class _SelectionPageState extends State<SelectionPage> {
     final selected = picks;
     return Scaffold(
       backgroundColor: const Color(0xfff6f7f7),
-      body: Column(children: [
-        Container(
-            color: Colors.white,
-            height: 50,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: Row(children: [
-              Expanded(
-                  child: Row(children: [
-                const Text('竞球镜',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6),
-                    child:
-                        Text('·', style: TextStyle(color: Color(0xffa0a6a3)))),
-                PopupMenuButton<_SelectionViewMode>(
-                    tooltip: '切换玩法',
-                    initialValue: viewMode,
-                    offset: const Offset(0, 38),
-                    color: Colors.white,
-                    surfaceTintColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
-                    onSelected: (mode) => setState(() => viewMode = mode),
-                    itemBuilder: (_) => [
-                          for (final mode in _SelectionViewMode.values)
-                            PopupMenuItem(
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Container(
+              color: Colors.white,
+              height: 50,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  if (Navigator.canPop(context)) ...[
+                    IconButton(
+                      tooltip: '返回',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 34,
+                        height: 40,
+                      ),
+                      onPressed: () => Navigator.maybePop(context),
+                      icon: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Text(
+                          '竞球镜',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6),
+                          child: Text(
+                            '·',
+                            style: TextStyle(color: Color(0xffa0a6a3)),
+                          ),
+                        ),
+                        PopupMenuButton<_SelectionViewMode>(
+                          tooltip: '切换玩法',
+                          initialValue: viewMode,
+                          offset: const Offset(0, 38),
+                          color: Colors.white,
+                          surfaceTintColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          onSelected: (mode) => setState(() => viewMode = mode),
+                          itemBuilder: (_) => [
+                            for (final mode in _SelectionViewMode.values)
+                              PopupMenuItem(
                                 value: mode,
                                 height: 42,
-                                child: Row(children: [
-                                  SizedBox(
+                                child: Row(
+                                  children: [
+                                    SizedBox(
                                       width: 22,
                                       child: mode == viewMode
-                                          ? const Icon(Icons.check,
+                                          ? const Icon(
+                                              Icons.check,
                                               size: 16,
-                                              color: Color(0xff168f62))
-                                          : null),
-                                  Text(mode.label,
+                                              color: Color(0xff168f62),
+                                            )
+                                          : null,
+                                    ),
+                                    Text(
+                                      mode.label,
                                       style: TextStyle(
-                                          fontSize: 13,
-                                          color: mode == viewMode
-                                              ? const Color(0xff168f62)
-                                              : const Color(0xff4f5753),
-                                          fontWeight: FontWeight.w600))
-                                ]))
-                        ],
-                    child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Text(viewMode.label,
-                              style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Color(0xff4f5753),
-                                  fontWeight: FontWeight.w600)),
-                          const Icon(Icons.arrow_drop_down,
-                              size: 19, color: Color(0xff69716d))
-                        ])))
-              ])),
-              TextButton.icon(
-                  onPressed: _openSavedSchemes,
-                  icon: const Icon(Icons.bookmarks_outlined, size: 18),
-                  label: const Text('方案', style: TextStyle(fontSize: 11)))
-            ])),
-        if (loading) const LinearProgressIndicator(minHeight: 2),
-        Expanded(
-            child: RefreshIndicator(
+                                        fontSize: 13,
+                                        color: mode == viewMode
+                                            ? const Color(0xff168f62)
+                                            : const Color(0xff4f5753),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  viewMode.label,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Color(0xff4f5753),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.arrow_drop_down,
+                                  size: 19,
+                                  color: Color(0xff69716d),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _openSavedSchemes,
+                    icon: const Icon(Icons.bookmarks_outlined, size: 18),
+                    label: const Text('方案', style: TextStyle(fontSize: 11)),
+                  ),
+                ],
+              ),
+            ),
+            if (loading) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: RefreshIndicator(
                 onRefresh: _refresh,
                 child: matches.isEmpty
                     ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         children: [
-                            SizedBox(
-                                height: 360,
-                                child: Center(
-                                    child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                      Icon(Icons.sports_soccer,
-                                          size: 38,
-                                          color: loading
-                                              ? const Color(0xff16a36a)
-                                              : const Color(0xffa5aca8)),
-                                      const SizedBox(height: 10),
-                                      Text(loading
-                                          ? '正在加载在售场次…'
-                                          : loadError == null
-                                              ? '暂无在售场次'
-                                              : '加载失败，请重试'),
-                                      if (!loading)
-                                        TextButton(
-                                            onPressed: _refresh,
-                                            child: const Text('重新加载'))
-                                    ])))
-                          ])
+                          SizedBox(
+                            height: 360,
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.sports_soccer,
+                                    size: 38,
+                                    color: loading
+                                        ? const Color(0xff16a36a)
+                                        : const Color(0xffa5aca8),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    loading
+                                        ? '正在加载在售场次…'
+                                        : loadError == null
+                                            ? '暂无在售场次'
+                                            : '加载失败，请重试',
+                                  ),
+                                  if (!loading)
+                                    TextButton(
+                                      onPressed: _refresh,
+                                      child: const Text('重新加载'),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
                     : ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.only(bottom: 116),
-                        children: _matchListChildren()))),
-      ]),
+                        children: _matchListChildren(),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
       bottomSheet: _buildBottomBar(selected),
     );
   }
@@ -1560,13 +1951,17 @@ class _PlayCapabilityTag extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
         decoration: BoxDecoration(
-            color: const Color(0xffedf8f2),
-            borderRadius: BorderRadius.circular(3)),
-        child: Text(label,
-            style: const TextStyle(
-                fontSize: 9,
-                color: Color(0xff2f9d75),
-                fontWeight: FontWeight.w600)),
+          color: const Color(0xffedf8f2),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 9,
+            color: Color(0xff2f9d75),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       );
 }
 
@@ -1580,15 +1975,16 @@ class _Draft {
 enum _SchemeMode { normal, optimize }
 
 class _SchemePage extends StatefulWidget {
-  const _SchemePage(
-      {required this.picks,
-      required this.initialPasses,
-      this.initialMultiple = 1,
-      this.initialBudget,
-      this.optimizationOnly = false,
-      this.initialResult,
-      this.initialShowCombinations = false,
-      this.savedSettlement});
+  const _SchemePage({
+    required this.picks,
+    required this.initialPasses,
+    this.initialMultiple = 1,
+    this.initialBudget,
+    this.optimizationOnly = false,
+    this.initialResult,
+    this.initialShowCombinations = false,
+    this.savedSettlement,
+  });
 
   final List<MatchPick> picks;
   final List<PassMethod> initialPasses;
@@ -1622,18 +2018,22 @@ class _SchemePageState extends State<_SchemePage> {
   void initState() {
     super.initState();
     mode = widget.optimizationOnly ? _SchemeMode.optimize : _SchemeMode.normal;
-    multipleController =
-        TextEditingController(text: widget.initialMultiple.toString());
+    multipleController = TextEditingController(
+      text: widget.initialMultiple.toString(),
+    );
     budgetController = TextEditingController(
-        text: (widget.initialBudget ?? 100).toStringAsFixed(0));
+      text: (widget.initialBudget ?? 100).toStringAsFixed(0),
+    );
     final maxPass = widget.picks
-        .expand((pick) =>
-            pick.options.map((option) => (option.play ?? pick.play).maxPass))
+        .expand(
+          (pick) =>
+              pick.options.map((option) => (option.play ?? pick.play).maxPass),
+        )
         .reduce(math.min);
     methods = PassMethod.available(widget.picks.length, maxPass);
     selectedMethods = [
       for (final item in methods)
-        if (widget.initialPasses.any((pass) => pass.label == item.label)) item
+        if (widget.initialPasses.any((pass) => pass.label == item.label)) item,
     ];
     if (selectedMethods.isEmpty) selectedMethods = [methods.last];
     showCombinations = widget.initialShowCombinations;
@@ -1651,8 +2051,9 @@ class _SchemePageState extends State<_SchemePage> {
 
   double? get _actualPrize {
     if (_settlementState != 'won') return null;
-    return num.tryParse(widget.savedSettlement?['prize']?.toString() ?? '')
-        ?.toDouble();
+    return num.tryParse(
+      widget.savedSettlement?['prize']?.toString() ?? '',
+    )?.toDouble();
   }
 
   bool get _isSavedScheme => widget.savedSettlement != null;
@@ -1704,13 +2105,17 @@ class _SchemePageState extends State<_SchemePage> {
           ? const BettingEngine().calculateMultiple(
               picks: widget.picks,
               passes: selectedMethods,
-              multiple: (int.tryParse(multipleController.text) ?? 1)
-                  .clamp(1, BettingEngine.maxSchemeMultiple))
+              multiple: (int.tryParse(multipleController.text) ?? 1).clamp(
+                1,
+                BettingEngine.maxSchemeMultiple,
+              ),
+            )
           : const BettingEngine().optimizeMultiple(
               picks: widget.picks,
               passes: selectedMethods,
               budget: double.tryParse(budgetController.text) ?? 0,
-              mode: optimizeMode);
+              mode: optimizeMode,
+            );
       setState(() {
         result = next;
         error = null;
@@ -1747,14 +2152,16 @@ class _SchemePageState extends State<_SchemePage> {
     final tickets = <SplitTicket>[
       for (final entry in current.returnsByCombination.keys)
         SplitTicket(
-            bet: entry,
-            multiple: identical(entry, bet)
-                ? nextMultiple
-                : _multipleFor(current, entry))
+          bet: entry,
+          multiple: identical(entry, bet)
+              ? nextMultiple
+              : _multipleFor(current, entry),
+        ),
     ];
     final draft = BettingResult(current.atomicBets, tickets);
-    final protected = draft.returnsByCombination.values
-        .every((returnValue) => returnValue >= draft.amount);
+    final protected = draft.returnsByCombination.values.every(
+      (returnValue) => returnValue >= draft.amount,
+    );
     final nextBudget = draft.amount.toStringAsFixed(0);
     budgetController.value = TextEditingValue(
       text: nextBudget,
@@ -1781,16 +2188,20 @@ class _SchemePageState extends State<_SchemePage> {
     final buffer = StringBuffer()
       ..writeln('竞球镜｜竞彩足球计算方案（非出票凭证）')
       ..writeln(
-          '$_passLabel｜${value.notes}注｜${value.amount.toStringAsFixed(0)}元')
-      ..writeln(prize != null
-          ? '实际税前奖金 ${prize.toStringAsFixed(2)}元'
-          : settled
-              ? '本方案未中奖'
-              : '预计奖金 ${_prizeText(value.minReturn, value.maxReturn)}');
+        '$_passLabel｜${value.notes}注｜${value.amount.toStringAsFixed(0)}元',
+      )
+      ..writeln(
+        prize != null
+            ? '实际税前奖金 ${prize.toStringAsFixed(2)}元'
+            : settled
+                ? '本方案未中奖'
+                : '预计奖金 ${_prizeText(value.minReturn, value.maxReturn)}',
+      );
     var index = 1;
     for (final entry in value.returnsByCombination.entries) {
       buffer.writeln(
-          '${index++}. ${_compactDescription(entry.key)}｜${_multipleFor(value, entry.key)}倍｜${entry.value.toStringAsFixed(2)}元');
+        '${index++}. ${_compactDescription(entry.key)}｜${_multipleFor(value, entry.key)}倍｜${entry.value.toStringAsFixed(2)}元',
+      );
     }
     buffer.write(settled ? '赛果按全场90分钟（含伤停补时）结算。' : 'SP变化后请重新计算；本方案仅供计算参考。');
     return buffer.toString();
@@ -1812,7 +2223,7 @@ class _SchemePageState extends State<_SchemePage> {
               'label': option.label,
               'sp': option.sp,
               'play': (option.play ?? pick.play).name,
-            }
+            },
         ],
         'availableOdds': {
           for (final entry in pick.availableOdds.entries)
@@ -1824,60 +2235,92 @@ class _SchemePageState extends State<_SchemePage> {
     final preferences = await SharedPreferences.getInstance();
     final saved =
         preferences.getStringList('saved_football_schemes') ?? <String>[];
+    final now = DateTime.now();
+    final cutoff = now.subtract(const Duration(days: 7));
+    saved.removeWhere((raw) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          final created = DateTime.tryParse(
+            decoded['createdAt']?.toString() ?? '',
+          );
+          return created == null || created.isBefore(cutoff);
+        }
+      } catch (_) {
+        final firstBreak = raw.indexOf('\n');
+        final created = DateTime.tryParse(
+          firstBreak > 0 ? raw.substring(0, firstBreak) : '',
+        );
+        return created == null || created.isBefore(cutoff);
+      }
+      return true;
+    });
     saved.insert(
-        0,
-        jsonEncode({
-          'version': 6,
-          'id': DateTime.now().microsecondsSinceEpoch.toString(),
-          'createdAt': DateTime.now().toIso8601String(),
-          'status': '已保存',
-          'settlement': const {'state': 'pending'},
-          'pass': _passLabel,
-          'amount': value.amount,
-          'notes': value.notes,
-          'physicalTickets': value.isSplit ? value.tickets.length : 0,
-          'isSplit': value.isSplit,
-          'minReturn': value.minReturn,
-          'maxReturn': value.maxReturn,
-          'text': _schemeText(value),
-          'multiple': int.tryParse(multipleController.text) ?? 1,
-          'budget': double.tryParse(budgetController.text),
-          'optimizationOnly': widget.optimizationOnly,
-          'optimization': widget.optimizationOnly
-              ? {
-                  'mode': optimizeMode.name,
-                  'budget': value.amount,
-                  'principalProtected': value.principalProtected == true,
-                }
-              : null,
-          'passes': selectedMethods.map((item) => item.label).toList(),
-          'picks': widget.picks.map(_serializePick).toList(),
-          'combinations': [
-            for (final entry in value.returnsByCombination.entries)
-              {
-                'multiple': _multipleFor(value, entry.key),
-                'amount': _multipleFor(value, entry.key) * 2,
-                'return': entry.value,
-                'passSize': entry.key.passSize,
-                'description': _compactDescription(entry.key),
-                'picks': [
-                  for (final item in entry.key.picks)
-                    {
-                      'matchId': item.match.matchId,
-                      'play': (item.option.play ?? item.match.play).name,
-                      'label': item.option.label,
-                      'sp': item.option.sp,
-                    }
-                ],
+      0,
+      jsonEncode({
+        'version': 6,
+        'id': now.microsecondsSinceEpoch.toString(),
+        'createdAt': now.toIso8601String(),
+        'status': '已保存',
+        'settlement': const {'state': 'pending'},
+        'pass': _passLabel,
+        'amount': value.amount,
+        'notes': value.notes,
+        'physicalTickets': value.isSplit ? value.tickets.length : 0,
+        'isSplit': value.isSplit,
+        'minReturn': value.minReturn,
+        'maxReturn': value.maxReturn,
+        'text': _schemeText(value),
+        'multiple': int.tryParse(multipleController.text) ?? 1,
+        'budget': double.tryParse(budgetController.text),
+        'optimizationOnly': widget.optimizationOnly,
+        'optimization': widget.optimizationOnly
+            ? {
+                'mode': optimizeMode.name,
+                'budget': value.amount,
+                'principalProtected': value.principalProtected == true,
               }
-          ],
-        }));
+            : null,
+        'passes': selectedMethods.map((item) => item.label).toList(),
+        'picks': widget.picks.map(_serializePick).toList(),
+        'combinations': [
+          for (final entry in value.returnsByCombination.entries)
+            {
+              'multiple': _multipleFor(value, entry.key),
+              'amount': _multipleFor(value, entry.key) * 2,
+              'return': entry.value,
+              'passSize': entry.key.passSize,
+              'description': _compactDescription(entry.key),
+              'picks': [
+                for (final item in entry.key.picks)
+                  {
+                    'matchId': item.match.matchId,
+                    'play': (item.option.play ?? item.match.play).name,
+                    'label': item.option.label,
+                    'sp': item.option.sp,
+                  },
+              ],
+            },
+        ],
+      }),
+    );
     await preferences.setStringList(
-        'saved_football_schemes', saved.take(30).toList());
+      'saved_football_schemes',
+      saved.take(200).toList(),
+    );
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('方案已保存到本机')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('方案已保存到本机')));
     }
+  }
+
+  Rect _sharePositionOrigin() {
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) {
+      return const Rect.fromLTWH(0, 0, 1, 1);
+    }
+    return renderBox.localToGlobal(Offset.zero) & renderBox.size;
   }
 
   Future<void> _shareSchemeImage(BettingResult value) async {
@@ -1886,11 +2329,6 @@ class _SchemePageState extends State<_SchemePage> {
     try {
       final actualPrize = _actualPrize;
       final settled = _isSettled;
-      final prizeTitle = actualPrize != null
-          ? '实际税前奖金  ${actualPrize.toStringAsFixed(2)}元'
-          : settled
-              ? '赛果  未中奖'
-              : '预计税前奖金  ${_prizeText(value.minReturn, value.maxReturn)}';
       const width = 1080.0;
       const horizontal = 64.0;
       const contentWidth = width - horizontal * 2;
@@ -1905,141 +2343,524 @@ class _SchemePageState extends State<_SchemePage> {
             maxLines: null,
           )..layout(maxWidth: maxWidth ?? contentWidth);
 
-      final pickCards = <({TextPainter title, TextPainter choices})>[];
-      for (final pick in widget.picks) {
-        final groups = <String>[];
+      double pickCardHeight(MatchPick pick) {
+        var value = 118.0;
         for (final play in FootballPlay.values) {
           final options = pick.options
               .where((option) => (option.play ?? pick.play) == play)
               .toList(growable: false);
           if (options.isEmpty) continue;
-          final labels = options.map((option) {
-            final won = _optionWon(option.label, _winnerFor(pick, play), play);
-            return '${settled && won ? '命中 ' : ''}${_compactOptionLabel(play, option.label)} ${option.sp.toStringAsFixed(2)}';
-          }).join('  ');
-          final prefix = play == FootballPlay.hhad && pick.handicap.isNotEmpty
-              ? '${pick.handicap}${play.label}'
-              : play.label;
-          groups.add('$prefix：$labels');
+          if (play == FootballPlay.had || play == FootballPlay.hhad) {
+            value += 104;
+          } else {
+            value += 48 + (options.length / 3).ceil() * 82;
+          }
         }
-        pickCards.add((
-          title: painter(
-            '${pick.number}  ${pick.home}  ${_scoreFor(pick).isEmpty ? 'vs' : _scoreFor(pick)}  ${pick.away}',
-            style: const TextStyle(
-              color: Color(0xff17231e),
-              fontSize: 29,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          choices: painter(
-            groups.join('\n'),
-            style: const TextStyle(
-              color: Color(0xff3e5148),
-              fontSize: 23,
-              height: 1.45,
-            ),
-          ),
-        ));
+        return value + 24;
       }
-      final cardsHeight = pickCards.fold<double>(0, (sum, card) {
-        return sum + card.title.height + card.choices.height + 58;
-      });
-      final height = math.max(1420.0, 490 + cardsHeight + 130).ceil();
+
+      final cardsHeight = widget.picks.fold<double>(
+        0,
+        (sum, pick) => sum + pickCardHeight(pick) + 24,
+      );
+      final height = math.max(1600.0, 680 + cardsHeight + 280).ceil();
+      final iconData = await rootBundle.load(
+        'assets/branding/app_icon_master_1024.png',
+      );
+      final iconCodec = await ui.instantiateImageCodec(
+        iconData.buffer.asUint8List(),
+        targetWidth: 96,
+        targetHeight: 96,
+      );
+      final iconImage = (await iconCodec.getNextFrame()).image;
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      canvas.drawColor(const Color(0xffeef3f0), BlendMode.src);
-      canvas.drawRect(
-        const Rect.fromLTWH(0, 0, width, 238),
-        Paint()..color = const Color(0xff168f62),
+      canvas.drawColor(const Color(0xfff3f6f4), BlendMode.src);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(horizontal, 40, 96, 96),
+          const Radius.circular(14),
+        ),
+        Paint()..color = Colors.white,
       );
+      canvas.save();
+      canvas.clipRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(horizontal, 40, 96, 96),
+          const Radius.circular(14),
+        ),
+      );
+      canvas.drawImageRect(
+        iconImage,
+        Rect.fromLTWH(
+          0,
+          0,
+          iconImage.width.toDouble(),
+          iconImage.height.toDouble(),
+        ),
+        const Rect.fromLTWH(horizontal, 40, 96, 96),
+        Paint(),
+      );
+      canvas.restore();
       final title = TextPainter(
         text: const TextSpan(
           text: '竞球镜',
           style: TextStyle(
-            color: Colors.white,
-            fontSize: 56,
+            color: Color(0xff17231e),
+            fontSize: 48,
             fontWeight: FontWeight.w700,
           ),
         ),
         textDirection: TextDirection.ltr,
       )..layout(maxWidth: width - horizontal * 2);
-      title.paint(canvas, const Offset(horizontal, 48));
+      title.paint(canvas, const Offset(horizontal + 122, 42));
       painter(
-        settled ? '竞彩足球保存方案' : '竞彩足球方案分享',
-        style: const TextStyle(color: Color(0xffd9f5e7), fontSize: 27),
-      ).paint(canvas, const Offset(horizontal, 128));
-      painter(
-        '最早开赛 ${_earliestKickoff()}',
-        style: const TextStyle(color: Color(0xffd9f5e7), fontSize: 24),
-      ).paint(canvas, const Offset(horizontal, 174));
+        '竞彩足球数据与方案工具',
+        style: const TextStyle(color: Color(0xff737d78), fontSize: 23),
+      ).paint(canvas, const Offset(horizontal + 122, 102));
 
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(40, 202, width - 80, height - 252),
-          const Radius.circular(18),
+          Rect.fromLTWH(40, 168, width - 80, height - 460),
+          const Radius.circular(10),
         ),
         Paint()..color = Colors.white,
       );
-      var y = 274.0;
-      painter(
-        '$_passLabel  ·  ${value.notes}注  ·  ${value.amount.toStringAsFixed(0)}元',
-        style: const TextStyle(
-          color: Color(0xff1d2924),
-          fontSize: 31,
-          fontWeight: FontWeight.w700,
-        ),
-      ).paint(canvas, Offset(horizontal, y));
-      y += 62;
-      painter(
-        prizeTitle,
-        style: TextStyle(
-          color: actualPrize != null
-              ? const Color(0xffc76a00)
-              : settled
-                  ? const Color(0xff767e7a)
-                  : const Color(0xffd8484f),
-          fontSize: 31,
-          fontWeight: FontWeight.w700,
-        ),
-      ).paint(canvas, Offset(horizontal, y));
-      y += 78;
-      for (final card in pickCards) {
-        canvas.drawLine(
-          Offset(horizontal, y - 22),
-          Offset(width - horizontal, y - 22),
-          Paint()
-            ..color = const Color(0xffe2e9e5)
-            ..strokeWidth = 1.5,
+      final statusLabel = actualPrize != null
+          ? '已中奖'
+          : settled
+              ? '未中奖'
+              : '待开奖';
+      final statusPainter = painter(
+        statusLabel,
+        style: const TextStyle(color: Color(0xff68716d), fontSize: 21),
+      );
+      statusPainter.paint(
+        canvas,
+        Offset(width - horizontal - statusPainter.width, 190),
+      );
+
+      void paintCentered(
+        String text,
+        Rect rect, {
+        required TextStyle style,
+      }) {
+        final textPainter = painter(text, style: style, maxWidth: rect.width);
+        textPainter.paint(
+          canvas,
+          Offset(
+            rect.left + (rect.width - textPainter.width) / 2,
+            rect.top + (rect.height - textPainter.height) / 2,
+          ),
         );
-        card.title.paint(canvas, Offset(horizontal, y));
-        y += card.title.height + 12;
-        card.choices.paint(canvas, Offset(horizontal, y));
-        y += card.choices.height + 46;
       }
+
+      void paintOptionCell(
+        Rect rect, {
+        required String label,
+        required String odds,
+        required bool selected,
+        bool twoLines = false,
+      }) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(8)),
+          Paint()
+            ..color =
+                selected ? const Color(0xff168f62) : const Color(0xfff7f8f8),
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect, const Radius.circular(8)),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color =
+                selected ? const Color(0xff168f62) : const Color(0xffdce3df),
+        );
+        final foreground = selected ? Colors.white : const Color(0xff929995);
+        if (!twoLines) {
+          paintCentered(
+            '$label $odds',
+            rect,
+            style: TextStyle(
+              color: foreground,
+              fontSize: 24,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          );
+          return;
+        }
+        paintCentered(
+          label,
+          Rect.fromLTWH(rect.left, rect.top + 8, rect.width, 30),
+          style: TextStyle(
+            color: foreground,
+            fontSize: 25,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+        paintCentered(
+          odds,
+          Rect.fromLTWH(rect.left, rect.top + 39, rect.width, 28),
+          style: TextStyle(
+            color: selected ? const Color(0xffe5f7ef) : const Color(0xff7d8882),
+            fontSize: 21,
+            fontWeight: FontWeight.w500,
+          ),
+        );
+      }
+
+      final summaryTop = 242.0;
+      final summaryWidth = contentWidth / 3;
+      void paintSummary(
+        int index,
+        String label,
+        String amount, {
+        Color color = const Color(0xff17231e),
+        double amountSize = 38,
+      }) {
+        final rect = Rect.fromLTWH(
+          horizontal + summaryWidth * index,
+          summaryTop,
+          summaryWidth,
+          116,
+        );
+        paintCentered(
+          label,
+          Rect.fromLTWH(rect.left, rect.top, rect.width, 34),
+          style: const TextStyle(color: Color(0xff65706a), fontSize: 21),
+        );
+        paintCentered(
+          amount,
+          Rect.fromLTWH(rect.left, rect.top + 36, rect.width, 58),
+          style: TextStyle(
+            color: color,
+            fontSize: amountSize,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+        if (index < 2) {
+          canvas.drawLine(
+            Offset(rect.right, rect.top + 6),
+            Offset(rect.right, rect.bottom - 12),
+            Paint()
+              ..color = const Color(0xffe0e5e2)
+              ..strokeWidth = 1.4,
+          );
+        }
+      }
+
+      paintSummary(
+        0,
+        '投入',
+        '${value.amount.toStringAsFixed(0)}元',
+        color: const Color(0xff168f62),
+      );
+      paintSummary(
+        1,
+        '注数',
+        '${value.notes}注',
+        color: const Color(0xff168f62),
+      );
+      final prizeValue = actualPrize != null
+          ? '${actualPrize.toStringAsFixed(2)}元'
+          : settled
+              ? '未中奖'
+              : _prizeText(value.minReturn, value.maxReturn);
+      paintSummary(
+        2,
+        actualPrize != null ? '实际税前奖金' : '预计税前奖金',
+        prizeValue,
+        color: actualPrize != null
+            ? const Color(0xffc76a00)
+            : settled
+                ? const Color(0xff767e7a)
+                : const Color(0xffc76a00),
+        amountSize: prizeValue.length > 16
+            ? 24
+            : prizeValue.length > 11
+                ? 29
+                : 36,
+      );
+      for (var x = horizontal; x < width - horizontal; x += 18) {
+        canvas.drawCircle(
+          Offset(x, 382),
+          2.4,
+          Paint()..color = const Color(0xffd8dedb),
+        );
+      }
+      const infoBand = Rect.fromLTWH(horizontal, 410, contentWidth, 66);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(infoBand, const Radius.circular(6)),
+        Paint()..color = const Color(0xffeef7f3),
+      );
+      paintCentered(
+        _passLabel,
+        Rect.fromLTWH(infoBand.left, infoBand.top, infoBand.width / 3, 66),
+        style: const TextStyle(
+          color: Color(0xff168f62),
+          fontSize: 27,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+      paintCentered(
+        '${widget.initialMultiple}倍',
+        Rect.fromLTWH(
+          infoBand.left + infoBand.width / 3,
+          infoBand.top,
+          infoBand.width / 3,
+          66,
+        ),
+        style: const TextStyle(
+          color: Color(0xff168f62),
+          fontSize: 27,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+      paintCentered(
+        '共${widget.picks.length}场',
+        Rect.fromLTWH(
+          infoBand.left + infoBand.width * 2 / 3,
+          infoBand.top,
+          infoBand.width / 3,
+          66,
+        ),
+        style: const TextStyle(
+          color: Color(0xff168f62),
+          fontSize: 27,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+      var y = 516.0;
+
+      for (final pick in widget.picks) {
+        final cardHeight = pickCardHeight(pick);
+        final cardRect = Rect.fromLTWH(
+          horizontal - 18,
+          y - 22,
+          contentWidth + 36,
+          cardHeight,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(cardRect, const Radius.circular(14)),
+          Paint()..color = Colors.white,
+        );
+        final kickoff = pick.kickoff;
+        final timeLabel = kickoff == null
+            ? '--:--'
+            : '${kickoff.hour.toString().padLeft(2, '0')}:${kickoff.minute.toString().padLeft(2, '0')}';
+        paintCentered(
+          '${pick.number} · ${pick.league} · $timeLabel',
+          Rect.fromLTWH(horizontal, y, contentWidth, 34),
+          style: const TextStyle(color: Color(0xff707a75), fontSize: 22),
+        );
+        y += 42;
+        final score = _scoreFor(pick);
+        paintCentered(
+          '${pick.home}   ${score.isEmpty ? 'VS' : score}   ${pick.away}',
+          Rect.fromLTWH(horizontal, y, contentWidth, 48),
+          style: const TextStyle(
+            color: Color(0xff17231e),
+            fontSize: 29,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+        y += 70;
+
+        for (final play in FootballPlay.values) {
+          final selectedOptions = pick.options
+              .where((option) => (option.play ?? pick.play) == play)
+              .toList(growable: false);
+          if (selectedOptions.isEmpty) continue;
+          final isMain = play == FootballPlay.had || play == FootballPlay.hhad;
+          if (isMain) {
+            final playTitle =
+                play == FootballPlay.hhad && pick.handicap.isNotEmpty
+                    ? '${play.label} ${pick.handicap}'
+                    : play.label;
+            painter(
+              playTitle,
+              style: const TextStyle(
+                color: Color(0xff168f62),
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+              ),
+            ).paint(canvas, Offset(horizontal + 62, y));
+            y += 32;
+            final marker = play == FootballPlay.hhad
+                ? (pick.handicap.isEmpty ? '让' : pick.handicap)
+                : '0';
+            final markerRect = Rect.fromLTWH(horizontal, y, 62, 54);
+            paintCentered(
+              marker,
+              markerRect,
+              style: TextStyle(
+                color: play == FootballPlay.hhad
+                    ? const Color(0xff168f62)
+                    : const Color(0xff8a918e),
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+              ),
+            );
+            final odds = pick.availableOdds[play] ?? const <String, double>{};
+            final selectedLabels =
+                selectedOptions.map((option) => option.label).toSet();
+            final cellWidth = (contentWidth - 62) / 3;
+            for (var index = 0; index < 3; index++) {
+              final label = const ['胜', '平', '负'][index];
+              paintOptionCell(
+                Rect.fromLTWH(
+                  horizontal + 62 + index * cellWidth,
+                  y,
+                  cellWidth - 4,
+                  54,
+                ),
+                label: label,
+                odds: odds[label]?.toStringAsFixed(2) ?? '--',
+                selected: selectedLabels.contains(label),
+              );
+            }
+            y += 72;
+            continue;
+          }
+
+          const gap = 12.0;
+          final cellWidth = (contentWidth - gap * 2) / 3;
+          final columns =
+              selectedOptions.length <= 2 ? selectedOptions.length : 3;
+          final groupWidth = columns * cellWidth + (columns - 1) * gap;
+          final groupLeft = selectedOptions.length <= 2
+              ? horizontal + (contentWidth - groupWidth) / 2
+              : horizontal;
+          painter(
+            play.label,
+            style: const TextStyle(
+              color: Color(0xff168f62),
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+            ),
+          ).paint(canvas, Offset(groupLeft, y));
+          y += 40;
+          for (var index = 0; index < selectedOptions.length; index++) {
+            final option = selectedOptions[index];
+            final row = index ~/ 3;
+            final column = index % 3;
+            final won = _optionWon(
+              option.label,
+              _winnerFor(pick, play),
+              play,
+            );
+            paintOptionCell(
+              Rect.fromLTWH(
+                groupLeft + column * (cellWidth + gap),
+                y + row * 82,
+                cellWidth,
+                70,
+              ),
+              label: _compactOptionLabel(play, option.label),
+              odds: option.sp.toStringAsFixed(2),
+              selected: !settled || won,
+              twoLines: true,
+            );
+          }
+          y += (selectedOptions.length / 3).ceil() * 82 + 8;
+        }
+        y = cardRect.bottom + 24;
+      }
+      canvas.drawLine(
+        Offset(horizontal, y - 8),
+        Offset(width - horizontal, y - 8),
+        Paint()
+          ..color = const Color(0xffe0e5e2)
+          ..strokeWidth = 1.2,
+      );
+      final generatedAt = DateTime.now();
+      String two(int number) => number.toString().padLeft(2, '0');
+      final generatedLabel =
+          '${two(generatedAt.month)}-${two(generatedAt.day)} ${two(generatedAt.hour)}:${two(generatedAt.minute)}';
+      final timestamp = generatedAt.millisecondsSinceEpoch.toString();
+      final schemeId =
+          'JQJ-${two(generatedAt.month)}${two(generatedAt.day)}-${timestamp.substring(timestamp.length - 4)}';
+      final metaValues = [
+        ('方案编号', schemeId),
+        ('生成时间', generatedLabel),
+        ('最早开赛', _earliestKickoff()),
+      ];
+      for (var index = 0; index < metaValues.length; index++) {
+        final rect = Rect.fromLTWH(
+          horizontal + summaryWidth * index,
+          y + 8,
+          summaryWidth,
+          76,
+        );
+        paintCentered(
+          metaValues[index].$1,
+          Rect.fromLTWH(rect.left, rect.top, rect.width, 28),
+          style: const TextStyle(color: Color(0xff7b8580), fontSize: 18),
+        );
+        paintCentered(
+          metaValues[index].$2,
+          Rect.fromLTWH(rect.left, rect.top + 30, rect.width, 34),
+          style: const TextStyle(color: Color(0xff3f4944), fontSize: 20),
+        );
+      }
+      paintCentered(
+        '由「竞球镜」App 生成',
+        Rect.fromLTWH(horizontal, height - 250, contentWidth, 38),
+        style: const TextStyle(
+          color: Color(0xff168f62),
+          fontSize: 25,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+      paintCentered(
+        '看比分 · 查赔率 · 找计划',
+        Rect.fromLTWH(horizontal, height - 204, contentWidth, 42),
+        style: const TextStyle(
+          color: Color(0xff25302b),
+          fontSize: 29,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+      paintCentered(
+        '计划单集中查看 · 每日更新状态清晰',
+        Rect.fromLTWH(horizontal, height - 158, contentWidth, 32),
+        style: const TextStyle(color: Color(0xff8a938e), fontSize: 20),
+      );
       painter(
-        settled ? '赛果按全场90分钟（含伤停补时）结算' : 'SP变化后请重新计算 · 方案仅供参考',
-        style: const TextStyle(color: Color(0xff87928c), fontSize: 21),
-      ).paint(canvas, Offset(horizontal, height - 106));
+        settled
+            ? '赛果按全场90分钟（含伤停补时）结算；SP及赛果以官方公布为准。'
+            : '本方案仅供数据计算与信息参考，不构成投注建议；SP及赛果以官方公布为准。',
+        style: const TextStyle(color: Color(0xff6f7974), fontSize: 19),
+      ).paint(canvas, Offset(horizontal, height - 96));
       final picture = recorder.endRecording();
       final image = await picture.toImage(width.ceil(), height);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       if (data == null) throw StateError('分享图片生成失败');
-      final directory = await getTemporaryDirectory();
-      final file = File(
-        '${directory.path}/jingqiujing_scheme_${DateTime.now().millisecondsSinceEpoch}.png',
+      final bytes = data.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
       );
-      await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
+      final shareFile = File(
+        '${Directory.systemTemp.path}/caimaster-scheme-${DateTime.now().millisecondsSinceEpoch}.png',
+      );
+      await shareFile.writeAsBytes(bytes, flush: true);
+      if (!await shareFile.exists() || await shareFile.length() == 0) {
+        throw StateError('分享图片保存失败');
+      }
+      if (!mounted) return;
       final shareResult = await SharePlus.instance.share(
         ShareParams(
           files: [
             XFile(
-              file.path,
+              shareFile.path,
               mimeType: 'image/png',
               name: '竞球镜方案.png',
             ),
           ],
+          fileNameOverrides: const ['竞球镜方案.png'],
           text: '竞球镜·方案分享',
           subject: '竞球镜·方案分享',
+          sharePositionOrigin: _sharePositionOrigin(),
         ),
       );
       if (shareResult.status == ShareResultStatus.unavailable) {
@@ -2047,16 +2868,25 @@ class _SchemePageState extends State<_SchemePage> {
       }
     } catch (error, stackTrace) {
       debugPrint('方案图片分享失败: $error\n$stackTrace');
+      var fallbackOpened = false;
       try {
-        await SharePlus.instance.share(
-          ShareParams(text: _schemeText(value), subject: '竞球镜·方案分享'),
+        final fallbackResult = await SharePlus.instance.share(
+          ShareParams(
+            text: _schemeText(value),
+            subject: '竞球镜·方案分享',
+            sharePositionOrigin: _sharePositionOrigin(),
+          ),
         );
+        fallbackOpened = fallbackResult.status != ShareResultStatus.unavailable;
       } catch (fallbackError) {
         debugPrint('方案文字分享也失败: $fallbackError');
       }
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('图片生成失败，已尝试文字分享')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(fallbackOpened ? '图片分享不可用，已打开文字分享' : '分享失败，请稍后重试'),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => isSharing = false);
@@ -2066,17 +2896,23 @@ class _SchemePageState extends State<_SchemePage> {
   Widget _parameters() => Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-            color: Colors.white, borderRadius: BorderRadius.circular(12)),
-        child: Column(children: [
-          if (!widget.optimizationOnly) ...[
-            InputDecorator(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            if (!widget.optimizationOnly) ...[
+              InputDecorator(
                 decoration: const InputDecoration(
-                    labelText: '过关方式', border: OutlineInputBorder()),
-                child: Text(_passLabel)),
-            const SizedBox(height: 12),
-          ],
-          if (mode == _SchemeMode.normal)
-            TextField(
+                  labelText: '过关方式',
+                  border: OutlineInputBorder(),
+                ),
+                child: Text(_passLabel),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (mode == _SchemeMode.normal)
+              TextField(
                 controller: multipleController,
                 keyboardType: TextInputType.number,
                 textInputAction: TextInputAction.done,
@@ -2084,12 +2920,14 @@ class _SchemePageState extends State<_SchemePage> {
                 onChanged: (_) => _recalculate(),
                 onSubmitted: (_) => FocusScope.of(context).unfocus(),
                 decoration: const InputDecoration(
-                    isDense: true,
-                    labelText: '方案倍数',
-                    suffixText: '倍（最高10000）',
-                    border: OutlineInputBorder()))
-          else ...[
-            TextField(
+                  isDense: true,
+                  labelText: '方案倍数',
+                  suffixText: '倍（最高10000）',
+                  border: OutlineInputBorder(),
+                ),
+              )
+            else ...[
+              TextField(
                 controller: budgetController,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
@@ -2097,44 +2935,52 @@ class _SchemePageState extends State<_SchemePage> {
                 onChanged: (_) => _recalculate(),
                 onSubmitted: (_) => FocusScope.of(context).unfocus(),
                 decoration: const InputDecoration(
-                    isDense: true,
-                    labelText: '优化预算',
-                    suffixText: '元',
-                    border: OutlineInputBorder())),
-            const SizedBox(height: 10),
-            Row(children: [
-              _optimizeButton(OptimizeMode.balanced, '平均'),
-              _optimizeButton(OptimizeMode.hot, '博热'),
-              _optimizeButton(OptimizeMode.cold, '博冷'),
-            ]),
-            const SizedBox(height: 7),
-            Text(
-                switch (optimizeMode) {
-                  OptimizeMode.balanced => '尽量让各组合中奖回报接近',
-                  OptimizeMode.hot => '先保证各组合保本，再放大低SP组合奖金',
-                  OptimizeMode.cold => '先保证各组合保本，再放大高SP组合奖金',
-                },
-                style: const TextStyle(fontSize: 11, color: Color(0xff858d89)))
-          ]
-        ]),
+                  isDense: true,
+                  labelText: '优化预算',
+                  suffixText: '元',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  _optimizeButton(OptimizeMode.balanced, '平均'),
+                  _optimizeButton(OptimizeMode.hot, '博热'),
+                  _optimizeButton(OptimizeMode.cold, '博冷'),
+                ],
+              ),
+              const SizedBox(height: 7),
+              Text(
+                  switch (optimizeMode) {
+                    OptimizeMode.balanced => '尽量让各组合中奖回报接近',
+                    OptimizeMode.hot => '先保证各组合保本，再放大低SP组合奖金',
+                    OptimizeMode.cold => '先保证各组合保本，再放大高SP组合奖金',
+                  },
+                  style:
+                      const TextStyle(fontSize: 11, color: Color(0xff858d89))),
+            ],
+          ],
+        ),
       );
 
   Widget _optimizeButton(OptimizeMode value, String label) => Expanded(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 3),
           child: ChoiceChip(
-              label: SizedBox(
-                  width: double.infinity,
-                  child: Text(label, textAlign: TextAlign.center)),
-              selected: optimizeMode == value,
-              selectedColor: const Color(0xffdff3e9),
-              labelStyle: TextStyle(
-                  color:
-                      optimizeMode == value ? _green : const Color(0xff656d69)),
-              onSelected: (_) {
-                setState(() => optimizeMode = value);
-                _recalculate();
-              }),
+            label: SizedBox(
+              width: double.infinity,
+              child: Text(label, textAlign: TextAlign.center),
+            ),
+            selected: optimizeMode == value,
+            selectedColor: const Color(0xffdff3e9),
+            labelStyle: TextStyle(
+              color: optimizeMode == value ? _green : const Color(0xff656d69),
+            ),
+            onSelected: (_) {
+              setState(() => optimizeMode = value);
+              _recalculate();
+            },
+          ),
         ),
       );
 
@@ -2184,60 +3030,74 @@ class _SchemePageState extends State<_SchemePage> {
         : '0';
     return Padding(
       padding: const EdgeInsets.only(top: 6),
-      child: Row(children: [
-        SizedBox(
+      child: Row(
+        children: [
+          SizedBox(
             width: 30,
-            child: Text(marker,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 11,
-                    color: play == FootballPlay.hhad
-                        ? const Color(0xff168f62)
-                        : const Color(0xff8a918e),
-                    fontWeight: FontWeight.w600))),
-        for (final label in const ['胜', '平', '负'])
-          Builder(builder: (_) {
-            final isSelected = selected.contains(label);
-            final selectedWon =
-                isSelected && _optionWon(label, _winnerFor(pick, play), play);
-            final selectedLost = _isSettled && isSelected && !selectedWon;
-            final selectedActive = isSelected && (selectedWon || !_isSettled);
-            final background = selectedActive
-                ? _green
-                : selectedLost
-                    ? const Color(0xffe8ece9)
-                    : Colors.white;
-            final foreground = selectedActive
-                ? Colors.white
-                : selectedLost
-                    ? const Color(0xff69716d)
-                    : const Color(0xff8b928f);
-            return Expanded(
-                child: Padding(
+            child: Text(
+              marker,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                color: play == FootballPlay.hhad
+                    ? const Color(0xff168f62)
+                    : const Color(0xff8a918e),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          for (final label in const ['胜', '平', '负'])
+            Builder(
+              builder: (_) {
+                final isSelected = selected.contains(label);
+                final selectedWon = isSelected &&
+                    _optionWon(label, _winnerFor(pick, play), play);
+                final selectedLost = _isSettled && isSelected && !selectedWon;
+                final selectedActive =
+                    isSelected && (selectedWon || !_isSettled);
+                final background = selectedActive
+                    ? _green
+                    : selectedLost
+                        ? const Color(0xffe8ece9)
+                        : Colors.white;
+                final foreground = selectedActive
+                    ? Colors.white
+                    : selectedLost
+                        ? const Color(0xff69716d)
+                        : const Color(0xff8b928f);
+                return Expanded(
+                  child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 2),
                     child: Container(
                       height: 34,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                          color: background,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                              color: selectedActive
-                                  ? _green
-                                  : selectedLost
-                                      ? const Color(0xffd4dbd6)
-                                      : const Color(0xffe3e7e5))),
+                        color: background,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: selectedActive
+                              ? _green
+                              : selectedLost
+                                  ? const Color(0xffd4dbd6)
+                                  : const Color(0xffe3e7e5),
+                        ),
+                      ),
                       child: Text(
-                          '$label ${odds[label]?.toStringAsFixed(2) ?? '--'}',
-                          style: TextStyle(
-                              fontSize: 11.5,
-                              color: foreground,
-                              fontWeight: isSelected
-                                  ? FontWeight.w700
-                                  : FontWeight.w400)),
-                    )));
-          })
-      ]),
+                        '$label ${odds[label]?.toStringAsFixed(2) ?? '--'}',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: foreground,
+                          fontWeight:
+                              isSelected ? FontWeight.w700 : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
     );
   }
 
@@ -2249,45 +3109,68 @@ class _SchemePageState extends State<_SchemePage> {
     if (options.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 7, left: 30),
-      child: Wrap(spacing: 6, runSpacing: 6, children: [
-        for (final option in options)
-          Builder(builder: (_) {
-            final play = option.play ?? pick.play;
-            final won = _optionWon(option.label, _winnerFor(pick, play), play);
-            final lost = _isSettled && !won;
-            final active = won || !_isSettled;
-            final background = active
-                ? _green
-                : lost
-                    ? const Color(0xffe8ece9)
-                    : Colors.white;
-            final foreground =
-                won || !_isSavedScheme ? Colors.white : const Color(0xff69716d);
-            return Container(
-                width: 104,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final option in options)
+            Builder(
+              builder: (_) {
+                final play = option.play ?? pick.play;
+                final won = _optionWon(
+                  option.label,
+                  _winnerFor(pick, play),
+                  play,
+                );
+                final lost = _isSettled && !won;
+                final active = won || !_isSettled;
+                final background = active
+                    ? _green
+                    : lost
+                        ? const Color(0xffe8ece9)
+                        : Colors.white;
+                final foreground = won || !_isSavedScheme
+                    ? Colors.white
+                    : const Color(0xff69716d);
+                return Container(
+                  width: 104,
+                  height: 48,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
                     color: background,
                     border: Border.all(
-                        color: active ? _green : const Color(0xffd4dbd6)),
-                    borderRadius: BorderRadius.circular(4)),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Text(_compactOptionLabel(play, option.label),
-                      style: TextStyle(
+                      color: active ? _green : const Color(0xffd4dbd6),
+                    ),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _compactOptionLabel(play, option.label),
+                        style: TextStyle(
                           fontSize: 13,
                           color: foreground,
-                          fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text(option.sp.toStringAsFixed(2),
-                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        option.sp.toStringAsFixed(2),
+                        style: TextStyle(
                           fontSize: 11,
                           color: active
                               ? const Color(0xffe8f7f0)
-                              : const Color(0xff818985)))
-                ]));
-          })
-      ]),
+                              : const Color(0xff818985),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
     );
   }
 
@@ -2326,135 +3209,206 @@ class _SchemePageState extends State<_SchemePage> {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 12),
       decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(12)),
-      child: Column(children: [
-        Row(children: [
-          const Text('金额',
-              style: TextStyle(fontSize: 12, color: Color(0xff7d8581))),
-          const SizedBox(width: 7),
-          Text('${value.amount.toStringAsFixed(0)}元',
-              style: const TextStyle(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Text(
+                '金额',
+                style: TextStyle(fontSize: 12, color: Color(0xff7d8581)),
+              ),
+              const SizedBox(width: 7),
+              Text(
+                '${value.amount.toStringAsFixed(0)}元',
+                style: const TextStyle(
                   fontSize: 16,
                   color: Color(0xff303733),
-                  fontWeight: FontWeight.w700)),
-          const SizedBox(width: 5),
-          Text('[${widget.initialMultiple}倍]',
-              style: const TextStyle(fontSize: 11, color: Color(0xff7d8581))),
-          const Spacer(),
-          Text(statusTitle,
-              style: const TextStyle(fontSize: 11, color: Color(0xff7d8581))),
-          const SizedBox(width: 6),
-          Text(statusValue,
-              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '[${widget.initialMultiple}倍]',
+                style: const TextStyle(fontSize: 11, color: Color(0xff7d8581)),
+              ),
+              const Spacer(),
+              Text(
+                statusTitle,
+                style: const TextStyle(fontSize: 11, color: Color(0xff7d8581)),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                statusValue,
+                style: TextStyle(
                   fontSize: 14,
                   color: statusColor,
-                  fontWeight: FontWeight.w700)),
-        ]),
-        const Divider(height: 20),
-        Row(children: [
-          const Text('竞彩足球',
-              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 20),
+          Row(
+            children: [
+              const Text(
+                '竞彩足球',
+                style: TextStyle(
                   fontSize: 12,
                   color: Color(0xff168f62),
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(width: 8),
-          Text('${widget.picks.length}场  $_passLabel',
-              style: const TextStyle(fontSize: 12, color: Color(0xff4f5753))),
-          const Spacer(),
-          Text('${value.notes}注',
-              style: const TextStyle(fontSize: 11, color: Color(0xff7d8581)))
-        ])
-      ]),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${widget.picks.length}场  $_passLabel',
+                style: const TextStyle(fontSize: 12, color: Color(0xff4f5753)),
+              ),
+              const Spacer(),
+              Text(
+                '${value.notes}注',
+                style: const TextStyle(fontSize: 11, color: Color(0xff7d8581)),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _ticketCards() => Column(children: [
-        for (final pick in widget.picks)
-          Builder(builder: (_) {
-            final score = _scoreFor(pick);
-            final hasOutcome = score.isNotEmpty;
-            final hasHit = pick.options.any((option) {
-              final play = option.play ?? pick.play;
-              return _optionWon(option.label, _winnerFor(pick, play), play);
-            });
-            final statusLabel = !_isSettled
-                ? ''
-                : hasHit
-                    ? '命中'
-                    : '未中';
-            final statusColor = hasHit ? _green : const Color(0xff767e7a);
-            return Container(
-              margin: const EdgeInsets.only(bottom: 7),
-              padding: const EdgeInsets.fromLTRB(13, 9, 13, 10),
-              decoration: BoxDecoration(
-                  color: Colors.white, borderRadius: BorderRadius.circular(12)),
-              child: Column(children: [
-                Row(children: [
-                  Text(pick.number,
-                      style: const TextStyle(
-                          fontSize: 12, color: Color(0xff7c8480))),
-                  const SizedBox(width: 7),
-                  Text(pick.league,
-                      style: const TextStyle(
-                          fontSize: 12,
-                          color: _green,
-                          fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  if (statusLabel.isNotEmpty) ...[
-                    Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                            color: hasHit
-                                ? const Color(0xffe3f3ea)
-                                : const Color(0xffeef1ef),
-                            borderRadius: BorderRadius.circular(4)),
-                        child: Text(statusLabel,
-                            style: TextStyle(
-                                fontSize: 10,
-                                color: statusColor,
-                                fontWeight: FontWeight.w700))),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(hasOutcome ? '完场' : _kickoffLabel(pick),
-                      style: const TextStyle(
-                          fontSize: 12, color: Color(0xff8a918e)))
-                ]),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
-                      child: Text(pick.home,
-                          textAlign: TextAlign.right,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w700))),
-                  SizedBox(
-                      width: 54,
-                      child: Text(hasOutcome ? score : 'VS',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: hasOutcome ? 16 : 13,
-                              color: hasOutcome
-                                  ? const Color(0xff303733)
-                                  : const Color(0xff9ba19e),
-                              fontWeight: hasOutcome
-                                  ? FontWeight.w800
-                                  : FontWeight.w400))),
-                  Expanded(
-                      child: Text(pick.away,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w700)))
-                ]),
-                _resultOddsRow(pick, FootballPlay.had),
-                _resultOddsRow(pick, FootballPlay.hhad),
-                _otherPlaySelections(pick)
-              ]),
-            );
-          })
-      ]);
+  Widget _ticketCards() => Column(
+        children: [
+          for (final pick in widget.picks)
+            Builder(
+              builder: (_) {
+                final score = _scoreFor(pick);
+                final hasOutcome = score.isNotEmpty;
+                final hasHit = pick.options.any((option) {
+                  final play = option.play ?? pick.play;
+                  return _optionWon(option.label, _winnerFor(pick, play), play);
+                });
+                final statusLabel = !_isSettled
+                    ? ''
+                    : hasHit
+                        ? '命中'
+                        : '未中';
+                final statusColor = hasHit ? _green : const Color(0xff767e7a);
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 7),
+                  padding: const EdgeInsets.fromLTRB(13, 9, 13, 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            pick.number,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xff7c8480),
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          Text(
+                            pick.league,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: _green,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (statusLabel.isNotEmpty) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: hasHit
+                                    ? const Color(0xffe3f3ea)
+                                    : const Color(0xffeef1ef),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                statusLabel,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: statusColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Text(
+                            hasOutcome ? '完场' : _kickoffLabel(pick),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xff8a918e),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              pick.home,
+                              textAlign: TextAlign.right,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 54,
+                            child: Text(
+                              hasOutcome ? score : 'VS',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: hasOutcome ? 16 : 13,
+                                color: hasOutcome
+                                    ? const Color(0xff303733)
+                                    : const Color(0xff9ba19e),
+                                fontWeight: hasOutcome
+                                    ? FontWeight.w800
+                                    : FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              pick.away,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      _resultOddsRow(pick, FootballPlay.had),
+                      _resultOddsRow(pick, FootballPlay.hhad),
+                      _otherPlaySelections(pick),
+                    ],
+                  ),
+                );
+              },
+            ),
+        ],
+      );
 
   Widget _summary(BettingResult value) {
     final actualPrize = _actualPrize;
@@ -2462,68 +3416,106 @@ class _SchemePageState extends State<_SchemePage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(12)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Text('$_passLabel · ${value.notes}注',
-              style:
-                  const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          const Spacer(),
-          Text('${value.amount.toStringAsFixed(0)}元',
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))
-        ]),
-        const SizedBox(height: 9),
-        if (actualPrize != null)
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              const Text('实际税前奖金',
-                  style: TextStyle(fontSize: 12, color: Color(0xff7d8581))),
-              const SizedBox(height: 2),
-              Text('${actualPrize.toStringAsFixed(2)}元',
-                  style: const TextStyle(
-                      fontSize: 20,
-                      color: Color(0xffc76a00),
-                      fontWeight: FontWeight.w800)),
-            ],
-          )
-        else if (isLost)
-          const Text('本方案未中奖',
-              style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xff767e7a),
-                  fontWeight: FontWeight.w700))
-        else
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('预计奖金',
-                  style: TextStyle(fontSize: 12, color: Color(0xff7d8581))),
-              const SizedBox(height: 2),
-              Text(_prizeText(value.minReturn, value.maxReturn),
-                  style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xffdf4162),
-                      fontWeight: FontWeight.w700)),
+              Text(
+                '$_passLabel · ${value.notes}注',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${value.amount.toStringAsFixed(0)}元',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
-        if (widget.optimizationOnly) ...[
-          const SizedBox(height: 8),
-          if (value.principalProtected == true)
-            const Text('已按当前投入完成保本分配',
+          const SizedBox(height: 9),
+          if (actualPrize != null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '实际税前奖金',
+                  style: TextStyle(fontSize: 12, color: Color(0xff7d8581)),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${actualPrize.toStringAsFixed(2)}元',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    color: Color(0xffc76a00),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            )
+          else if (isLost)
+            const Text(
+              '本方案未中奖',
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xff767e7a),
+                fontWeight: FontWeight.w700,
+              ),
+            )
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '预计奖金',
+                  style: TextStyle(fontSize: 12, color: Color(0xff7d8581)),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _prizeText(value.minReturn, value.maxReturn),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xffdf4162),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          if (widget.optimizationOnly) ...[
+            const SizedBox(height: 8),
+            if (value.principalProtected == true)
+              const Text(
+                '已按当前投入完成保本分配',
                 style: TextStyle(
+                  fontSize: 11,
+                  color: Color(0xff168f62),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            Builder(
+              builder: (_) {
+                final budget = double.tryParse(budgetController.text) ?? 0;
+                final remaining = math.max(0, budget - value.amount);
+                return Text(
+                  '预算${budget.toStringAsFixed(0)}元  ·  已分配${value.amount.toStringAsFixed(0)}元  ·  剩余${remaining.toStringAsFixed(0)}元',
+                  style: const TextStyle(
                     fontSize: 11,
-                    color: Color(0xff168f62),
-                    fontWeight: FontWeight.w600)),
-          Builder(builder: (_) {
-            final budget = double.tryParse(budgetController.text) ?? 0;
-            final remaining = math.max(0, budget - value.amount);
-            return Text(
-                '预算${budget.toStringAsFixed(0)}元  ·  已分配${value.amount.toStringAsFixed(0)}元  ·  剩余${remaining.toStringAsFixed(0)}元',
-                style: const TextStyle(fontSize: 11, color: Color(0xff7d8581)));
-          })
+                    color: Color(0xff7d8581),
+                  ),
+                );
+              },
+            ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 
@@ -2531,88 +3523,136 @@ class _SchemePageState extends State<_SchemePage> {
     final entries = value.returnsByCombination.entries.toList();
     return Container(
       color: Colors.white,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
             child: Text(
-                widget.optimizationOnly
-                    ? '${entries.length}个组合 · 共${value.notes}注'
-                    : '组合明细（${entries.length}）',
-                style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w700))),
-        for (var index = 0; index < entries.length; index++)
-          Container(
+              widget.optimizationOnly
+                  ? '${entries.length}个组合 · 共${value.notes}注'
+                  : '组合明细（${entries.length}）',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+          ),
+          for (var index = 0; index < entries.length; index++)
+            Container(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               decoration: const BoxDecoration(
-                  border: Border(
-                      top: BorderSide(color: Color(0xffedf0ee), width: .7))),
-              child:
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                SizedBox(
+                border: Border(
+                  top: BorderSide(color: Color(0xffedf0ee), width: .7),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
                     width: 26,
-                    child: Text('${index + 1}',
-                        style: const TextStyle(
-                            fontSize: 12, color: Color(0xff969d99)))),
-                Expanded(
+                    child: Text(
+                      '${index + 1}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xff969d99),
+                      ),
+                    ),
+                  ),
+                  Expanded(
                     child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                      for (final line in _betLines(entries[index].key))
-                        Padding(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final line in _betLines(entries[index].key))
+                          Padding(
                             padding: const EdgeInsets.only(bottom: 3),
-                            child: Text(line,
-                                style: const TextStyle(
-                                    fontSize: 12.5, height: 1.3))),
-                      if (!widget.optimizationOnly) ...[
-                        const SizedBox(height: 5),
-                        Text('${_multipleFor(value, entries[index].key)}倍',
-                            style: const TextStyle(
-                                fontSize: 11, color: Color(0xff858d89)))
-                      ]
-                    ])),
-                const SizedBox(width: 8),
-                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  if (widget.optimizationOnly)
-                    Row(mainAxisSize: MainAxisSize.min, children: [
-                      _stepButton(Icons.remove,
-                          () => _adjustMultiple(entries[index].key, -1)),
-                      Container(
-                          width: 48,
-                          height: 30,
-                          alignment: Alignment.center,
-                          decoration: const BoxDecoration(
-                              border: Border.symmetric(
-                                  horizontal:
-                                      BorderSide(color: Color(0xffdfe4e1)))),
-                          child: Text(
-                              '${_multipleFor(value, entries[index].key)}倍',
-                              maxLines: 1,
+                            child: Text(
+                              line,
                               style: const TextStyle(
-                                  fontSize: 11, fontWeight: FontWeight.w600))),
-                      _stepButton(Icons.add,
-                          () => _adjustMultiple(entries[index].key, 1)),
-                    ]),
-                  if (widget.optimizationOnly) const SizedBox(height: 6),
-                  Builder(builder: (_) {
-                    final won = _isSettled && _ticketWon(entries[index].key);
-                    final text = _isSettled
-                        ? (won
-                            ? '中奖 ${entries[index].value.toStringAsFixed(2)}元'
-                            : '未中')
-                        : '${entries[index].value.toStringAsFixed(2)}元';
-                    return Text(text,
-                        style: TextStyle(
-                            color: won
-                                ? const Color(0xffc76a00)
-                                : _isSettled
-                                    ? const Color(0xff767e7a)
-                                    : const Color(0xffdf4162),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700));
-                  })
-                ])
-              ]))
-      ]),
+                                fontSize: 12.5,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                        if (!widget.optimizationOnly) ...[
+                          const SizedBox(height: 5),
+                          Text(
+                            '${_multipleFor(value, entries[index].key)}倍',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xff858d89),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (widget.optimizationOnly)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _stepButton(
+                              Icons.remove,
+                              () => _adjustMultiple(entries[index].key, -1),
+                            ),
+                            Container(
+                              width: 48,
+                              height: 30,
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                border: Border.symmetric(
+                                  horizontal: BorderSide(
+                                    color: Color(0xffdfe4e1),
+                                  ),
+                                ),
+                              ),
+                              child: Text(
+                                '${_multipleFor(value, entries[index].key)}倍',
+                                maxLines: 1,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            _stepButton(
+                              Icons.add,
+                              () => _adjustMultiple(entries[index].key, 1),
+                            ),
+                          ],
+                        ),
+                      if (widget.optimizationOnly) const SizedBox(height: 6),
+                      Builder(
+                        builder: (_) {
+                          final won =
+                              _isSettled && _ticketWon(entries[index].key);
+                          final text = _isSettled
+                              ? (won
+                                  ? '中奖 ${entries[index].value.toStringAsFixed(2)}元'
+                                  : '未中')
+                              : '${entries[index].value.toStringAsFixed(2)}元';
+                          return Text(
+                            text,
+                            style: TextStyle(
+                              color: won
+                                  ? const Color(0xffc76a00)
+                                  : _isSettled
+                                      ? const Color(0xff767e7a)
+                                      : const Color(0xffdf4162),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -2620,13 +3660,16 @@ class _SchemePageState extends State<_SchemePage> {
         width: 34,
         height: 30,
         child: IconButton(
-            padding: EdgeInsets.zero,
-            style: IconButton.styleFrom(
-                shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero,
-                    side: BorderSide(color: Color(0xffdfe4e1)))),
-            onPressed: onPressed,
-            icon: Icon(icon, size: 16)),
+          padding: EdgeInsets.zero,
+          style: IconButton.styleFrom(
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+              side: BorderSide(color: Color(0xffdfe4e1)),
+            ),
+          ),
+          onPressed: onPressed,
+          icon: Icon(icon, size: 16),
+        ),
       );
 
   Widget _combinationToggle(BettingResult value) => Material(
@@ -2637,25 +3680,35 @@ class _SchemePageState extends State<_SchemePage> {
           onTap: () => setState(() => showCombinations = !showCombinations),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-            child: Row(children: [
-              const Icon(Icons.receipt_long_outlined,
-                  size: 18, color: Color(0xff6f7874)),
-              const SizedBox(width: 9),
-              Text(showCombinations ? '收起组合明细' : '展开组合明细',
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.receipt_long_outlined,
+                  size: 18,
+                  color: Color(0xff6f7874),
+                ),
+                const SizedBox(width: 9),
+                Text(
+                  showCombinations ? '收起组合明细' : '展开组合明细',
                   style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600)),
-              const Spacer(),
-              Text('${value.returnsByCombination.length}个组合',
+                      fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                const Spacer(),
+                Text(
+                  '${value.returnsByCombination.length}个组合',
                   style:
-                      const TextStyle(fontSize: 12, color: Color(0xff7d8581))),
-              const SizedBox(width: 3),
-              Icon(
+                      const TextStyle(fontSize: 12, color: Color(0xff7d8581)),
+                ),
+                const SizedBox(width: 3),
+                Icon(
                   showCombinations
                       ? Icons.keyboard_arrow_up
                       : Icons.keyboard_arrow_down,
                   size: 20,
-                  color: const Color(0xff7d8581))
-            ]),
+                  color: const Color(0xff7d8581),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -2663,72 +3716,88 @@ class _SchemePageState extends State<_SchemePage> {
   Widget _validityHint() => Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: Center(
-          child: Text('最早开赛 ${_earliestKickoff()}  ·  SP以保存时为准',
-              style: const TextStyle(fontSize: 11, color: Color(0xff858d89))),
+          child: Text(
+            '最早开赛 ${_earliestKickoff()}  ·  SP以保存时为准',
+            style: const TextStyle(fontSize: 11, color: Color(0xff858d89)),
+          ),
         ),
       );
 
   Widget _bottomActions(BettingResult? value) => SafeArea(
         top: false,
         child: Container(
-            height: 64,
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                    top: BorderSide(color: Color(0xffe5e9e7), width: .7))),
-            child: Row(children: [
+          height: 64,
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border:
+                Border(top: BorderSide(color: Color(0xffe5e9e7), width: .7)),
+          ),
+          child: Row(
+            children: [
               Expanded(
-                  child: TextButton.icon(
-                      onPressed: value == null || isSharing
-                          ? null
-                          : () => _shareSchemeImage(value),
-                      icon: isSharing
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.ios_share_outlined, size: 19),
-                      label: Text(isSharing ? '生成中' : '分享方案'))),
+                child: TextButton.icon(
+                  onPressed: value == null || isSharing
+                      ? null
+                      : () => _shareSchemeImage(value),
+                  icon: isSharing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.ios_share_outlined, size: 19),
+                  label: Text(isSharing ? '生成中' : '分享方案'),
+                ),
+              ),
               if (!_isSavedScheme) ...[
                 const SizedBox(width: 6),
                 Expanded(
-                    flex: 2,
-                    child: FilledButton(
-                        onPressed: value == null ? null : () => _save(value),
-                        style: FilledButton.styleFrom(backgroundColor: _green),
-                        child: const Text('保存方案')))
-              ]
-            ])),
+                  flex: 2,
+                  child: FilledButton(
+                    onPressed: value == null ? null : () => _save(value),
+                    style: FilledButton.styleFrom(backgroundColor: _green),
+                    child: const Text('保存方案'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       );
 
   Widget _optimizationBottom(BettingResult? value) => SafeArea(
         top: false,
         child: Container(
-            height: 64,
-            padding: const EdgeInsets.fromLTRB(80, 8, 12, 8),
-            decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                    top: BorderSide(color: Color(0xffe5e9e7), width: .7))),
-            child: FilledButton(
-                onPressed: value == null
-                    ? null
-                    : () async {
-                        await _save(value);
-                        if (!mounted) return;
-                        await Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => _SchemePage(
-                                  picks: widget.picks,
-                                  initialPasses: selectedMethods,
-                                  initialBudget: value.amount,
-                                  initialResult: value,
-                                  initialShowCombinations: true,
-                                )));
-                      },
-                style: FilledButton.styleFrom(backgroundColor: _green),
-                child: const Text('保存优化方案'))),
+          height: 64,
+          padding: const EdgeInsets.fromLTRB(80, 8, 12, 8),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border:
+                Border(top: BorderSide(color: Color(0xffe5e9e7), width: .7)),
+          ),
+          child: FilledButton(
+            onPressed: value == null
+                ? null
+                : () async {
+                    await _save(value);
+                    if (!mounted) return;
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => _SchemePage(
+                          picks: widget.picks,
+                          initialPasses: selectedMethods,
+                          initialBudget: value.amount,
+                          initialResult: value,
+                          initialShowCombinations: true,
+                        ),
+                      ),
+                    );
+                  },
+            style: FilledButton.styleFrom(backgroundColor: _green),
+            child: const Text('保存优化方案'),
+          ),
+        ),
       );
 
   @override
@@ -2737,57 +3806,62 @@ class _SchemePageState extends State<_SchemePage> {
     return Scaffold(
       backgroundColor: _background,
       appBar: AppBar(
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.white,
-          title: Text(
-              widget.optimizationOnly
-                  ? '奖金优化'
-                  : _isSavedScheme
-                      ? '保存方案'
-                      : '竞球镜·方案分享',
-              style:
-                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        title: Text(
+          widget.optimizationOnly
+              ? '奖金优化'
+              : _isSavedScheme
+                  ? '方案详情'
+                  : '生成方案',
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        ),
+      ),
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: () => FocusScope.of(context).unfocus(),
         child: ListView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
-            children: [
-              if (widget.optimizationOnly) _parameters(),
-              if (error != null) ...[
-                const SizedBox(height: 8),
-                Text(error!,
-                    style:
-                        const TextStyle(fontSize: 12, color: Color(0xffdc4560)))
-              ],
-              if (value != null) ...[
-                if (widget.optimizationOnly) ...[
-                  const SizedBox(height: 10),
-                  _summary(value),
-                ] else ...[
-                  _schemeOverview(value),
-                  const SizedBox(height: 10),
-                  _ticketCards(),
-                  const SizedBox(height: 2),
-                  _validityHint(),
-                  const SizedBox(height: 8),
-                  _combinationToggle(value),
-                ],
-                if (widget.optimizationOnly || showCombinations) ...[
-                  const SizedBox(height: 10),
-                  _combinations(value),
-                ],
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
+          children: [
+            if (widget.optimizationOnly) _parameters(),
+            if (error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                error!,
+                style: const TextStyle(fontSize: 12, color: Color(0xffdc4560)),
+              ),
+            ],
+            if (value != null) ...[
+              if (widget.optimizationOnly) ...[
                 const SizedBox(height: 10),
-                Center(
-                    child: Text(
-                        _isSettled
-                            ? '赛果按全场90分钟（含伤停补时）结算'
-                            : '预计奖金仅供参考，SP变化后请重新计算',
-                        style: const TextStyle(
-                            fontSize: 11, color: Color(0xff8b928f))))
-              ]
-            ]),
+                _summary(value),
+              ] else ...[
+                _schemeOverview(value),
+                const SizedBox(height: 10),
+                _ticketCards(),
+                const SizedBox(height: 2),
+                _validityHint(),
+                const SizedBox(height: 8),
+                _combinationToggle(value),
+              ],
+              if (widget.optimizationOnly || showCombinations) ...[
+                const SizedBox(height: 10),
+                _combinations(value),
+              ],
+              const SizedBox(height: 10),
+              Center(
+                child: Text(
+                  _isSettled ? '赛果按全场90分钟（含伤停补时）结算' : '预计奖金仅供参考，SP变化后请重新计算',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xff8b928f),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
       bottomNavigationBar: widget.optimizationOnly
           ? _optimizationBottom(value)
@@ -2882,11 +3956,13 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
             content: const Text('删除后无法恢复。'),
             actions: [
               TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('取消')),
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
               FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('删除')),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('删除'),
+              ),
             ],
           ),
         ) ??
@@ -2927,13 +4003,15 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
       }).toList(growable: false);
 
   ({String label, Color background, Color foreground}) _statusStyle(
-      Map<String, dynamic> item) {
+    Map<String, dynamic> item,
+  ) {
     final settlement = item['settlement'];
     final state = settlement is Map ? settlement['state']?.toString() : '';
     if (state == 'won') {
       if (settlement?['legacy'] == true) {
-        final legacyPrize =
-            num.tryParse(settlement?['prize']?.toString() ?? '');
+        final legacyPrize = num.tryParse(
+          settlement?['prize']?.toString() ?? '',
+        );
         return (
           label: legacyPrize == null
               ? '已中奖 · 奖金待补'
@@ -3039,11 +4117,13 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
         if (rawOption is! Map) continue;
         final sp = num.tryParse(rawOption['sp']?.toString() ?? '');
         if (sp == null || sp <= 0) continue;
-        options.add(BetOption(
-          label: rawOption['label']?.toString() ?? '',
-          sp: sp.toDouble(),
-          play: _play(rawOption['play']) ?? play,
-        ));
+        options.add(
+          BetOption(
+            label: rawOption['label']?.toString() ?? '',
+            sp: sp.toDouble(),
+            play: _play(rawOption['play']) ?? play,
+          ),
+        );
       }
       if (options.isEmpty) continue;
       final availableOdds = <FootballPlay, Map<String, double>>{};
@@ -3059,19 +4139,21 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
           };
         }
       }
-      picks.add(MatchPick(
-        matchId: raw['matchId']?.toString() ?? '',
-        number: raw['number']?.toString() ?? '',
-        home: raw['home']?.toString() ?? '',
-        away: raw['away']?.toString() ?? '',
-        league: raw['league']?.toString() ?? '',
-        kickoff: DateTime.tryParse(raw['kickoff']?.toString() ?? ''),
-        play: play,
-        options: options,
-        banker: raw['banker'] == true,
-        handicap: raw['handicap']?.toString() ?? '',
-        availableOdds: availableOdds,
-      ));
+      picks.add(
+        MatchPick(
+          matchId: raw['matchId']?.toString() ?? '',
+          number: raw['number']?.toString() ?? '',
+          home: raw['home']?.toString() ?? '',
+          away: raw['away']?.toString() ?? '',
+          league: raw['league']?.toString() ?? '',
+          kickoff: DateTime.tryParse(raw['kickoff']?.toString() ?? ''),
+          play: play,
+          options: options,
+          banker: raw['banker'] == true,
+          handicap: raw['handicap']?.toString() ?? '',
+          availableOdds: availableOdds,
+        ),
+      );
     }
     return picks;
   }
@@ -3082,14 +4164,20 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
       (match.finalScore?.isNotEmpty ?? false);
 
   ({int home, int away})? _score(String? value) {
-    final found =
-        RegExp(r'^(\d+)\s*[:\-]\s*(\d+)$').firstMatch(value?.trim() ?? '');
+    final found = RegExp(
+      r'^(\d+)\s*[:\-]\s*(\d+)$',
+    ).firstMatch(value?.trim() ?? '');
     if (found == null) return null;
     return (home: int.parse(found.group(1)!), away: int.parse(found.group(2)!));
   }
 
-  String _outcome(int home, int away,
-          {String win = '胜', String draw = '平', String lose = '负'}) =>
+  String _outcome(
+    int home,
+    int away, {
+    String win = '胜',
+    String draw = '平',
+    String lose = '负',
+  }) =>
       home > away
           ? win
           : home == away
@@ -3110,16 +4198,18 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
         final handicap = double.tryParse(savedHandicap?.trim() ?? '') ??
             double.tryParse(match.hhad['让球']?.toString() ?? '') ??
             0;
-        return _outcome(score.home + handicap.round(), score.away,
-            win: '让胜', draw: '让平', lose: '让负');
+        return _outcome(
+          score.home + handicap.round(),
+          score.away,
+          win: '让胜',
+          draw: '让平',
+          lose: '让负',
+        );
       case FootballPlay.ttg:
         final total = score.home + score.away;
         return total >= 7 ? '7+' : '$total';
       case FootballPlay.crs:
-        final direct = '${score.home}:${score.away}';
-        if (match.crs.containsKey(direct)) return direct;
-        return _outcome(score.home, score.away,
-            win: '胜其他', draw: '平其他', lose: '负其他');
+        return footballScoreResultLabel(score.home, score.away);
       case FootballPlay.hafu:
         final half = _score(match.halfTimeScore);
         if (half == null) return null;
@@ -3202,8 +4292,10 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
       final result = const BettingEngine().calculateMultiple(
         picks: restoredPicks,
         passes: _restorePasses(item, restoredPicks),
-        multiple: (int.tryParse(item['multiple']?.toString() ?? '') ?? 1)
-            .clamp(1, BettingEngine.maxSchemeMultiple),
+        multiple: (int.tryParse(item['multiple']?.toString() ?? '') ?? 1).clamp(
+          1,
+          BettingEngine.maxSchemeMultiple,
+        ),
       );
       var prize = 0.0;
       for (final entry in result.returnsByCombination.entries) {
@@ -3240,13 +4332,15 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
       final client = CaiApiClient();
       final matches = <String, MatchItem>{};
       try {
-        await Future.wait(ids.map((id) async {
-          try {
-            matches[id] = await client.fetchMatch(id);
-          } catch (_) {
-            // Keep this plan pending until the next time the saved list is opened.
-          }
-        }));
+        await Future.wait(
+          ids.map((id) async {
+            try {
+              matches[id] = await client.fetchMatch(id);
+            } catch (_) {
+              // Keep this plan pending until the next time the saved list is opened.
+            }
+          }),
+        );
       } finally {
         client.close();
       }
@@ -3280,8 +4374,9 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
             matchIds.isNotEmpty && finishedMatches == matchIds.length;
         if (!allFinished) {
           final hasPassedKickoff = picks.whereType<Map>().any((pick) {
-            final kickoff =
-                DateTime.tryParse(pick['kickoff']?.toString() ?? '');
+            final kickoff = DateTime.tryParse(
+              pick['kickoff']?.toString() ?? '',
+            );
             return kickoff != null && !kickoff.isAfter(DateTime.now());
           });
           final nextState = finishedMatches > 0 || hasPassedKickoff
@@ -3350,7 +4445,7 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
             id: {
               'score': matches[id]?.finalScore ?? matches[id]?.score ?? '--',
               'winners': winners[id] ?? const <String, String>{},
-            }
+            },
         };
         if (item['combinations'] is! List) {
           final legacyPrize = _legacyPrizeFromText(item, picks, winners) ??
@@ -3376,7 +4471,10 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
           var wins = true;
           var spProduct = 1.0;
           for (final rawPick in combination['picks'] as List) {
-            if (rawPick is! Map) continue;
+            if (rawPick is! Map) {
+              wins = false;
+              break;
+            }
             final play = _play(rawPick['play']);
             if (play == null) {
               wins = false;
@@ -3385,7 +4483,10 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
             final winner = winners[rawPick['matchId']?.toString()]?[play.name];
             if (winner == null ||
                 !_optionWins(
-                    rawPick['label']?.toString() ?? '', winner, play)) {
+                  rawPick['label']?.toString() ?? '',
+                  winner,
+                  play,
+                )) {
               wins = false;
               break;
             }
@@ -3393,11 +4494,23 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
                 num.tryParse(rawPick['sp']?.toString() ?? '')?.toDouble() ?? 0;
           }
           if (wins) {
-            prize += 2 *
-                spProduct *
-                (num.tryParse(combination['multiple']?.toString() ?? '')
-                        ?.toDouble() ??
-                    0);
+            final savedReturn = num.tryParse(
+              combination['return']?.toString() ?? '',
+            )?.toDouble();
+            if (savedReturn != null && savedReturn >= 0) {
+              prize += savedReturn;
+            } else {
+              final multiple = num.tryParse(
+                    combination['multiple']?.toString() ?? '',
+                  )?.toInt() ??
+                  0;
+              final passSize =
+                  int.tryParse(combination['passSize']?.toString() ?? '') ??
+                      (combination['picks'] as List).length;
+              prize +=
+                  lotteryUnitReturn(spProduct: spProduct, passSize: passSize) *
+                      multiple;
+            }
           }
         }
         item['settlement'] = {
@@ -3422,35 +4535,38 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
   Future<void> _openScheme(Map<String, dynamic> item) async {
     final picks = _restorePicks(item);
     if (picks.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('旧方案缺少结构化选号数据，可先复制文字查看')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('旧方案缺少结构化选号数据，可先复制文字查看')));
       return;
     }
     final passes = _restorePasses(item, picks);
     final restoredResult = _restoreResult(item, picks, passes);
     if (restoredResult != null) {
       final settlement = item['settlement'];
-      await Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => _SchemePage(
-          picks: picks,
-          initialPasses: passes,
-          initialMultiple:
-              int.tryParse(item['multiple']?.toString() ?? '') ?? 1,
-          initialBudget:
-              num.tryParse(item['amount']?.toString() ?? '')?.toDouble(),
-          optimizationOnly: item['optimizationOnly'] == true,
-          initialResult: restoredResult,
-          initialShowCombinations: true,
-          savedSettlement:
-              settlement is Map ? Map<String, dynamic>.from(settlement) : null,
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => _SchemePage(
+            picks: picks,
+            initialPasses: passes,
+            initialMultiple:
+                int.tryParse(item['multiple']?.toString() ?? '') ?? 1,
+            initialBudget: num.tryParse(
+              item['amount']?.toString() ?? '',
+            )?.toDouble(),
+            initialResult: restoredResult,
+            initialShowCombinations: true,
+            savedSettlement: settlement is Map
+                ? Map<String, dynamic>.from(settlement)
+                : const {'state': 'pending'},
+          ),
         ),
-      ));
+      );
       return;
     }
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => _SavedSchemeDetailPage(item: item),
-    ));
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => _SavedSchemeDetailPage(item: item)),
+    );
   }
 
   List<PassMethod> _restorePasses(
@@ -3458,8 +4574,10 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
     List<MatchPick> picks,
   ) {
     final maxPass = picks
-        .expand((pick) =>
-            pick.options.map((option) => (option.play ?? pick.play).maxPass))
+        .expand(
+          (pick) =>
+              pick.options.map((option) => (option.play ?? pick.play).maxPass),
+        )
         .reduce(math.min);
     final available = PassMethod.available(picks.length, maxPass);
     final stored = item['passes'] is List
@@ -3528,183 +4646,213 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
 
   @override
   Widget build(BuildContext context) => DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: .82,
-      maxChildSize: .95,
-      builder: (_, controller) => Column(children: [
+        expand: false,
+        initialChildSize: .82,
+        maxChildSize: .95,
+        builder: (_, controller) => Column(
+          children: [
             Padding(
-                padding: const EdgeInsets.fromLTRB(18, 14, 8, 8),
-                child: Row(children: [
+              padding: const EdgeInsets.fromLTRB(18, 14, 8, 8),
+              child: Row(
+                children: [
                   const Expanded(
-                      child: Text('保存方案',
-                          style: TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.w900))),
+                    child: Text(
+                      '保存方案',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                    ),
+                  ),
                   if (_lastCheckedLabel().isNotEmpty)
-                    Text(_lastCheckedLabel(),
-                        style: const TextStyle(
-                            fontSize: 10, color: Color(0xff858d89))),
+                    Text(
+                      _lastCheckedLabel(),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xff858d89),
+                      ),
+                    ),
                   if (_lastCheckedLabel().isNotEmpty) const SizedBox(width: 2),
                   IconButton(
-                      tooltip: '刷新开奖结果',
-                      onPressed: loading || settling ? null : _load,
-                      icon: settling
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.refresh)),
+                    tooltip: '刷新开奖结果',
+                    onPressed: loading || settling ? null : _load,
+                    icon: settling
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.refresh),
+                  ),
                   IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close))
-                ])),
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
             const Divider(height: 1),
             Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                child: SegmentedButton<String>(
-                    showSelectedIcon: false,
-                    segments: const [
-                      ButtonSegment(value: 'all', label: Text('全部')),
-                      ButtonSegment(value: 'pending', label: Text('待结算')),
-                      ButtonSegment(value: 'won', label: Text('中奖')),
-                      ButtonSegment(value: 'lost', label: Text('未中')),
-                    ],
-                    selected: {statusFilter},
-                    onSelectionChanged: (value) =>
-                        setState(() => statusFilter = value.first))),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+              child: SegmentedButton<String>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: 'all', label: Text('全部')),
+                  ButtonSegment(value: 'pending', label: Text('待结算')),
+                  ButtonSegment(value: 'won', label: Text('中奖')),
+                  ButtonSegment(value: 'lost', label: Text('未中')),
+                ],
+                selected: {statusFilter},
+                onSelectionChanged: (value) =>
+                    setState(() => statusFilter = value.first),
+              ),
+            ),
             Expanded(
-                child: loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _visibleItems().isEmpty
-                        ? Center(
-                            child: Text(statusFilter == 'all'
-                                ? '最近7天暂无保存方案'
-                                : '暂无符合条件的方案'))
-                        : ListView.separated(
-                            controller: controller,
-                            padding: const EdgeInsets.all(12),
-                            itemCount: _visibleItems().length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 8),
-                            itemBuilder: (_, index) {
-                              final visible = _visibleItems();
-                              final raw = visible[index];
-                              final item = _decode(raw);
-                              final amount = item['amount'];
-                              final status = _statusStyle(item);
-                              final optimization = _optimizationLabel(item);
-                              final schemeMeta = _schemeMeta(item);
-                              return Card(
-                                  elevation: 0,
-                                  color: const Color(0xfff6f8f7),
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8)),
-                                  child: InkWell(
-                                      onTap: () => _openScheme(item),
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Padding(
-                                          padding: const EdgeInsets.all(12),
-                                          child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Row(children: [
-                                                  Container(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 8,
-                                                          vertical: 3),
-                                                      decoration: BoxDecoration(
-                                                          color:
-                                                              status.background,
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(
-                                                                      12)),
-                                                      child: Text(status.label,
-                                                          style: TextStyle(
-                                                              color: status
-                                                                  .foreground,
-                                                              fontSize: 11,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700))),
-                                                  const Spacer(),
-                                                  Text(_time(item['createdAt']),
-                                                      style: const TextStyle(
-                                                          fontSize: 11,
-                                                          color: Color(
-                                                              0xff858d89)))
-                                                ]),
-                                                const SizedBox(height: 8),
-                                                Text(
-                                                    '${item['pass'] ?? '竞彩足球'}${amount == null ? '' : ' · ${((amount as num).toDouble()).toStringAsFixed(0)}元'}',
-                                                    style: const TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.w900)),
-                                                if (optimization.isNotEmpty)
-                                                  Padding(
-                                                    padding:
-                                                        const EdgeInsets.only(
-                                                            top: 3),
-                                                    child: Text(optimization,
-                                                        style: const TextStyle(
-                                                            fontSize: 11,
-                                                            color: Color(
-                                                                0xff168f62),
-                                                            fontWeight:
-                                                                FontWeight
-                                                                    .w600)),
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _visibleItems().isEmpty
+                      ? Center(
+                          child: Text(
+                            statusFilter == 'all' ? '最近7天暂无保存方案' : '暂无符合条件的方案',
+                          ),
+                        )
+                      : ListView.separated(
+                          controller: controller,
+                          padding: const EdgeInsets.all(12),
+                          itemCount: _visibleItems().length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (_, index) {
+                            final visible = _visibleItems();
+                            final raw = visible[index];
+                            final item = _decode(raw);
+                            final amount = item['amount'];
+                            final status = _statusStyle(item);
+                            final optimization = _optimizationLabel(item);
+                            final schemeMeta = _schemeMeta(item);
+                            return Card(
+                              elevation: 0,
+                              color: const Color(0xfff6f8f7),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: InkWell(
+                                onTap: () => _openScheme(item),
+                                borderRadius: BorderRadius.circular(8),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: status.background,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            child: Text(
+                                              status.label,
+                                              style: TextStyle(
+                                                color: status.foreground,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          Text(
+                                            _time(item['createdAt']),
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Color(0xff858d89),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        '${item['pass'] ?? '竞彩足球'}${amount == null ? '' : ' · ${((amount as num).toDouble()).toStringAsFixed(0)}元'}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      if (optimization.isNotEmpty)
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: 3),
+                                          child: Text(
+                                            optimization,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Color(0xff168f62),
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      if (schemeMeta.isNotEmpty)
+                                        Text(
+                                          schemeMeta,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Color(0xff6f7773),
+                                          ),
+                                        ),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.end,
+                                        children: [
+                                          TextButton.icon(
+                                            onPressed: () async {
+                                              await Clipboard.setData(
+                                                ClipboardData(
+                                                  text: item['text']
+                                                          ?.toString() ??
+                                                      '',
+                                                ),
+                                              );
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text('方案文字已复制'),
                                                   ),
-                                                if (schemeMeta.isNotEmpty)
-                                                  Text(schemeMeta,
-                                                      style: const TextStyle(
-                                                          fontSize: 11,
-                                                          color: Color(
-                                                              0xff6f7773))),
-                                                Row(
-                                                    mainAxisAlignment:
-                                                        MainAxisAlignment.end,
-                                                    children: [
-                                                      TextButton.icon(
-                                                          onPressed: () async {
-                                                            await Clipboard.setData(
-                                                                ClipboardData(
-                                                                    text: item['text']
-                                                                            ?.toString() ??
-                                                                        ''));
-                                                            if (context
-                                                                .mounted) {
-                                                              ScaffoldMessenger
-                                                                      .of(
-                                                                          context)
-                                                                  .showSnackBar(
-                                                                      const SnackBar(
-                                                                          content:
-                                                                              Text('方案文字已复制')));
-                                                            }
-                                                          },
-                                                          icon: const Icon(
-                                                              Icons
-                                                                  .copy_outlined,
-                                                              size: 16),
-                                                          label:
-                                                              const Text('复制')),
-                                                      TextButton.icon(
-                                                          onPressed: () =>
-                                                              _delete(rawItems
-                                                                  .indexOf(
-                                                                      raw)),
-                                                          icon: const Icon(
-                                                              Icons
-                                                                  .delete_outline,
-                                                              size: 16),
-                                                          label:
-                                                              const Text('删除'))
-                                                    ])
-                                              ]))));
-                            }))
-          ]));
+                                                );
+                                              }
+                                            },
+                                            icon: const Icon(
+                                              Icons.copy_outlined,
+                                              size: 16,
+                                            ),
+                                            label: const Text('复制'),
+                                          ),
+                                          TextButton.icon(
+                                            onPressed: () =>
+                                                _delete(rawItems.indexOf(raw)),
+                                            icon: const Icon(
+                                              Icons.delete_outline,
+                                              size: 16,
+                                            ),
+                                            label: const Text('删除'),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _SavedSchemeDetailPage extends StatelessWidget {
@@ -3830,8 +4978,10 @@ class _SavedSchemeDetailPage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
-        title: const Text('保存方案详情',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        title: const Text(
+          '方案详情',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(12),
@@ -3839,41 +4989,60 @@ class _SavedSchemeDetailPage extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-                color: Colors.white, borderRadius: BorderRadius.circular(8)),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(item['pass']?.toString() ?? '竞彩足球',
-                  style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 5),
-              Text(
-                  '${item['notes'] ?? '--'}注 · 投入${num.tryParse(item['amount']?.toString() ?? '')?.toStringAsFixed(0) ?? '--'}元',
-                  style:
-                      const TextStyle(fontSize: 12, color: Color(0xff737b77))),
-              if (estimatedMin != null && estimatedMax != null) ...[
-                const SizedBox(height: 4),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
+                  item['pass']?.toString() ?? '竞彩足球',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  '${item['notes'] ?? '--'}注 · 投入${num.tryParse(item['amount']?.toString() ?? '')?.toStringAsFixed(0) ?? '--'}元',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xff737b77),
+                  ),
+                ),
+                if (estimatedMin != null && estimatedMax != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
                     '预计税前奖金 ${estimatedMin.toStringAsFixed(2)}～${estimatedMax.toStringAsFixed(2)}元',
                     style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xffc83d46),
-                        fontWeight: FontWeight.w700)),
-              ],
-              if (optimization.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(optimization,
+                      fontSize: 12,
+                      color: Color(0xffc83d46),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+                if (optimization.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    optimization,
                     style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xff168f62),
-                        fontWeight: FontWeight.w700)),
-              ],
-              const SizedBox(height: 10),
-              Text(statusLabel,
+                      fontSize: 12,
+                      color: Color(0xff168f62),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                Text(
+                  statusLabel,
                   style: TextStyle(
-                      color: statusColor,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800)),
-            ]),
+                    color: statusColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
           ),
           if (combinations.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -3884,153 +5053,194 @@ class _SavedSchemeDetailPage extends StatelessWidget {
                 children: [
                   const Padding(
                     padding: EdgeInsets.fromLTRB(14, 13, 14, 7),
-                    child: Text('组合明细',
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w800)),
+                    child: Text(
+                      '组合明细',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
                   for (var index = 0; index < combinations.length; index++)
-                    Builder(builder: (_) {
-                      final raw = combinations[index];
-                      if (raw is! Map) return const SizedBox.shrink();
-                      final combination = Map<String, dynamic>.from(raw);
-                      final multiple =
-                          combination['multiple']?.toString() ?? '--';
-                      final payout = _combinationReturn(combination);
-                      final settled = state == 'won' || state == 'lost';
-                      final won =
-                          settled && _combinationWon(combination, outcomes);
-                      return Container(
-                        padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
-                        decoration: const BoxDecoration(
-                          border:
-                              Border(top: BorderSide(color: Color(0xffedf0ee))),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: 26,
-                              child: Text('${index + 1}',
-                                  style: const TextStyle(
-                                      fontSize: 11, color: Color(0xff8a928e))),
+                    Builder(
+                      builder: (_) {
+                        final raw = combinations[index];
+                        if (raw is! Map) return const SizedBox.shrink();
+                        final combination = Map<String, dynamic>.from(raw);
+                        final multiple =
+                            combination['multiple']?.toString() ?? '--';
+                        final payout = _combinationReturn(combination);
+                        final settled = state == 'won' || state == 'lost';
+                        final won =
+                            settled && _combinationWon(combination, outcomes);
+                        return Container(
+                          padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              top: BorderSide(color: Color(0xffedf0ee)),
                             ),
-                            Expanded(
-                              child: Text(_combinationDescription(combination),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 26,
+                                child: Text(
+                                  '${index + 1}',
                                   style: const TextStyle(
-                                      fontSize: 12, height: 1.35)),
-                            ),
-                            const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text('$multiple倍',
-                                    style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Color(0xff68716c))),
-                                if (payout != null)
+                                    fontSize: 11,
+                                    color: Color(0xff8a928e),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _combinationDescription(combination),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
                                   Text(
+                                    '$multiple倍',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xff68716c),
+                                    ),
+                                  ),
+                                  if (payout != null)
+                                    Text(
                                       settled
                                           ? (won
                                               ? '中奖 ${payout.toStringAsFixed(2)}元'
                                               : '未中')
                                           : '返奖 ${payout.toStringAsFixed(2)}元',
                                       style: TextStyle(
-                                          fontSize: 11,
-                                          color: settled && !won
-                                              ? const Color(0xff7b837f)
-                                              : const Color(0xffc83d46),
-                                          fontWeight: FontWeight.w700)),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
+                                        fontSize: 11,
+                                        color: settled && !won
+                                            ? const Color(0xff7b837f)
+                                            : const Color(0xffc83d46),
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                 ],
               ),
             ),
           ],
           const SizedBox(height: 12),
           for (final rawPick in picks.whereType<Map>()) ...[
-            Builder(builder: (_) {
-              final pick = Map<String, dynamic>.from(rawPick);
-              final matchId = pick['matchId']?.toString() ?? '';
-              final outcome = outcomes[matchId];
-              final score =
-                  outcome is Map ? outcome['score']?.toString() ?? '--' : '--';
-              final options =
-                  pick['options'] is List ? pick['options'] as List : const [];
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
+            Builder(
+              builder: (_) {
+                final pick = Map<String, dynamic>.from(rawPick);
+                final matchId = pick['matchId']?.toString() ?? '';
+                final outcome = outcomes[matchId];
+                final score = outcome is Map
+                    ? outcome['score']?.toString() ?? '--'
+                    : '--';
+                final options = pick['options'] is List
+                    ? pick['options'] as List
+                    : const [];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(8)),
-                child: Column(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(children: [
-                        Text(pick['number']?.toString() ?? '--',
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w800)),
-                        const SizedBox(width: 8),
-                        Expanded(
+                      Row(
+                        children: [
+                          Text(
+                            pick['number']?.toString() ?? '--',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
                             child: Text(
-                                '${pick['home'] ?? '--'}  $score  ${pick['away'] ?? '--'}',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800))),
-                      ]),
+                              '${pick['home'] ?? '--'}  $score  ${pick['away'] ?? '--'}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 10),
                       Wrap(
                         spacing: 6,
                         runSpacing: 6,
                         children: [
                           for (final rawOption in options.whereType<Map>())
-                            Builder(builder: (_) {
-                              final option =
-                                  Map<String, dynamic>.from(rawOption);
-                              final play = option['play']?.toString() ?? '';
-                              final winner = _winner(outcomes, matchId, play);
-                              final won = _isWinningOption(
+                            Builder(
+                              builder: (_) {
+                                final option = Map<String, dynamic>.from(
+                                  rawOption,
+                                );
+                                final play = option['play']?.toString() ?? '';
+                                final winner = _winner(outcomes, matchId, play);
+                                final won = _isWinningOption(
                                   option['label']?.toString() ?? '',
                                   winner,
-                                  play);
-                              return Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: winner.isEmpty
-                                      ? const Color(0xfff1f4f2)
-                                      : won
-                                          ? const Color(0xffffe6e6)
-                                          : const Color(0xffeef1ef),
-                                  border: Border.all(
+                                  play,
+                                );
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: winner.isEmpty
+                                        ? const Color(0xfff1f4f2)
+                                        : won
+                                            ? const Color(0xffffe6e6)
+                                            : const Color(0xffeef1ef),
+                                    border: Border.all(
                                       color: winner.isEmpty
                                           ? const Color(0xffdfe5e1)
                                           : won
                                               ? const Color(0xffdf6971)
-                                              : const Color(0xffe0e4e1)),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
+                                              : const Color(0xffe0e4e1),
+                                    ),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
                                     '${option['label']}  ${option['sp']}',
                                     style: TextStyle(
-                                        color: won
-                                            ? const Color(0xffc83d46)
-                                            : const Color(0xff646c68),
-                                        fontWeight: won
-                                            ? FontWeight.w800
-                                            : FontWeight.w500)),
-                              );
-                            })
+                                      color: won
+                                          ? const Color(0xffc83d46)
+                                          : const Color(0xff646c68),
+                                      fontWeight: won
+                                          ? FontWeight.w800
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                         ],
-                      )
-                    ]),
-              );
-            }),
-          ]
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
         ],
       ),
     );

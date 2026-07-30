@@ -9,10 +9,7 @@ import 'home_match_list.dart';
 import 'home_tab_bar.dart';
 
 class HomePageContainer extends StatefulWidget {
-  const HomePageContainer({
-    required this.onMatchTap,
-    super.key,
-  });
+  const HomePageContainer({required this.onMatchTap, super.key});
 
   final ValueChanged<MatchItem> onMatchTap;
 
@@ -53,9 +50,11 @@ class _HomePageContainerState extends State<HomePageContainer>
   void _scheduleRefresh() {
     if (!mounted || !client.isConfigured) return;
     timer?.cancel();
-    final hasLive = today.any((match) =>
-        match.matchState == MatchState.live ||
-        match.matchState == MatchState.halftime);
+    final hasLive = today.any(
+      (match) =>
+          match.matchState == MatchState.live ||
+          match.matchState == MatchState.halftime,
+    );
     timer = Timer(Duration(seconds: hasLive ? 5 : 30), refresh);
   }
 
@@ -78,49 +77,19 @@ class _HomePageContainerState extends State<HomePageContainer>
     if (loadingToday) return;
     if (mounted) setState(() => loadingToday = true);
     try {
-      List<dynamic>? liveItems;
-      List<dynamic>? resultItems;
-      Object? liveError;
-      Object? resultError;
-      await Future.wait([
-        () async {
-          try {
-            liveItems = await client.fetchLiveMatches(limit: 300);
-          } catch (error) {
-            liveError = error;
-          }
-        }(),
-        () async {
-          try {
-            resultItems = await client.fetchResultMatches(limit: 300);
-          } catch (error) {
-            resultError = error;
-          }
-        }(),
-      ]);
+      final liveItems = await client.fetchLiveMatches();
       if (!mounted) return;
       setState(() {
-        if (liveItems != null) {
-          today = liveItems!
-              .whereType<Map<String, dynamic>>()
-              .map(MatchItem.fromJson)
-              .toList(growable: false);
-          todayError = null;
-        } else {
-          debugPrint('首页进行中数据加载失败: $liveError');
-          todayError = liveError?.toString();
-        }
-        if (resultItems != null) {
-          finished = resultItems!
-              .whereType<Map<String, dynamic>>()
-              .map(MatchItem.fromJson)
-              .toList(growable: false);
-          finishedError = null;
-        } else {
-          debugPrint('首页完场数据加载失败: $resultError');
-          finishedError = resultError?.toString();
-        }
+        today = liveItems
+            .whereType<Map<String, dynamic>>()
+            .map(MatchItem.fromJson)
+            .toList(growable: false);
+        todayError = null;
       });
+    } catch (error) {
+      if (!mounted) return;
+      debugPrint('首页进行中数据加载失败: $error');
+      setState(() => todayError = error.toString());
     } finally {
       if (mounted) {
         setState(() => loadingToday = false);

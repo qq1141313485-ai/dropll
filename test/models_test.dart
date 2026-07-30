@@ -51,11 +51,30 @@ void main() {
       'status': 'LIVE',
       'matchState': 'live',
       'score': '1:0',
-      'titanLastUpdated':
-          DateTime.now().subtract(const Duration(minutes: 3)).toIso8601String(),
+      'titanLastUpdated': DateTime.now()
+          .subtract(const Duration(minutes: 3))
+          .toIso8601String(),
       'odds': const {},
     });
 
     expect(item.isLiveDataStale, isTrue);
+  });
+
+  test('explicit live state is reflected without requiring a score', () {
+    final item = MatchItem.fromJson({
+      'id': 'live-without-score',
+      'number': '周五204',
+      'businessDate': '2026-07-24',
+      'league': '芬超',
+      'home': '主队',
+      'away': '客队',
+      'kickoff': '2026-07-25 18:00:00',
+      'status': 'LIVE',
+      'matchState': 'live',
+      'odds': const {},
+    });
+
+    expect(item.status, MatchStatus.live);
+    expect(item.matchState, MatchState.live);
   });
 }

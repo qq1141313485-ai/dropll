@@ -1,0 +1,14 @@
+[Unit]
+Description=CaiMaster match analysis coverage audit
+After=network-online.target caimaster-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=admin
+Group=admin
+WorkingDirectory=/opt/caimaster-api
+ExecStart=/opt/caimaster-api/.venv/bin/python3.11 /opt/caimaster-api/audit_match_analysis_coverage.py
+
+[Install]
+WantedBy=multi-user.target
