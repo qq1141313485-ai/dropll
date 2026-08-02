@@ -52,6 +52,10 @@ LOOKBACK_DAYS = max(
     1,
     int(os.environ.get("CAIMASTER_PLAN_SOURCE_LOOKBACK_DAYS", "2")),
 )
+PENDING_RETRY_DAYS = max(
+    0,
+    int(os.environ.get("CAIMASTER_PLAN_SOURCE_PENDING_RETRY_DAYS", "0")),
+)
 QUEUED_RETRY_LIMIT = max(
     1,
     int(os.environ.get("CAIMASTER_PLAN_SOURCE_QUEUED_RETRY_LIMIT", "100")),
@@ -297,7 +301,20 @@ def _load_name_rules() -> PlanNameRules:
     return PlanNameRules.from_mapping(raw)
 
 
+def _pending_retry_cutoff() -> int:
+    window_start = datetime.now(CHINA_TZ).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    if PENDING_RETRY_DAYS > 0:
+        window_start -= timedelta(days=PENDING_RETRY_DAYS)
+    return int(window_start.timestamp())
+
+
 def _fetch_queued_articles() -> dict[str, dict[str, Any]]:
+    retry_cutoff = _pending_retry_cutoff()
     with closing(_connect()) as conn:
         rows = conn.execute(
             """
@@ -309,12 +326,13 @@ def _fetch_queued_articles() -> dict[str, dict[str, Any]]:
                     OR (
                         status = 'pending_name'
                         AND error LIKE 'plan OCR usage limit reached:%'
+                        AND published_at >= ?
                     )
                   )
             ORDER BY synced_at, id
             LIMIT ?
             """,
-            (SOURCE_NAME, QUEUED_RETRY_LIMIT),
+            (SOURCE_NAME, retry_cutoff, QUEUED_RETRY_LIMIT),
         ).fetchall()
     return {
         str(row["source_article_id"]): {
@@ -838,6 +856,31 @@ def _status_for_source_error(message: str) -> str:
     return "failed"
 
 
+def _pending_raw_plan_name(
+    message: str,
+    article: dict[str, Any],
+    rules: PlanNameRules,
+) -> str:
+    prefixes = (
+        "plan name awaits mapping:",
+        "image assignment awaits review:",
+        "plan OCR has no known author candidates:",
+        "plan OCR awaits review:",
+    )
+    for prefix in prefixes:
+        if message.startswith(prefix):
+            candidate = message[len(prefix) :].split(" (", 1)[0]
+            if candidate.strip():
+                return normalize_plan_name(candidate)
+    try:
+        return parse_plan_title_info(
+            article.get("title"),
+            _permissive_rules(rules),
+        ).raw_name
+    except SourceError:
+        return ""
+
+
 def _run_dry_run() -> int:
     rules = _load_name_rules()
     articles = _fetch_articles(use_sync_store=False)
@@ -921,8 +964,10 @@ def run() -> int:
                     counts[status] += 1
                     raw_plan_name = ""
                     if status == "pending_name":
-                        raw_plan_name = normalize_plan_name(
-                            message.rsplit(":", 1)[-1].split(" (", 1)[0]
+                        raw_plan_name = _pending_raw_plan_name(
+                            message,
+                            article,
+                            rules,
                         )
                     _record_article(
                         article,

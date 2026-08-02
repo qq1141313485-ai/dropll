@@ -54,5 +54,131 @@
     "sourceTeamId": "134602",
     "sourceName": "Kairat Almaty",
     "country": "Kazakhstan"
+  },
+  "仁川联": {
+    "provider": "thesportsdb",
+    "query": "Incheon United",
+    "sourceTeamId": "138110",
+    "sourceName": "Incheon United",
+    "country": "South Korea"
+  },
+  "光州FC": {
+    "provider": "thesportsdb",
+    "query": "Gwangju FC",
+    "sourceTeamId": "138109",
+    "sourceName": "Gwangju FC",
+    "country": "South Korea"
+  },
+  "全北现代": {
+    "provider": "thesportsdb",
+    "query": "Jeonbuk Hyundai Motors",
+    "sourceTeamId": "138111",
+    "sourceName": "Jeonbuk Hyundai Motors",
+    "country": "South Korea"
+  },
+  "利勒斯特": {
+    "provider": "thesportsdb",
+    "query": "Lillestrom",
+    "sourceTeamId": "134569",
+    "sourceName": "Lillestrøm",
+    "country": "Norway"
+  },
+  "博德闪耀": {
+    "provider": "thesportsdb",
+    "query": "Bodo Glimt",
+    "sourceTeamId": "135497",
+    "sourceName": "Bodø/Glimt",
+    "country": "Norway"
+  },
+  "多伦多": {
+    "provider": "thesportsdb",
+    "query": "Toronto FC",
+    "sourceTeamId": "134148",
+    "sourceName": "Toronto FC",
+    "country": "Canada"
+  },
+  "大田市民": {
+    "provider": "thesportsdb",
+    "query": "Daejeon Hana Citizen",
+    "sourceTeamId": "139785",
+    "sourceName": "Daejeon Hana Citizen",
+    "country": "South Korea"
+  },
+  "安养FC": {
+    "provider": "thesportsdb",
+    "query": "FC Anyang",
+    "sourceTeamId": "139786",
+    "sourceName": "FC Anyang",
+    "country": "South Korea"
+  },
+  "富川FC": {
+    "provider": "thesportsdb",
+    "query": "Bucheon FC 1995",
+    "sourceTeamId": "139783",
+    "sourceName": "Bucheon FC 1995",
+    "country": "South Korea"
+  },
+  "汉坎": {
+    "provider": "thesportsdb",
+    "query": "HamKam",
+    "sourceTeamId": "134753",
+    "sourceName": "Hamarkameratene",
+    "country": "Norway"
+  },
+  "江原FC": {
+    "provider": "thesportsdb",
+    "query": "Gangwon FC",
+    "sourceTeamId": "138108",
+    "sourceName": "Gangwon FC",
+    "country": "South Korea"
+  },
+  "济州SK": {
+    "provider": "thesportsdb",
+    "query": "Jeju SK",
+    "sourceTeamId": "139078",
+    "sourceName": "Jeju SK",
+    "country": "South Korea"
+  },
+  "浦项制铁": {
+    "provider": "thesportsdb",
+    "query": "Pohang Steelers",
+    "sourceTeamId": "138112",
+    "sourceName": "Pohang Steelers",
+    "country": "South Korea"
+  },
+  "瓦勒伦加": {
+    "provider": "thesportsdb",
+    "query": "Valerenga",
+    "sourceTeamId": "134574",
+    "sourceName": "Vålerenga",
+    "country": "Norway"
+  },
+  "纽约城": {
+    "provider": "thesportsdb",
+    "query": "New York City FC",
+    "sourceTeamId": "134630",
+    "sourceName": "New York City FC",
+    "country": "United States"
+  },
+  "蔚山现代": {
+    "provider": "thesportsdb",
+    "query": "Ulsan HD",
+    "sourceTeamId": "138117",
+    "sourceName": "Ulsan HD",
+    "country": "South Korea"
+  },
+  "金泉尚武": {
+    "provider": "thesportsdb",
+    "query": "Gimcheon Sangmu",
+    "sourceTeamId": "138113",
+    "sourceName": "Gimcheon Sangmu",
+    "country": "South Korea"
+  },
+  "首尔FC": {
+    "provider": "thesportsdb",
+    "query": "FC Seoul",
+    "sourceTeamId": "138115",
+    "sourceName": "FC Seoul",
+    "country": "South Korea"
   }
 }

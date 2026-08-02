@@ -1,7 +1,12 @@
 import 'package:cai_tool_app/betting_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-MatchPick pick(String id, List<double> odds, {bool banker = false}) =>
+MatchPick pick(
+  String id,
+  List<double> odds, {
+  bool banker = false,
+  bool singleSupported = true,
+}) =>
     MatchPick(
       matchId: id,
       number: id,
@@ -9,6 +14,7 @@ MatchPick pick(String id, List<double> odds, {bool banker = false}) =>
       away: '客$id',
       play: FootballPlay.had,
       banker: banker,
+      singleSupported: singleSupported,
       options: [
         for (var i = 0; i < odds.length; i++)
           BetOption(label: '$i', sp: odds[i]),
@@ -65,6 +71,69 @@ void main() {
     );
   });
 
+  test('多场单场按每场分别展开，且不受胆码限制', () {
+    final result = engine.calculate(
+      picks: [
+        pick('001', [2], banker: true),
+        pick('002', [3]),
+        pick('003', [4]),
+      ],
+      pass: PassMethod.singleFor(3),
+      multiple: 2,
+    );
+
+    expect(result.atomicBets.length, 3);
+    expect(result.atomicBets.every((bet) => bet.passSize == 1), isTrue);
+    expect(
+      result.atomicBets.every((bet) => bet.picks.length == 1),
+      isTrue,
+    );
+    expect(result.notes, 6);
+    expect(result.amount, 12);
+  });
+
+  test('单场可以和串关同时选择', () {
+    final result = engine.calculateMultiple(
+      picks: [
+        pick('001', [2]),
+        pick('002', [3]),
+        pick('003', [4]),
+      ],
+      passes: [
+        PassMethod.singleFor(3),
+        PassMethod.free(3, 2),
+      ],
+    );
+
+    expect(result.atomicBets.length, 6);
+    expect(result.atomicBets.where((bet) => bet.passSize == 1).length, 3);
+    expect(result.atomicBets.where((bet) => bet.passSize == 2).length, 3);
+    expect(result.notes, 6);
+    expect(result.amount, 12);
+  });
+
+  test('任一已选玩法不支持单场时拒绝单场过关', () {
+    expect(
+      () => engine.calculate(
+        picks: [
+          pick('001', [2]),
+          pick('002', [3], singleSupported: false),
+        ],
+        pass: PassMethod.singleFor(2),
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  test('复合过关按实际子关数判断是否可用', () {
+    final methods = PassMethod.available(5, 4);
+    final labels = methods.map((method) => method.label).toSet();
+
+    expect(labels, containsAll(<String>['5串5', '5串10', '5串20']));
+    expect(labels, isNot(contains('5串6')));
+    expect(labels, isNot(contains('5串16')));
+  });
+
   test('奖金优化遵守预算及50倍上限', () {
     final result = engine.optimize(
       picks: [
@@ -78,7 +147,7 @@ void main() {
     expect(result.tickets.every((ticket) => ticket.multiple <= 50), isTrue);
   });
 
-  test('方案10000倍默认保持汇总，不自动拆票', () {
+  test('方案10000倍默认保持汇总计算', () {
     final result = engine.calculate(
       picks: [
         pick('1', [2]),

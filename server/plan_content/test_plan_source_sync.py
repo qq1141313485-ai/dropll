@@ -1,6 +1,9 @@
+import sqlite3
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
+from unittest import mock
 
+import plan_source_sync
 from plan_source_common import (
     CHINA_TZ,
     IGNORE_IMAGE_ASSIGNMENT,
@@ -188,6 +191,57 @@ class PlanSourceSyncTest(unittest.TestCase):
                 "https://cdn.example.com/b.jpg",
             ],
         )
+
+    def test_queued_pending_name_only_retries_recent_articles(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript(
+            """
+            CREATE TABLE plan_sync_articles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_name TEXT NOT NULL,
+                source_article_id TEXT NOT NULL,
+                source_title TEXT NOT NULL,
+                raw_plan_name TEXT NOT NULL DEFAULT '',
+                resolved_plan_name TEXT NOT NULL DEFAULT '',
+                plan_id INTEGER,
+                update_id INTEGER,
+                published_at INTEGER,
+                status TEXT NOT NULL,
+                error TEXT NOT NULL DEFAULT '',
+                needs_review INTEGER NOT NULL DEFAULT 0,
+                synced_at INTEGER NOT NULL
+            );
+            """
+        )
+        now = datetime.now(CHINA_TZ).replace(hour=12, minute=0, second=0, microsecond=0)
+        today = int(now.timestamp())
+        yesterday = int((now - timedelta(days=1)).timestamp())
+        conn.executemany(
+            """
+            INSERT INTO plan_sync_articles(
+                source_name, source_article_id, source_title, published_at,
+                status, error, synced_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("hongxisaishi", "1", "20260731 今日文章", today, "pending_name",
+                 "plan OCR usage limit reached: daily OCR limit reached (200/200)", today),
+                ("hongxisaishi", "2", "20260730 旧文章", yesterday, "pending_name",
+                 "plan OCR usage limit reached: daily OCR limit reached (200/200)", yesterday),
+                ("hongxisaishi", "3", "20260730 人工配置", yesterday, "name_configured",
+                 "", yesterday),
+            ],
+        )
+        conn.commit()
+        self.addCleanup(conn.close)
+
+        with mock.patch.object(plan_source_sync, "_connect", return_value=conn):
+            items = plan_source_sync._fetch_queued_articles()
+
+        self.assertIn("1", items)
+        self.assertIn("3", items)
+        self.assertNotIn("2", items)
 
 
 if __name__ == "__main__":

@@ -74,7 +74,12 @@ class _HomePageContainerState extends State<HomePageContainer>
   }
 
   Future<void> refresh() async {
-    if (loadingToday) return;
+    if (loadingToday) {
+      if (mounted && client.isConfigured) {
+        _scheduleRefresh();
+      }
+      return;
+    }
     if (mounted) setState(() => loadingToday = true);
     try {
       final liveItems = await client.fetchLiveMatches();

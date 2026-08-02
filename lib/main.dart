@@ -42,6 +42,7 @@ class CaiToolApp extends StatelessWidget {
       ),
       theme: ThemeData(
         useMaterial3: true,
+        fontFamily: 'NotoSansSC',
         scaffoldBackgroundColor: const Color(0xfff6f7f8),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xff12b981),

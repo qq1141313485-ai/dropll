@@ -46,6 +46,7 @@ class MatchPick {
     this.banker = false,
     this.availableOdds = const {},
     this.handicap = '',
+    this.singleSupported = true,
   });
 
   final String matchId;
@@ -59,6 +60,7 @@ class MatchPick {
   final bool banker;
   final Map<FootballPlay, Map<String, double>> availableOdds;
   final String handicap;
+  final bool singleSupported;
 }
 
 class PassMethod {
@@ -74,7 +76,12 @@ class PassMethod {
   final String? displayLabel;
   String get label => displayLabel ?? '$matches串$tickets';
 
-  static const single = PassMethod(1, 1, [1]);
+  static const single = PassMethod(
+    1,
+    1,
+    [1],
+    displayLabel: '单场',
+  );
 
   static const simple = [
     PassMethod(2, 1, [2]),
@@ -121,6 +128,18 @@ class PassMethod {
     PassMethod(8, 247, [2, 3, 4, 5, 6, 7, 8]),
   ];
 
+  bool get isSingle => subPassSizes.length == 1 && subPassSizes.first == 1;
+
+  static PassMethod singleFor(int selectedCount) {
+    if (selectedCount == 1) return single;
+    return PassMethod(
+      selectedCount,
+      selectedCount,
+      const [1],
+      displayLabel: '单场',
+    );
+  }
+
   static PassMethod free(int selectedCount, int passSize) => PassMethod(
         selectedCount,
         _combinationCount(selectedCount, passSize),
@@ -133,8 +152,13 @@ class PassMethod {
     if (count == 1) return const [single];
     final highest = math.min(count, maxPass);
     return [
+      singleFor(count),
       for (var size = 2; size <= highest; size++) free(count, size),
-      if (count <= maxPass) ...compound.where((item) => item.matches == count),
+      ...compound.where(
+        (item) =>
+            item.matches == count &&
+            item.subPassSizes.every((size) => size <= maxPass),
+      ),
     ];
   }
 }
@@ -574,8 +598,12 @@ class BettingEngine {
     if (pass.subPassSizes.any((size) => size > maxPass)) {
       throw ArgumentError('当前玩法最高支持 $maxPass 关');
     }
+    if (pass.isSingle && picks.any((item) => !item.singleSupported)) {
+      throw ArgumentError('当前选择中有玩法不支持单场');
+    }
     final bankerCount = picks.where((item) => item.banker).length;
-    if (pass.subPassSizes.any((size) => bankerCount >= size)) {
+    if (!pass.isSingle &&
+        pass.subPassSizes.any((size) => bankerCount >= size)) {
       throw ArgumentError('胆码数量必须少于最小过关关数');
     }
   }
@@ -596,6 +624,19 @@ class BettingEngine {
     final drags = picks.where((item) => !item.banker).toList();
     final result = <AtomicBet>[];
     for (final size in pass.subPassSizes) {
+      if (size == 1) {
+        for (final match in picks) {
+          for (final option in match.options) {
+            result.add(
+              AtomicBet(
+                passSize: 1,
+                picks: [(match: match, option: option)],
+              ),
+            );
+          }
+        }
+        continue;
+      }
       final need = size - bankers.length;
       for (final subset in _combinations(drags, need)) {
         final matches = [...bankers, ...subset];

@@ -55,6 +55,11 @@ class _SelectionPageState extends State<SelectionPage> {
   bool loading = true;
   String? loadError;
   Timer? expiryTimer;
+  Timer? draftSaveTimer;
+  bool refreshInFlight = false;
+  bool restoringDraft = false;
+  Set<String>? restoredPassLabels;
+  Map<String, String> selectionIssues = const {};
   List<PassMethod> quickPasses = const [];
   int quickMultiple = 1;
   _SelectionViewMode viewMode = _SelectionViewMode.mixed;
@@ -63,6 +68,7 @@ class _SelectionPageState extends State<SelectionPage> {
   @override
   void initState() {
     super.initState();
+    _restoreDraft();
     _refresh();
     expiryTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (!mounted) return;
@@ -72,13 +78,20 @@ class _SelectionPageState extends State<SelectionPage> {
           .map((match) => match.id)
           .toSet();
       if (expiredIds.isNotEmpty) {
+        final previousIssues = selectionIssues;
         setState(() {
           matches = matches
               .where((match) => !expiredIds.contains(match.id))
               .toList(growable: false);
-          drafts.removeWhere((id, _) => expiredIds.contains(id));
+          selectionIssues = {
+            ...selectionIssues,
+            for (final id in expiredIds)
+              if (drafts[id]?.hasSelection == true)
+                'match:$id': '${_matchLabel(id)}已开赛或停售，原选号已暂存，请重新确认',
+          };
           _reconcileQuickPass();
         });
+        _announceSelectionIssues(selectionIssues, previousIssues);
       }
       _refresh(silent: true);
     });
@@ -87,13 +100,20 @@ class _SelectionPageState extends State<SelectionPage> {
   @override
   void dispose() {
     expiryTimer?.cancel();
+    draftSaveTimer?.cancel();
     client.close();
     super.dispose();
   }
 
   Future<void> _refresh({bool silent = false}) async {
+    if (refreshInFlight) return;
+    refreshInFlight = true;
     if (mounted && !silent) setState(() => loading = true);
     try {
+      final previousMatches = {
+        for (final match in matches) match.id: match,
+      };
+      final previousIssues = selectionIssues;
       final data = await client.fetchBettableMatches();
       if (mounted) {
         final now = DateTime.now();
@@ -110,13 +130,34 @@ class _SelectionPageState extends State<SelectionPage> {
             .toList()
           ..sort(_compareMatchNumber);
         final activeIds = refreshed.map((match) => match.id).toSet();
+        final issues = await _reconcileSelectionIssues(
+          previousMatches: previousMatches,
+          refreshed: refreshed,
+          activeIds: activeIds,
+        );
         setState(() {
           matches = refreshed;
-          final before = drafts.length;
-          drafts.removeWhere((id, _) => !activeIds.contains(id));
-          if (before != drafts.length) _reconcileQuickPass();
+          selectionIssues = issues;
+          if (restoredPassLabels != null) {
+            quickPasses = _passesForLabels(
+              _quickMethods(picks),
+              restoredPassLabels!,
+            );
+            restoredPassLabels = null;
+          }
+          _reconcileQuickPass();
           loadError = null;
         });
+        _announceSelectionIssues(issues, previousIssues);
+        if (restoringDraft) {
+          restoringDraft = false;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('已恢复暂存选号')),
+            );
+          });
+        }
         _openFocusedMatchIfNeeded(refreshed);
       }
     } catch (error) {
@@ -129,7 +170,238 @@ class _SelectionPageState extends State<SelectionPage> {
       }
     } finally {
       if (mounted && !silent) setState(() => loading = false);
+      refreshInFlight = false;
     }
+  }
+
+  String _matchLabel(String id) {
+    for (final match in matches) {
+      if (match.id == id) {
+        return '${match.number} ${match.home} VS ${match.away}';
+      }
+    }
+    return '该场比赛';
+  }
+
+  Future<Map<String, String>> _reconcileSelectionIssues({
+    required Map<String, MatchItem> previousMatches,
+    required List<MatchItem> refreshed,
+    required Set<String> activeIds,
+  }) async {
+    final next = <String, String>{};
+    final refreshedById = {for (final match in refreshed) match.id: match};
+    final selectedIds = drafts.entries
+        .where((entry) => entry.value.hasSelection)
+        .map((entry) => entry.key)
+        .toSet();
+    final missingIds = selectedIds.difference(activeIds);
+    for (final id in missingIds) {
+      MatchItem? detail;
+      try {
+        detail = await client.fetchMatch(id);
+      } catch (_) {
+        detail = null;
+      }
+      final previous = previousMatches[id];
+      final label = previous == null
+          ? '该场比赛'
+          : '${previous.number} ${previous.home} VS ${previous.away}';
+      final isStillBettable = detail != null &&
+          detail.matchState == MatchState.notStarted &&
+          detail.bettingStatus == BettingStatus.open &&
+          detail.kickoff.isAfter(DateTime.now()) &&
+          FootballPlay.values.any((play) => _enabled(detail!, play));
+      next['match:$id'] = isStillBettable
+          ? '$label最新数据暂未返回，原选号已保留，暂不能生成方案'
+          : '$label已停售或已开赛，原选号已暂存，请重新选择';
+    }
+    for (final entry in drafts.entries) {
+      final match = refreshedById[entry.key];
+      final draft = entry.value;
+      if (match == null || !draft.hasSelection) continue;
+      for (final selected in draft.selected.entries) {
+        final odds = _odds(match, selected.key);
+        final playEnabled = _enabled(match, selected.key);
+        if (!playEnabled) {
+          next['play:${entry.key}:${selected.key.name}'] =
+              '${match.number}的${selected.key.label}已停售，原选号已暂存';
+          continue;
+        }
+        for (final option in selected.value) {
+          if (odds[option] == null) {
+            next['option:${entry.key}:${selected.key.name}:$option'] =
+                '${match.number}已选“${_playOptionLabel(selected.key, option)}”，但该 SP 选项已消失，请重新选择';
+          }
+        }
+      }
+    }
+    return next;
+  }
+
+  void _announceSelectionIssues(
+    Map<String, String> next,
+    Map<String, String> previous,
+  ) {
+    final added = next.keys.where((key) => !previous.containsKey(key)).toList();
+    if (added.isEmpty || !mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(next[added.first] ?? '部分选号状态已变化，请重新确认'),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+    });
+  }
+
+  FootballPlay? _playFromName(Object? value) {
+    final name = value?.toString();
+    for (final play in FootballPlay.values) {
+      if (play.name == name) return play;
+    }
+    return null;
+  }
+
+  List<PassMethod> _passesForLabels(
+    List<PassMethod> methods,
+    Set<String> labels,
+  ) =>
+      methods
+          .where(
+            (method) =>
+                labels.contains(method.label) ||
+                (method.isSingle && labels.contains('1串1')),
+          )
+          .toList(growable: false);
+
+  Future<void> _restoreDraft() async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString('selection_draft_v1');
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final rawMatches = decoded['matches'];
+      if (rawMatches is List) {
+        for (final rawMatch in rawMatches) {
+          if (rawMatch is! Map) continue;
+          final matchId = rawMatch['matchId']?.toString() ?? '';
+          if (matchId.isEmpty) continue;
+          final draft = _Draft();
+          draft.banker = rawMatch['banker'] == true;
+          final rawSelected = rawMatch['selected'];
+          if (rawSelected is Map) {
+            for (final entry in rawSelected.entries) {
+              final play = _playFromName(entry.key);
+              if (play == null || entry.value is! List) continue;
+              final values = (entry.value as List)
+                  .map((value) => value.toString())
+                  .where((value) => value.isNotEmpty)
+                  .toSet();
+              if (values.isNotEmpty) draft.selected[play] = values;
+            }
+          }
+          if (draft.hasSelection) drafts[matchId] = draft;
+        }
+      }
+      final rawPasses = decoded['passes'];
+      if (rawPasses is List) {
+        restoredPassLabels = rawPasses.map((value) => value.toString()).toSet();
+      }
+      final multiple = int.tryParse(decoded['multiple']?.toString() ?? '');
+      if (multiple != null && multiple > 0) {
+        quickMultiple =
+            multiple.clamp(1, BettingEngine.maxSchemeMultiple).toInt();
+      }
+      final rawViewMode = decoded['viewMode']?.toString();
+      for (final mode in _SelectionViewMode.values) {
+        if (mode.name == rawViewMode) viewMode = mode;
+      }
+      if (!mounted || drafts.isEmpty) return;
+      restoringDraft = true;
+      setState(() {});
+      if (matches.isNotEmpty && restoredPassLabels != null) {
+        final labels = restoredPassLabels!;
+        setState(() {
+          quickPasses = _passesForLabels(_quickMethods(picks), labels);
+          restoredPassLabels = null;
+          _reconcileQuickPass();
+        });
+        restoringDraft = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('已恢复暂存选号')),
+          );
+        });
+      }
+    } catch (error) {
+      debugPrint('暂存选号恢复失败: $error');
+    }
+  }
+
+  Future<void> _persistDraft() async {
+    final preferences = await SharedPreferences.getInstance();
+    final selectedDrafts = drafts.entries
+        .where((entry) => entry.value.hasSelection)
+        .toList(growable: false);
+    if (selectedDrafts.isEmpty) {
+      await preferences.remove('selection_draft_v1');
+      return;
+    }
+    final payload = {
+      'version': 1,
+      'updatedAt': DateTime.now().toIso8601String(),
+      'multiple': quickMultiple,
+      'passes': quickPasses.map((method) => method.label).toList(),
+      'viewMode': viewMode.name,
+      'matches': [
+        for (final entry in selectedDrafts)
+          {
+            'matchId': entry.key,
+            'banker': entry.value.banker,
+            'selected': {
+              for (final selection in entry.value.selected.entries)
+                selection.key.name: selection.value.toList(),
+            },
+          },
+      ],
+    };
+    await preferences.setString('selection_draft_v1', jsonEncode(payload));
+  }
+
+  void _scheduleDraftPersist() {
+    draftSaveTimer?.cancel();
+    draftSaveTimer = Timer(
+      const Duration(milliseconds: 250),
+      _persistDraft,
+    );
+  }
+
+  Future<void> _persistDraftNow() async {
+    draftSaveTimer?.cancel();
+    await _persistDraft();
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('选号已暂存到本机')));
+  }
+
+  void _clearInvalidSelections() {
+    final invalidIds = selectionIssues.keys
+        .map((key) => key.split(':'))
+        .where((parts) => parts.length >= 2)
+        .map((parts) => parts[1])
+        .toSet();
+    setState(() {
+      drafts.removeWhere((id, _) => invalidIds.contains(id));
+      selectionIssues = const {};
+      _reconcileQuickPass();
+    });
+    _scheduleDraftPersist();
   }
 
   void _openFocusedMatchIfNeeded(List<MatchItem> refreshed) {
@@ -190,6 +462,14 @@ class _SelectionPageState extends State<SelectionPage> {
     return supportsParlay || supportsSingle;
   }
 
+  bool _supportsSingleForDraft(MatchItem match, _Draft draft) {
+    if (!match.canSingle) return false;
+    return draft.selected.keys.every((play) {
+      final pool = match.pools[play.poolCode];
+      return pool is Map && pool['single'] == true;
+    });
+  }
+
   List<MatchPick> get picks => [
         for (final m in matches)
           if (drafts[m.id] case final d? when d.hasSelection)
@@ -206,6 +486,7 @@ class _SelectionPageState extends State<SelectionPage> {
                 for (final play in d.selected.keys) play: _odds(m, play),
               },
               handicap: m.hhad['让球']?.toString() ?? '',
+              singleSupported: _supportsSingleForDraft(m, d),
               options: [
                 for (final entry in d.selected.entries)
                   for (final k in entry.value)
@@ -219,16 +500,32 @@ class _SelectionPageState extends State<SelectionPage> {
             ),
       ];
 
-  void _toggle(MatchItem m, FootballPlay p, String key) => setState(() {
-        final d = drafts.putIfAbsent(m.id, _Draft.new);
-        final values = d.selected.putIfAbsent(p, () => <String>{});
-        if (!values.add(key)) values.remove(key);
-        if (values.isEmpty) d.selected.remove(p);
-        if (!d.hasSelection) drafts.remove(m.id);
-        _reconcileQuickPass();
-      });
+  void _toggle(MatchItem m, FootballPlay p, String key) {
+    setState(() {
+      final d = drafts.putIfAbsent(m.id, _Draft.new);
+      final values = d.selected.putIfAbsent(p, () => <String>{});
+      if (!values.add(key)) values.remove(key);
+      if (values.isEmpty) d.selected.remove(p);
+      if (!d.hasSelection) drafts.remove(m.id);
+      selectionIssues = {
+        for (final entry in selectionIssues.entries)
+          if (!entry.key.startsWith('match:${m.id}') &&
+              !entry.key.startsWith('play:${m.id}:') &&
+              !entry.key.startsWith('option:${m.id}:'))
+            entry.key: entry.value,
+      };
+      _reconcileQuickPass();
+    });
+    _scheduleDraftPersist();
+  }
 
   void _calculate({bool optimize = false}) {
+    if (selectionIssues.isNotEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先处理失效选号后再生成方案')));
+      return;
+    }
     final selected = picks;
     if (selected.isEmpty) return;
     if (selected.length == 1) {
@@ -268,21 +565,17 @@ class _SelectionPageState extends State<SelectionPage> {
       .reduce((a, b) => a < b ? a : b);
 
   bool _supportsSingle(MatchPick pick) {
-    final match = matches.firstWhere((item) => item.id == pick.matchId);
-    if (!match.canSingle) return false;
-    return pick.options.every((option) {
-      final play = option.play ?? pick.play;
-      final pool = match.pools[play.poolCode];
-      return pool is Map && pool['single'] == true;
-    });
+    return pick.singleSupported;
   }
 
   List<PassMethod> _quickMethods(List<MatchPick> selected) {
     if (selected.isEmpty) return const [];
-    if (selected.length == 1 && !_supportsSingle(selected.first)) {
-      return const [];
-    }
-    return PassMethod.available(selected.length, _maxPassFor(selected));
+    final methods =
+        PassMethod.available(selected.length, _maxPassFor(selected));
+    final allSupportSingle = selected.every(_supportsSingle);
+    return methods
+        .where((method) => !method.isSingle || allSupportSingle)
+        .toList(growable: false);
   }
 
   bool _samePass(PassMethod a, PassMethod b) =>
@@ -306,14 +599,15 @@ class _SelectionPageState extends State<SelectionPage> {
       quickPasses = retained;
       return;
     }
-    final freeMethods = methods
+    final preferredMethods = methods
         .where(
           (method) =>
-              method.matches == 1 ||
-              method.displayLabel?.endsWith('串1') == true,
+              method.isSingle || method.displayLabel?.endsWith('串1') == true,
         )
         .toList(growable: false);
-    quickPasses = [freeMethods.isEmpty ? methods.first : freeMethods.last];
+    quickPasses = [
+      preferredMethods.isEmpty ? methods.first : preferredMethods.last,
+    ];
   }
 
   Future<void> _chooseQuickPass() async {
@@ -329,76 +623,162 @@ class _SelectionPageState extends State<SelectionPage> {
       );
       return;
     }
-    final freeMethods = methods
-        .where((method) => method.matches == 1 || method.label.endsWith('串1'))
-        .toList(growable: false);
     var selectedMethods = [
-      for (final method in freeMethods)
+      for (final method in methods)
         if (quickPasses.any((item) => _samePass(item, method))) method,
     ];
     final chosen = await showModalBottomSheet<List<PassMethod>>(
       context: context,
       useSafeArea: true,
+      isScrollControlled: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (_, updateSheet) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    const Text(
-                      '过关方式',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
+          final common = methods
+              .where(
+                (method) =>
+                    method.isSingle ||
+                    method.displayLabel?.endsWith('串1') == true,
+              )
+              .toList(growable: false);
+          final more = methods
+              .where((method) => !common.contains(method))
+              .toList(growable: false);
+
+          Widget chips(List<PassMethod> values) => Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final method in values)
+                    FilterChip(
+                      label: Text(method.label),
+                      selected: selectedMethods.any(
+                        (item) => _samePass(item, method),
                       ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '已选${selected.length}场，可多选',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xff7f8783),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final method in freeMethods)
-                      FilterChip(
-                        label: Text(method.label),
-                        selected: selectedMethods.any(
-                          (item) => _samePass(item, method),
-                        ),
-                        onSelected: (value) => updateSheet(() {
-                          if (value) {
+                      onSelected: (value) => updateSheet(() {
+                        if (value) {
+                          if (!selectedMethods.any(
+                            (item) => _samePass(item, method),
+                          )) {
                             selectedMethods = [...selectedMethods, method];
-                          } else {
-                            selectedMethods = selectedMethods
-                                .where((item) => !_samePass(item, method))
-                                .toList(growable: false);
                           }
-                        }),
+                        } else {
+                          selectedMethods = selectedMethods
+                              .where((item) => !_samePass(item, method))
+                              .toList(growable: false);
+                        }
+                      }),
+                    ),
+                ],
+              );
+
+          return SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(sheetContext).size.height * .78,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          '过关方式',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '已选${selected.length}场，可多选',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xff7f8783),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            chips(common),
+                            if (more.isNotEmpty) ...[
+                              const SizedBox(height: 14),
+                              const Text(
+                                '更多过关方式',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              chips(more),
+                            ],
+                          ],
+                        ),
                       ),
+                    ),
+                    const SizedBox(height: 14),
+                    Builder(
+                      builder: (_) {
+                        BettingResult? preview;
+                        if (selectedMethods.isNotEmpty) {
+                          try {
+                            preview = const BettingEngine().calculateMultiple(
+                              picks: selected,
+                              passes: selectedMethods,
+                              multiple: quickMultiple,
+                            );
+                          } catch (_) {}
+                        }
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    preview == null
+                                        ? '金额 --'
+                                        : '金额 ${preview.amount.toStringAsFixed(0)}元',
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    preview == null
+                                        ? '最高奖金 --'
+                                        : '最高奖金 ${preview.maxReturn.toStringAsFixed(2)}元',
+                                    style: const TextStyle(
+                                      color: Color(0xffdf4162),
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(
+                              width: 116,
+                              child: FilledButton(
+                                onPressed: selectedMethods.isEmpty
+                                    ? null
+                                    : () => Navigator.pop(
+                                          sheetContext,
+                                          selectedMethods,
+                                        ),
+                                child: const Text('确定'),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                   ],
                 ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: selectedMethods.isEmpty
-                        ? null
-                        : () => Navigator.pop(sheetContext, selectedMethods),
-                    child: const Text('确定'),
-                  ),
-                ),
-              ],
+              ),
             ),
           );
         },
@@ -408,11 +788,12 @@ class _SelectionPageState extends State<SelectionPage> {
       setState(() {
         quickPasses = chosen;
       });
+      _scheduleDraftPersist();
     }
   }
 
   BettingResult? _quickResult(List<MatchPick> selected) {
-    if (quickPasses.isEmpty) return null;
+    if (quickPasses.isEmpty || selectionIssues.isNotEmpty) return null;
     try {
       return const BettingEngine().calculateMultiple(
         picks: selected,
@@ -428,11 +809,14 @@ class _SelectionPageState extends State<SelectionPage> {
       ? '过关方式'
       : quickPasses.map((item) => item.label).join('、');
 
-  void _changeQuickMultiple(int delta) => setState(() {
-        quickMultiple = (quickMultiple + delta)
-            .clamp(1, BettingEngine.maxSchemeMultiple)
-            .toInt();
-      });
+  void _changeQuickMultiple(int delta) {
+    setState(() {
+      quickMultiple = (quickMultiple + delta)
+          .clamp(1, BettingEngine.maxSchemeMultiple)
+          .toInt();
+    });
+    _scheduleDraftPersist();
+  }
 
   Future<void> _editQuickMultiple() async {
     // Keep the display at 1x, but let a typed value replace it rather than append.
@@ -609,6 +993,7 @@ class _SelectionPageState extends State<SelectionPage> {
     );
     if (chosen != null && mounted) {
       setState(() => quickMultiple = chosen);
+      _scheduleDraftPersist();
     }
   }
 
@@ -847,7 +1232,10 @@ class _SelectionPageState extends State<SelectionPage> {
               if (draft != null && draft.hasSelection) ...[
                 const SizedBox(width: 8),
                 InkWell(
-                  onTap: () => setState(() => draft.banker = !draft.banker),
+                  onTap: () {
+                    setState(() => draft.banker = !draft.banker);
+                    _scheduleDraftPersist();
+                  },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 6,
@@ -1121,7 +1509,10 @@ class _SelectionPageState extends State<SelectionPage> {
               if (draft != null && draft.hasSelection) ...[
                 const SizedBox(width: 8),
                 InkWell(
-                  onTap: () => setState(() => draft.banker = !draft.banker),
+                  onTap: () {
+                    setState(() => draft.banker = !draft.banker);
+                    _scheduleDraftPersist();
+                  },
                   child: Text(
                     draft.banker ? '胆' : '设胆',
                     style: TextStyle(
@@ -1553,6 +1944,62 @@ class _SelectionPageState extends State<SelectionPage> {
     return children;
   }
 
+  Widget _selectionIssueBanner() {
+    if (selectionIssues.isEmpty) return const SizedBox.shrink();
+    final details = selectionIssues.values.take(2).join('；');
+    final suffix = selectionIssues.length > 2 ? '……' : '';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: const Color(0xfffff5e6),
+        border: Border.all(color: const Color(0xfff0d39d)),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            size: 18,
+            color: Color(0xffa86f16),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '部分选号状态已变化',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xff805817),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '$details$suffix',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    height: 1.3,
+                    color: Color(0xff8e6b35),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: _clearInvalidSelections,
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openSavedSchemes() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -1564,6 +2011,7 @@ class _SelectionPageState extends State<SelectionPage> {
 
   Widget _buildBottomBar(List<MatchPick> selected) {
     final hasSelection = selected.isNotEmpty;
+    final blocked = selectionIssues.isNotEmpty;
     final optionCount = selected.fold<int>(
       0,
       (sum, item) => sum + item.options.length,
@@ -1586,11 +2034,15 @@ class _SelectionPageState extends State<SelectionPage> {
                   visualDensity: VisualDensity.compact,
                   tooltip: '清空选号',
                   onPressed: hasSelection
-                      ? () => setState(() {
+                      ? () {
+                          setState(() {
                             drafts.clear();
+                            selectionIssues = const {};
                             quickPasses = const [];
                             quickMultiple = 1;
-                          })
+                          });
+                          _scheduleDraftPersist();
+                        }
                       : null,
                   icon: const Icon(
                     Icons.delete_outline,
@@ -1609,7 +2061,7 @@ class _SelectionPageState extends State<SelectionPage> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: InkWell(
-                    onTap: hasSelection ? _chooseQuickPass : null,
+                    onTap: hasSelection && !blocked ? _chooseQuickPass : null,
                     child: Container(
                       height: 32,
                       padding: const EdgeInsets.symmetric(horizontal: 9),
@@ -1704,9 +2156,11 @@ class _SelectionPageState extends State<SelectionPage> {
                         Text(
                           !hasSelection
                               ? '请选择比赛'
-                              : preview == null
-                                  ? '请选择过关方式'
-                                  : '${preview.notes}注  ${preview.amount.toStringAsFixed(0)}元',
+                              : blocked
+                                  ? '请处理失效选号'
+                                  : preview == null
+                                      ? '请选择过关方式'
+                                      : '${preview.notes}注  ${preview.amount.toStringAsFixed(0)}元',
                           style: const TextStyle(
                             fontSize: 11,
                             color: Color(0xff3f4743),
@@ -1732,9 +2186,10 @@ class _SelectionPageState extends State<SelectionPage> {
                 SizedBox(
                   height: 38,
                   child: OutlinedButton(
-                    onPressed: hasSelection && quickPasses.isNotEmpty
-                        ? () => _calculate(optimize: true)
-                        : null,
+                    onPressed:
+                        hasSelection && !blocked && quickPasses.isNotEmpty
+                            ? () => _calculate(optimize: true)
+                            : null,
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                     ),
@@ -1745,7 +2200,7 @@ class _SelectionPageState extends State<SelectionPage> {
                 SizedBox(
                   height: 38,
                   child: FilledButton(
-                    onPressed: !hasSelection
+                    onPressed: !hasSelection || blocked
                         ? null
                         : quickPasses.isEmpty
                             ? _chooseQuickPass
@@ -1822,7 +2277,10 @@ class _SelectionPageState extends State<SelectionPage> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          onSelected: (mode) => setState(() => viewMode = mode),
+                          onSelected: (mode) {
+                            setState(() => viewMode = mode);
+                            _scheduleDraftPersist();
+                          },
                           itemBuilder: (_) => [
                             for (final mode in _SelectionViewMode.values)
                               PopupMenuItem(
@@ -1879,6 +2337,12 @@ class _SelectionPageState extends State<SelectionPage> {
                       ],
                     ),
                   ),
+                  IconButton(
+                    tooltip: '暂存选号',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: picks.isEmpty ? null : _persistDraftNow,
+                    icon: const Icon(Icons.save_outlined, size: 18),
+                  ),
                   TextButton.icon(
                     onPressed: _openSavedSchemes,
                     icon: const Icon(Icons.bookmarks_outlined, size: 18),
@@ -1888,6 +2352,7 @@ class _SelectionPageState extends State<SelectionPage> {
               ),
             ),
             if (loading) const LinearProgressIndicator(minHeight: 2),
+            if (selectionIssues.isNotEmpty) _selectionIssueBanner(),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _refresh,
@@ -2030,10 +2495,15 @@ class _SchemePageState extends State<_SchemePage> {
               pick.options.map((option) => (option.play ?? pick.play).maxPass),
         )
         .reduce(math.min);
-    methods = PassMethod.available(widget.picks.length, maxPass);
+    final available = PassMethod.available(widget.picks.length, maxPass);
+    final canUseSingle = widget.picks.every((pick) => pick.singleSupported);
+    methods = [
+      for (final method in available)
+        if (!method.isSingle || canUseSingle) method,
+    ];
     selectedMethods = [
       for (final item in methods)
-        if (widget.initialPasses.any((pass) => pass.label == item.label)) item,
+        if (widget.initialPasses.any((pass) => _samePass(item, pass))) item,
     ];
     if (selectedMethods.isEmpty) selectedMethods = [methods.last];
     showCombinations = widget.initialShowCombinations;
@@ -2045,6 +2515,11 @@ class _SchemePageState extends State<_SchemePage> {
   }
 
   String get _passLabel => selectedMethods.map((item) => item.label).join('、');
+
+  bool _samePass(PassMethod a, PassMethod b) =>
+      a.label == b.label &&
+      a.matches == b.matches &&
+      a.subPassSizes.join(',') == b.subPassSizes.join(',');
 
   String get _settlementState =>
       widget.savedSettlement?['state']?.toString() ?? '';
@@ -2134,11 +2609,12 @@ class _SchemePageState extends State<_SchemePage> {
 
   List<String> _betLines(AtomicBet bet) => bet.picks.map((item) {
         final match = item.match;
+        final number = match.number.replaceAll(RegExp(r'\s+'), '');
         final play = item.option.play ?? match.play;
         final marker = play == FootballPlay.hhad && match.handicap.isNotEmpty
             ? '${match.handicap}${item.option.label}'
             : _compactOptionLabel(play, item.option.label);
-        return '${match.home}（$marker）';
+        return '$number ${match.home}（$marker）';
       }).toList(growable: false);
 
   void _adjustMultiple(AtomicBet bet, int delta) {
@@ -2217,6 +2693,7 @@ class _SchemePageState extends State<_SchemePage> {
         'play': pick.play.name,
         'banker': pick.banker,
         'handicap': pick.handicap,
+        'singleSupported': pick.singleSupported,
         'options': [
           for (final option in pick.options)
             {
@@ -2901,19 +3378,10 @@ class _SchemePageState extends State<_SchemePage> {
         ),
         child: Column(
           children: [
-            if (!widget.optimizationOnly) ...[
-              InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: '过关方式',
-                  border: OutlineInputBorder(),
-                ),
-                child: Text(_passLabel),
-              ),
-              const SizedBox(height: 12),
-            ],
             if (mode == _SchemeMode.normal)
               TextField(
                 controller: multipleController,
+                readOnly: _isSavedScheme,
                 keyboardType: TextInputType.number,
                 textInputAction: TextInputAction.done,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -2929,6 +3397,7 @@ class _SchemePageState extends State<_SchemePage> {
             else ...[
               TextField(
                 controller: budgetController,
+                readOnly: _isSavedScheme,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 textInputAction: TextInputAction.done,
@@ -2951,14 +3420,22 @@ class _SchemePageState extends State<_SchemePage> {
               ),
               const SizedBox(height: 7),
               Text(
-                  switch (optimizeMode) {
-                    OptimizeMode.balanced => '尽量让各组合中奖回报接近',
-                    OptimizeMode.hot => '先保证各组合保本，再放大低SP组合奖金',
-                    OptimizeMode.cold => '先保证各组合保本，再放大高SP组合奖金',
-                  },
-                  style:
-                      const TextStyle(fontSize: 11, color: Color(0xff858d89))),
+                switch (optimizeMode) {
+                  OptimizeMode.balanced => '尽量让各组合中奖回报接近',
+                  OptimizeMode.hot => '先保证各组合保本，再放大低SP组合奖金',
+                  OptimizeMode.cold => '先保证各组合保本，再放大高SP组合奖金',
+                },
+                style: const TextStyle(fontSize: 11, color: Color(0xff858d89)),
+              ),
             ],
+            const SizedBox(height: 8),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '倍数为方案计算值，不代表实际出票票面；本应用不出票。',
+                style: TextStyle(fontSize: 10.5, color: Color(0xff858d89)),
+              ),
+            ),
           ],
         ),
       );
@@ -3102,72 +3579,123 @@ class _SchemePageState extends State<_SchemePage> {
   }
 
   Widget _otherPlaySelections(MatchPick pick) {
-    final options = pick.options.where((option) {
-      final play = option.play ?? pick.play;
-      return play != FootballPlay.had && play != FootballPlay.hhad;
-    }).toList(growable: false);
-    if (options.isEmpty) return const SizedBox.shrink();
+    const plays = [FootballPlay.ttg, FootballPlay.crs, FootballPlay.hafu];
+    final visiblePlays = [
+      for (final play in plays)
+        if (pick.options.any((option) => (option.play ?? pick.play) == play))
+          play,
+    ];
+    if (visiblePlays.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(top: 7, left: 30),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
+      padding: const EdgeInsets.only(top: 1),
+      child: Column(
         children: [
-          for (final option in options)
-            Builder(
-              builder: (_) {
-                final play = option.play ?? pick.play;
-                final won = _optionWon(
-                  option.label,
-                  _winnerFor(pick, play),
-                  play,
-                );
-                final lost = _isSettled && !won;
-                final active = won || !_isSettled;
-                final background = active
-                    ? _green
-                    : lost
-                        ? const Color(0xffe8ece9)
-                        : Colors.white;
-                final foreground = won || !_isSavedScheme
-                    ? Colors.white
-                    : const Color(0xff69716d);
-                return Container(
-                  width: 104,
-                  height: 48,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: background,
-                    border: Border.all(
-                      color: active ? _green : const Color(0xffd4dbd6),
+          for (final play in visiblePlays)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 30,
+                    height: 48,
+                    child: Center(
+                      child: Text(
+                        switch (play) {
+                          FootballPlay.ttg => '进球',
+                          FootballPlay.crs => '比分',
+                          FootballPlay.hafu => '半全',
+                          _ => '',
+                        },
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          color: Color(0xff7d8581),
+                        ),
+                      ),
                     ),
-                    borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _compactOptionLabel(play, option.label),
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: foreground,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        option.sp.toStringAsFixed(2),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: active
-                              ? const Color(0xffe8f7f0)
-                              : const Color(0xff818985),
-                        ),
-                      ),
-                    ],
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final cellWidth = (constraints.maxWidth - 12) / 3;
+                        final options = pick.options
+                            .where(
+                              (option) => (option.play ?? pick.play) == play,
+                            )
+                            .toList(growable: false);
+                        return Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final option in options)
+                              Builder(
+                                builder: (_) {
+                                  final won = _optionWon(
+                                    option.label,
+                                    _winnerFor(pick, play),
+                                    play,
+                                  );
+                                  final lost = _isSettled && !won;
+                                  final active = won || !_isSettled;
+                                  final background = active
+                                      ? _green
+                                      : lost
+                                          ? const Color(0xffe8ece9)
+                                          : Colors.white;
+                                  final foreground = won || !_isSavedScheme
+                                      ? Colors.white
+                                      : const Color(0xff69716d);
+                                  return Container(
+                                    width: cellWidth,
+                                    height: 48,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: background,
+                                      border: Border.all(
+                                        color: active
+                                            ? _green
+                                            : const Color(0xffd4dbd6),
+                                      ),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          _compactOptionLabel(
+                                            play,
+                                            option.label,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12.5,
+                                            color: foreground,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          option.sp.toStringAsFixed(2),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: active
+                                                ? const Color(0xffe8f7f0)
+                                                : const Color(0xff818985),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                          ],
+                        );
+                      },
+                    ),
                   ),
-                );
-              },
+                ],
+              ),
             ),
         ],
       ),
@@ -3176,6 +3704,7 @@ class _SchemePageState extends State<_SchemePage> {
 
   Widget _schemeOverview(BettingResult value) {
     final actualPrize = _actualPrize;
+    final currentMultiple = int.tryParse(multipleController.text) ?? 1;
     final isLost = _settlementState == 'lost';
     final isSettling = _settlementState == 'in_progress';
     final isPending = _isSavedScheme && _settlementState == 'pending';
@@ -3231,7 +3760,7 @@ class _SchemePageState extends State<_SchemePage> {
               ),
               const SizedBox(width: 5),
               Text(
-                '[${widget.initialMultiple}倍]',
+                '[$currentMultiple倍]',
                 style: const TextStyle(fontSize: 11, color: Color(0xff7d8581)),
               ),
               const Spacer(),
@@ -3270,6 +3799,28 @@ class _SchemePageState extends State<_SchemePage> {
               Text(
                 '${value.notes}注',
                 style: const TextStyle(fontSize: 11, color: Color(0xff7d8581)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.info_outline,
+                size: 15,
+                color: Color(0xff7d8581),
+              ),
+              SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  '方案倍数为计算值，不等同于真实出票票面；本应用不出票。',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    height: 1.35,
+                    color: Color(0xff858d89),
+                  ),
+                ),
               ),
             ],
           ),
@@ -3571,82 +4122,84 @@ class _SchemePageState extends State<_SchemePage> {
                               ),
                             ),
                           ),
-                        if (!widget.optimizationOnly) ...[
-                          const SizedBox(height: 5),
-                          Text(
-                            '${_multipleFor(value, entries[index].key)}倍',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xff858d89),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      if (widget.optimizationOnly)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _stepButton(
-                              Icons.remove,
-                              () => _adjustMultiple(entries[index].key, -1),
-                            ),
-                            Container(
-                              width: 48,
-                              height: 30,
-                              alignment: Alignment.center,
-                              decoration: const BoxDecoration(
-                                border: Border.symmetric(
-                                  horizontal: BorderSide(
-                                    color: Color(0xffdfe4e1),
+                  SizedBox(
+                    width: widget.optimizationOnly ? 100 : 48,
+                    child: widget.optimizationOnly
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _stepButton(
+                                Icons.remove,
+                                () => _adjustMultiple(entries[index].key, -1),
+                              ),
+                              Container(
+                                width: 44,
+                                height: 30,
+                                alignment: Alignment.center,
+                                decoration: const BoxDecoration(
+                                  border: Border.symmetric(
+                                    horizontal: BorderSide(
+                                      color: Color(0xffdfe4e1),
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  '${_multipleFor(value, entries[index].key)}倍',
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
-                              child: Text(
-                                '${_multipleFor(value, entries[index].key)}倍',
-                                maxLines: 1,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                              _stepButton(
+                                Icons.add,
+                                () => _adjustMultiple(entries[index].key, 1),
                               ),
+                            ],
+                          )
+                        : Text(
+                            '${_multipleFor(value, entries[index].key)}倍',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xff68716c),
+                              fontWeight: FontWeight.w600,
                             ),
-                            _stepButton(
-                              Icons.add,
-                              () => _adjustMultiple(entries[index].key, 1),
-                            ),
-                          ],
-                        ),
-                      if (widget.optimizationOnly) const SizedBox(height: 6),
-                      Builder(
-                        builder: (_) {
-                          final won =
-                              _isSettled && _ticketWon(entries[index].key);
-                          final text = _isSettled
-                              ? (won
-                                  ? '中奖 ${entries[index].value.toStringAsFixed(2)}元'
-                                  : '未中')
-                              : '${entries[index].value.toStringAsFixed(2)}元';
-                          return Text(
-                            text,
-                            style: TextStyle(
-                              color: won
-                                  ? const Color(0xffc76a00)
-                                  : _isSettled
-                                      ? const Color(0xff767e7a)
-                                      : const Color(0xffdf4162),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                          ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 78,
+                    child: Builder(
+                      builder: (_) {
+                        final won =
+                            _isSettled && _ticketWon(entries[index].key);
+                        final text = _isSettled
+                            ? (won
+                                ? '中奖 ${entries[index].value.toStringAsFixed(2)}元'
+                                : '未中')
+                            : '${entries[index].value.toStringAsFixed(2)}元';
+                        return Text(
+                          text,
+                          maxLines: 2,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            color: won
+                                ? const Color(0xffc76a00)
+                                : _isSettled
+                                    ? const Color(0xff767e7a)
+                                    : const Color(0xffdf4162),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -3657,7 +4210,7 @@ class _SchemePageState extends State<_SchemePage> {
   }
 
   Widget _stepButton(IconData icon, VoidCallback onPressed) => SizedBox(
-        width: 34,
+        width: 28,
         height: 30,
         child: IconButton(
           padding: EdgeInsets.zero,
@@ -3668,7 +4221,7 @@ class _SchemePageState extends State<_SchemePage> {
             ),
           ),
           onPressed: onPressed,
-          icon: Icon(icon, size: 16),
+          icon: Icon(icon, size: 15),
         ),
       );
 
@@ -3753,7 +4306,6 @@ class _SchemePageState extends State<_SchemePage> {
               if (!_isSavedScheme) ...[
                 const SizedBox(width: 6),
                 Expanded(
-                  flex: 2,
                   child: FilledButton(
                     onPressed: value == null ? null : () => _save(value),
                     style: FilledButton.styleFrom(backgroundColor: _green),
@@ -3910,9 +4462,16 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
     try {
       final preferences = await SharedPreferences.getInstance();
       if (!mounted) return;
+      final stored =
+          preferences.getStringList('saved_football_schemes') ?? const [];
+      final retained = stored
+          .where((raw) => _withinLastSevenDays(_decode(raw)))
+          .toList(growable: false);
+      if (retained.length != stored.length) {
+        await preferences.setStringList('saved_football_schemes', retained);
+      }
       setState(() {
-        rawItems =
-            preferences.getStringList('saved_football_schemes') ?? const [];
+        rawItems = retained;
         loading = true;
       });
       await _settleSavedSchemes();
@@ -4151,6 +4710,7 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
           options: options,
           banker: raw['banker'] == true,
           handicap: raw['handicap']?.toString() ?? '',
+          singleSupported: raw['singleSupported'] != false,
           availableOdds: availableOdds,
         ),
       );
@@ -4598,12 +5158,15 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
     if (rawCombinations is! List || rawCombinations.isEmpty) {
       if (item['optimizationOnly'] == true) return null;
       try {
-        return const BettingEngine().calculateMultiple(
+        final calculated = const BettingEngine().calculateMultiple(
           picks: picks,
           passes: passes,
           multiple: (int.tryParse(item['multiple']?.toString() ?? '') ?? 1)
               .clamp(1, BettingEngine.maxSchemeMultiple),
         );
+        return item['isSplit'] == true
+            ? const BettingEngine().split(calculated)
+            : calculated;
       } catch (_) {
         return null;
       }
@@ -4641,7 +5204,11 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
       atomicBets.add(bet);
       tickets.add(SplitTicket(bet: bet, multiple: multiple));
     }
-    return atomicBets.isEmpty ? null : BettingResult(atomicBets, tickets);
+    if (atomicBets.isEmpty) return null;
+    final restored = BettingResult(atomicBets, tickets);
+    return item['isSplit'] == true
+        ? const BettingEngine().split(restored)
+        : restored;
   }
 
   @override
@@ -4690,6 +5257,30 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
               ),
             ),
             const Divider(height: 1),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 10, 16, 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: Color(0xff7b8580),
+                  ),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '保存方案与暂存选号仅保存在本机，不同步云端；保存方案最近7天可查看，过期自动清理。',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        height: 1.35,
+                        color: Color(0xff7b8580),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
               child: SegmentedButton<String>(

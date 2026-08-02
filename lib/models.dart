@@ -23,6 +23,7 @@ class MatchItem {
     this.halfTimeScore,
     this.liveStatusText,
     this.titanLastUpdated,
+    this.fetchedAt,
     this.extraTimeScore,
     this.penaltyScore,
     this.officialResults,
@@ -57,6 +58,7 @@ class MatchItem {
   final String? halfTimeScore;
   final String? liveStatusText;
   final DateTime? titanLastUpdated;
+  final DateTime? fetchedAt;
   final String? extraTimeScore;
   final String? penaltyScore;
   final Map<String, dynamic>? officialResults;
@@ -259,6 +261,9 @@ class MatchItem {
       titanLastUpdated: DateTime.tryParse(
         json['titanLastUpdated']?.toString() ?? '',
       ),
+      fetchedAt: DateTime.tryParse(
+        json['fetchedAt']?.toString() ?? '',
+      ),
       extraTimeScore: findStageScore(
         officialResults,
         const [
@@ -299,7 +304,7 @@ class MatchItem {
     if (matchState != MatchState.live && matchState != MatchState.halftime) {
       return false;
     }
-    final updated = titanLastUpdated;
+    final updated = titanLastUpdated ?? fetchedAt;
     return updated != null &&
         DateTime.now().difference(updated.toLocal()) >
             const Duration(minutes: 2);
