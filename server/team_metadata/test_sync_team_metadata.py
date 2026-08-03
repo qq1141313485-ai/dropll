@@ -37,6 +37,7 @@ class TeamMetadataSyncTest(unittest.TestCase):
                         "strTeam": "Test FC",
                         "idLeague": "99",
                         "strLeague": "Test League",
+                        "strSport": "Soccer",
                         "strCountry": "Test",
                         "strBadge": "https://example.com/badge.png",
                     },
@@ -75,6 +76,7 @@ class TeamMetadataSyncTest(unittest.TestCase):
                 return_value={
                     "idTeam": "42",
                     "strTeam": "Wrong Team",
+                    "strSport": "Soccer",
                     "strBadge": "https://example.com/badge.png",
                 },
             ):
@@ -83,6 +85,47 @@ class TeamMetadataSyncTest(unittest.TestCase):
             self.assertEqual(result["teamCount"], 0)
             self.assertEqual(result["errorCount"], 1)
             self.assertIn("source name changed", result["errors"][0]["error"])
+
+    def test_sync_retains_cached_team_after_transient_source_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "cache"
+            badge = output / "badges" / "42.png"
+            badge.parent.mkdir(parents=True)
+            badge.write_bytes(b"x" * 300)
+            (output / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "teams": {
+                            "测试队": {
+                                "sourceTeamId": "42",
+                                "badgeFile": "badges/42.png",
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            aliases = root / "aliases.json"
+            aliases.write_text(
+                json.dumps(
+                    {
+                        "测试队": {
+                            "query": "Test FC",
+                            "sourceTeamId": "42",
+                            "sourceName": "Test FC",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch("sync_team_metadata._source_team", side_effect=OSError("timeout")):
+                result = sync(aliases, output, "123", 0)
+
+            self.assertEqual(result["teamCount"], 1)
+            self.assertEqual(result["errorCount"], 1)
+            self.assertEqual(result["retainedCount"], 1)
+            self.assertIn("测试队", result["teams"])
 
 
 if __name__ == "__main__":

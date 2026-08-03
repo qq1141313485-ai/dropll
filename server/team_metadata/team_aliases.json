@@ -180,5 +180,61 @@
     "sourceTeamId": "138115",
     "sourceName": "FC Seoul",
     "country": "South Korea"
+  },
+  "塞伊奈": {
+    "provider": "thesportsdb",
+    "query": "SJK Seinajoki",
+    "sourceTeamId": "135673",
+    "sourceName": "SJK Seinajoki",
+    "country": "Finland"
+  },
+  "赫尔辛基": {
+    "provider": "thesportsdb",
+    "query": "HJK Helsinki",
+    "sourceTeamId": "133953",
+    "sourceName": "HJK Helsinki",
+    "country": "Finland"
+  },
+  "哈尔姆斯": {
+    "provider": "thesportsdb",
+    "query": "Halmstads BK",
+    "sourceTeamId": "134167",
+    "sourceName": "Halmstad",
+    "country": "Sweden"
+  },
+  "天狼星": {
+    "provider": "thesportsdb",
+    "query": "IK Sirius",
+    "sourceTeamId": "134724",
+    "sourceName": "Sirius",
+    "country": "Sweden"
+  },
+  "佐加顿斯": {
+    "provider": "thesportsdb",
+    "query": "Djurgarden",
+    "sourceTeamId": "134162",
+    "sourceName": "Djurgården",
+    "country": "Sweden"
+  },
+  "韦斯特罗": {
+    "provider": "thesportsdb",
+    "query": "Vasteras SK",
+    "sourceTeamId": "136832",
+    "sourceName": "Västerås",
+    "country": "Sweden"
+  },
+  "巴竞技": {
+    "provider": "thesportsdb",
+    "query": "Athletico Paranaense",
+    "sourceTeamId": "134297",
+    "sourceName": "Athletico Paranaense",
+    "country": "Brazil"
+  },
+  "维多利亚": {
+    "provider": "thesportsdb",
+    "query": "EC Vitoria",
+    "sourceTeamId": "134280",
+    "sourceName": "Vitória",
+    "country": "Brazil"
   }
 }

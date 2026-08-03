@@ -119,8 +119,17 @@ def sync(
     if not isinstance(aliases, dict):
         raise ValueError("alias file must contain an object")
     badges_dir = output_dir / "badges"
+    existing_teams: dict[str, Any] = {}
+    manifest_path = output_dir / "manifest.json"
+    try:
+        existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if isinstance(existing.get("teams"), dict):
+            existing_teams = existing["teams"]
+    except (FileNotFoundError, OSError, json.JSONDecodeError, AttributeError):
+        pass
     manifest_items: dict[str, Any] = {}
     errors: list[dict[str, str]] = []
+    retained_count = 0
 
     for index, (local_name, mapping) in enumerate(sorted(aliases.items())):
         if index:
@@ -139,6 +148,14 @@ def sync(
             if source_name != expected_name:
                 raise ValueError(
                     f"source name changed: expected {expected_name}, got {source_name}"
+                )
+            if str(source.get("strSport") or "") != "Soccer":
+                raise ValueError("source team is not a soccer team")
+            expected_country = str(mapping.get("country") or "")
+            source_country = str(source.get("strCountry") or "")
+            if expected_country and source_country != expected_country:
+                raise ValueError(
+                    f"source country changed: expected {expected_country}, got {source_country}"
                 )
             badge_url = str(source.get("strBadge") or "")
             if not badge_url.startswith("https://"):
@@ -161,16 +178,30 @@ def sync(
             }
         except Exception as error:
             errors.append({"team": local_name, "error": str(error)})
+            existing_item = existing_teams.get(local_name)
+            if isinstance(existing_item, dict):
+                badge_file = str(existing_item.get("badgeFile") or "")
+                badge_path = (output_dir / badge_file).resolve()
+                if (
+                    str(existing_item.get("sourceTeamId") or "")
+                    == str(mapping.get("sourceTeamId") or "")
+                    and badge_file.startswith("badges/")
+                    and badge_path.parent == badges_dir.resolve()
+                    and badge_path.is_file()
+                ):
+                    manifest_items[local_name] = existing_item
+                    retained_count += 1
 
     manifest = {
         "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "provider": "thesportsdb",
         "teamCount": len(manifest_items),
         "errorCount": len(errors),
+        "retainedCount": retained_count,
         "teams": manifest_items,
         "errors": errors,
     }
-    _write_json(output_dir / "manifest.json", manifest)
+    _write_json(manifest_path, manifest)
     return manifest
 
 
