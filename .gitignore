@@ -31,6 +31,7 @@ migrate_working_dir/
 .dev-api-token
 **/.odds-api-key
 **/coverage-local.json
+server/market_odds/work/
 **/.env
 **/.env.*
 **/api.env

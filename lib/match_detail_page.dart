@@ -83,6 +83,7 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
       }
       List<Map<String, dynamic>> predictions = const [];
       List<Map<String, dynamic>> oddsHistory = const [];
+      Map<String, dynamic> marketOdds = const {};
       MatchAnalysisData? analysis;
       Map<String, TeamMetadata> teamMetadata = const {};
       MatchStandings? fallbackStandings;
@@ -95,6 +96,11 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
         () async {
           try {
             oddsHistory = await _client.fetchOddsHistory(widget.match.id);
+          } catch (_) {}
+        }(),
+        () async {
+          try {
+            marketOdds = await _client.fetchMarketOdds(widget.match.id);
           } catch (_) {}
         }(),
         () async {
@@ -127,6 +133,7 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
         match: match,
         predictions: predictions,
         oddsHistory: oddsHistory,
+        marketOdds: marketOdds,
         analysis: analysis,
         teamMetadata: teamMetadata,
         fallbackStandings: fallbackStandings,
@@ -263,6 +270,7 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
                         match: match,
                         loadedAt: data.loadedAt,
                         history: data.oddsHistory,
+                        marketOdds: data.marketOdds,
                       ),
                     3 => _ResultsTab(match: match),
                     _ => const SizedBox.shrink(),
@@ -395,6 +403,7 @@ class _DetailData {
     required this.match,
     this.predictions = const [],
     this.oddsHistory = const [],
+    this.marketOdds = const {},
     this.analysis,
     this.teamMetadata = const {},
     this.fallbackStandings,
@@ -406,6 +415,7 @@ class _DetailData {
   final MatchItem match;
   final List<Map<String, dynamic>> predictions;
   final List<Map<String, dynamic>> oddsHistory;
+  final Map<String, dynamic> marketOdds;
   final MatchAnalysisData? analysis;
   final Map<String, TeamMetadata> teamMetadata;
   final MatchStandings? fallbackStandings;
@@ -2423,11 +2433,13 @@ class _OddsHub extends StatefulWidget {
     required this.match,
     required this.loadedAt,
     required this.history,
+    required this.marketOdds,
   });
 
   final MatchItem match;
   final DateTime? loadedAt;
   final List<Map<String, dynamic>> history;
+  final Map<String, dynamic> marketOdds;
 
   @override
   State<_OddsHub> createState() => _OddsHubState();
@@ -2453,23 +2465,276 @@ class _OddsHubState extends State<_OddsHub> {
               loadedAt: widget.loadedAt,
               history: widget.history,
             ),
-          1 => const _ExternalOddsEmpty(
-              icon: Icons.public_rounded,
-              title: '暂无欧赔数据',
+          1 => _ExternalOddsMarket(
+              payload: widget.marketOdds,
+              marketKey: 'h2h',
+              emptyIcon: Icons.public_rounded,
+              emptyTitle: '暂无欧赔数据',
             ),
-          2 => const _ExternalOddsEmpty(
-              icon: Icons.swap_horiz_rounded,
-              title: '暂无亚赔数据',
+          2 => _ExternalOddsMarket(
+              payload: widget.marketOdds,
+              marketKey: 'spreads',
+              emptyIcon: Icons.swap_horiz_rounded,
+              emptyTitle: '暂无亚赔数据',
             ),
-          3 => const _ExternalOddsEmpty(
-              icon: Icons.unfold_more_rounded,
-              title: '暂无大小球数据',
+          3 => _ExternalOddsMarket(
+              payload: widget.marketOdds,
+              marketKey: 'totals',
+              emptyIcon: Icons.unfold_more_rounded,
+              emptyTitle: '暂无大小球数据',
             ),
           _ => const SizedBox.shrink(),
         },
       ],
     );
   }
+}
+
+class _ExternalOddsMarket extends StatelessWidget {
+  const _ExternalOddsMarket({
+    required this.payload,
+    required this.marketKey,
+    required this.emptyIcon,
+    required this.emptyTitle,
+  });
+
+  final Map<String, dynamic> payload;
+  final String marketKey;
+  final IconData emptyIcon;
+  final String emptyTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final bookmakers = (payload['bookmakers'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((item) {
+      final markets = item['markets'];
+      return markets is Map && markets[marketKey] is List;
+    }).toList(growable: false);
+    if (bookmakers.isEmpty) {
+      return _ExternalOddsEmpty(icon: emptyIcon, title: emptyTitle);
+    }
+    final generated =
+        DateTime.tryParse(payload['generatedAt']?.toString() ?? '')?.toLocal();
+    return Column(
+      children: [
+        _Surface(
+          child: Row(
+            children: [
+              const Icon(Icons.verified_outlined, size: 16, color: _green),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  payload['stale'] == true ? '外部赔率快照较旧' : '严格匹配的赛前赔率',
+                  style: const TextStyle(
+                      fontSize: 10.5, fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (generated != null)
+                Text(_mdhm(generated),
+                    style: const TextStyle(fontSize: 9, color: _muted)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (var index = 0; index < bookmakers.length; index++) ...[
+          _ExternalBookmakerRow(
+            bookmaker: bookmakers[index],
+            marketKey: marketKey,
+            providerHome: payload['home']?.toString() ?? '',
+            providerAway: payload['away']?.toString() ?? '',
+          ),
+          if (index != bookmakers.length - 1) const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+}
+
+class _ExternalBookmakerRow extends StatelessWidget {
+  const _ExternalBookmakerRow({
+    required this.bookmaker,
+    required this.marketKey,
+    required this.providerHome,
+    required this.providerAway,
+  });
+
+  final Map<String, dynamic> bookmaker;
+  final String marketKey;
+  final String providerHome;
+  final String providerAway;
+
+  @override
+  Widget build(BuildContext context) {
+    final markets = bookmaker['markets'] as Map?;
+    final outcomes = (markets?[marketKey] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    outcomes.sort(
+      (left, right) => _externalOutcomeOrder(
+        left['name']?.toString() ?? '',
+        marketKey,
+        providerHome,
+        providerAway,
+      ).compareTo(
+        _externalOutcomeOrder(
+          right['name']?.toString() ?? '',
+          marketKey,
+          providerHome,
+          providerAway,
+        ),
+      ),
+    );
+    return _Surface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  bookmaker['title']?.toString() ??
+                      bookmaker['key']?.toString() ??
+                      '--',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                _externalMarketName(marketKey),
+                style: const TextStyle(fontSize: 9.5, color: _muted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              for (final outcome in outcomes)
+                Expanded(
+                  child: _ExternalOutcomeCell(
+                    outcome: outcome,
+                    marketKey: marketKey,
+                    providerHome: providerHome,
+                    providerAway: providerAway,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExternalOutcomeCell extends StatelessWidget {
+  const _ExternalOutcomeCell({
+    required this.outcome,
+    required this.marketKey,
+    required this.providerHome,
+    required this.providerAway,
+  });
+
+  final Map<String, dynamic> outcome;
+  final String marketKey;
+  final String providerHome;
+  final String providerAway;
+
+  @override
+  Widget build(BuildContext context) {
+    final opening = outcome['openingPrice'];
+    final point = outcome['point'];
+    return Column(
+      children: [
+        Text(
+          _externalOutcomeLabel(
+            outcome['name']?.toString() ?? '',
+            marketKey,
+            point,
+            providerHome,
+            providerAway,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 9.5, color: _muted),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _externalPrice(outcome['price'], marketKey),
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 2),
+        Text('初 ${_externalPrice(opening, marketKey)}',
+            style: const TextStyle(fontSize: 8.5, color: _muted)),
+      ],
+    );
+  }
+}
+
+String _externalMarketName(String key) => switch (key) {
+      'h2h' => '欧赔',
+      'spreads' => '亚赔',
+      'totals' => '大小球',
+      _ => key,
+    };
+
+String _externalOutcomeLabel(
+  String name,
+  String marketKey,
+  dynamic point,
+  String providerHome,
+  String providerAway,
+) {
+  final lower = name.toLowerCase();
+  final label = marketKey == 'h2h' && name == providerHome
+      ? '主胜'
+      : marketKey == 'h2h' && name == providerAway
+          ? '客胜'
+          : marketKey == 'spreads' && name == providerHome
+              ? '主'
+              : marketKey == 'spreads' && name == providerAway
+                  ? '客'
+                  : lower == 'draw'
+                      ? '平'
+                      : lower == 'over'
+                          ? '大'
+                          : lower == 'under'
+                              ? '小'
+                              : name;
+  if (marketKey == 'h2h' || point == null) return label;
+  return '$label ${point.toString()}';
+}
+
+int _externalOutcomeOrder(
+  String name,
+  String marketKey,
+  String providerHome,
+  String providerAway,
+) {
+  final lower = name.toLowerCase();
+  if (marketKey == 'h2h') {
+    if (name == providerHome) return 0;
+    if (lower == 'draw') return 1;
+    if (name == providerAway) return 2;
+  }
+  if (marketKey == 'spreads') {
+    if (name == providerHome) return 0;
+    if (name == providerAway) return 1;
+  }
+  if (marketKey == 'totals') {
+    if (lower == 'over') return 0;
+    if (lower == 'under') return 1;
+  }
+  return 9;
+}
+
+String _externalPrice(dynamic value, String marketKey) {
+  final number = double.tryParse(value?.toString() ?? '');
+  if (number == null) return '--';
+  if (marketKey == 'h2h') return number.toStringAsFixed(2);
+  return math.max(0, number - 1).toStringAsFixed(2);
 }
 
 class _ExternalOddsEmpty extends StatelessWidget {

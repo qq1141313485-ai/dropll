@@ -1,6 +1,12 @@
 import unittest
 
-from odds_coverage_audit import audit, decide_event, market_coverage
+from odds_coverage_audit import (
+    audit,
+    build_public_snapshot,
+    decide_event,
+    market_coverage,
+    merge_opening_prices,
+)
 
 
 ALIASES = {
@@ -82,7 +88,71 @@ class OddsCoverageAuditTest(unittest.TestCase):
         self.assertEqual(result["summary"]["allMarketsComplete"], 1)
         self.assertEqual(result["usage"]["last"], 3)
 
+    def test_public_snapshot_contains_only_strict_matches_and_safe_odds(self):
+        provider_event = event()
+        provider_event["bookmakers"][0].update(
+            {
+                "title": "Example Sportsbook",
+                "last_update": "2026-08-03T12:00:00Z",
+            }
+        )
+        provider_event["bookmakers"][0]["markets"][0]["outcomes"] = [
+            {"name": "Home United", "price": 2.1},
+            {"name": "Draw", "price": 3.2},
+            {"name": "Away City", "price": 3.4},
+        ]
+        report = audit(
+            [self.match],
+            {"soccer_test": [provider_event]},
+            {"League CN": "soccer_test"},
+            ALIASES,
+        )
+        snapshot = build_public_snapshot(report, {"soccer_test": [provider_event]})
+        item = snapshot["items"]["official-1"]
+        self.assertEqual(item["providerEventId"], "provider-1")
+        self.assertEqual(item["bookmakers"][0]["markets"]["h2h"][0]["price"], 2.1)
+        self.assertNotIn("apiKey", str(snapshot))
+
+    def test_opening_price_survives_later_snapshots(self):
+        previous = {
+            "items": {
+                "official-1": {
+                    "bookmakers": [
+                        {
+                            "key": "example",
+                            "markets": {
+                                "h2h": [
+                                    {
+                                        "name": "Home United",
+                                        "price": 2.1,
+                                        "openingPrice": 2.2,
+                                    }
+                                ]
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+        current = {
+            "items": {
+                "official-1": {
+                    "bookmakers": [
+                        {
+                            "key": "example",
+                            "markets": {
+                                "h2h": [{"name": "Home United", "price": 2.0}]
+                            },
+                        }
+                    ]
+                }
+            }
+        }
+        merged = merge_opening_prices(current, previous)
+        outcome = merged["items"]["official-1"]["bookmakers"][0]["markets"]["h2h"][0]
+        self.assertEqual(outcome["price"], 2.0)
+        self.assertEqual(outcome["openingPrice"], 2.2)
+
 
 if __name__ == "__main__":
     unittest.main()
-

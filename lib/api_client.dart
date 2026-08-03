@@ -237,6 +237,11 @@ class CaiApiClient {
         .toList(growable: false);
   }
 
+  Future<Map<String, dynamic>> fetchMarketOdds(String matchId) async {
+    final body = await _getJson('/v1/matches/$matchId/market-odds');
+    return Map<String, dynamic>.from(body);
+  }
+
   Future<MatchAnalysisData> fetchMatchAnalysis(String matchId) async {
     final body = await _getJson('/v1/matches/$matchId/analysis');
     return MatchAnalysisData.fromJson(body);

@@ -29,7 +29,8 @@ Alternatively, put only the key in the Git-ignored `.odds-api-key` file:
 ```bash
 python odds_coverage_audit.py \
   --api-key-file .odds-api-key \
-  --output coverage-local.json
+  --output coverage-local.json \
+  --snapshot work/latest.json
 ```
 
 The script never writes the key to its report.
@@ -46,6 +47,11 @@ all of these conditions:
 
 `review`, `unmatched`, and `unmapped_league` records must not be exposed as
 bookmaker odds in the App.
+
+The generated snapshot contains only strict matches and the three supported
+market payloads. Install `market_odds_api.py` in the FastAPI application to
+serve `GET /v1/matches/{match_id}/market-odds`. A missing strict match returns
+`available: false` instead of guessing.
 
 The provider map is intentionally separate from the existing official match
 data. Expand league keys and team aliases only after checking provider event

@@ -155,6 +155,125 @@ def market_coverage(event: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def _public_event(event: dict[str, Any]) -> dict[str, Any]:
+    bookmakers: list[dict[str, Any]] = []
+    for bookmaker in event.get("bookmakers", []):
+        if not isinstance(bookmaker, dict):
+            continue
+        markets: dict[str, list[dict[str, Any]]] = {}
+        for market in bookmaker.get("markets", []):
+            if not isinstance(market, dict) or market.get("key") not in MARKETS:
+                continue
+            outcomes = []
+            for outcome in market.get("outcomes", []):
+                if not isinstance(outcome, dict):
+                    continue
+                item = {
+                    "name": str(outcome.get("name") or ""),
+                    "price": outcome.get("price"),
+                }
+                if outcome.get("point") is not None:
+                    item["point"] = outcome["point"]
+                outcomes.append(item)
+            markets[str(market["key"])] = outcomes
+        if markets:
+            bookmakers.append(
+                {
+                    "key": str(bookmaker.get("key") or ""),
+                    "title": str(bookmaker.get("title") or bookmaker.get("key") or ""),
+                    "lastUpdate": bookmaker.get("last_update"),
+                    "markets": markets,
+                }
+            )
+    return {
+        "providerEventId": str(event.get("id") or ""),
+        "commenceTime": event.get("commence_time"),
+        "home": str(event.get("home_team") or ""),
+        "away": str(event.get("away_team") or ""),
+        "bookmakers": bookmakers,
+    }
+
+
+def build_public_snapshot(
+    report: dict[str, Any],
+    events_by_sport: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    events = {
+        str(event.get("id") or ""): event
+        for values in events_by_sport.values()
+        for event in values
+        if isinstance(event, dict) and event.get("id")
+    }
+    items: dict[str, dict[str, Any]] = {}
+    for row in report.get("items", []):
+        if not isinstance(row, dict) or row.get("status") != "matched":
+            continue
+        match_id = str(row.get("matchId") or "")
+        event = events.get(str(row.get("providerEventId") or ""))
+        if not match_id or event is None:
+            continue
+        items[match_id] = {
+            "matchId": match_id,
+            "number": row.get("number"),
+            "league": row.get("league"),
+            "home": row.get("home"),
+            "away": row.get("away"),
+            "kickoff": row.get("kickoff"),
+            "matchScore": row.get("score"),
+            "kickoffDeltaMinutes": row.get("kickoffDeltaMinutes"),
+            **_public_event(event),
+        }
+    return {
+        "version": 1,
+        "provider": "the-odds-api",
+        "generatedAt": report.get("checkedAt"),
+        "items": items,
+    }
+
+
+def merge_opening_prices(
+    current: dict[str, Any],
+    previous: dict[str, Any] | None,
+) -> dict[str, Any]:
+    previous_items = previous.get("items", {}) if isinstance(previous, dict) else {}
+    for match_id, item in current.get("items", {}).items():
+        old_item = previous_items.get(match_id, {}) if isinstance(previous_items, dict) else {}
+        old_prices: dict[tuple[str, str, str, str], Any] = {}
+        for bookmaker in old_item.get("bookmakers", []):
+            bookmaker_key = str(bookmaker.get("key") or "")
+            for market_key, outcomes in bookmaker.get("markets", {}).items():
+                for outcome in outcomes if isinstance(outcomes, list) else []:
+                    key = (
+                        bookmaker_key,
+                        str(market_key),
+                        str(outcome.get("name") or ""),
+                        str(outcome.get("point") or ""),
+                    )
+                    old_prices[key] = outcome.get("openingPrice", outcome.get("price"))
+        for bookmaker in item.get("bookmakers", []):
+            bookmaker_key = str(bookmaker.get("key") or "")
+            for market_key, outcomes in bookmaker.get("markets", {}).items():
+                for outcome in outcomes if isinstance(outcomes, list) else []:
+                    key = (
+                        bookmaker_key,
+                        str(market_key),
+                        str(outcome.get("name") or ""),
+                        str(outcome.get("point") or ""),
+                    )
+                    outcome["openingPrice"] = old_prices.get(key, outcome.get("price"))
+    return current
+
+
+def _write_json_atomic(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
 def _load_matches(base_url: str, matches_file: Path | None) -> list[dict[str, Any]]:
     if matches_file is not None:
         payload = _read_json(matches_file)
@@ -267,6 +386,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-key-file", type=Path)
     parser.add_argument("--region", default="eu")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--snapshot", type=Path)
     return parser
 
 
@@ -313,8 +433,16 @@ def main() -> int:
     result = audit(matches, events_by_sport, league_map, team_aliases, usage)
     rendered = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(rendered + "\n", encoding="utf-8")
+        _write_json_atomic(args.output, result)
+    if args.snapshot:
+        previous = None
+        if args.snapshot.exists():
+            try:
+                previous = _read_json(args.snapshot)
+            except (OSError, json.JSONDecodeError):
+                previous = None
+        snapshot = build_public_snapshot(result, events_by_sport)
+        _write_json_atomic(args.snapshot, merge_opening_prices(snapshot, previous))
     print(rendered)
     return 0
 
