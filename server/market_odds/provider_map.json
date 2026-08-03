@@ -1,0 +1,17 @@
+{
+  "leagues": {
+    "芬超": "soccer_finland_veikkausliiga",
+    "瑞超": "soccer_sweden_allsvenskan"
+  },
+  "teams": {
+    "塞伊奈": ["SJK", "SJK Seinajoki"],
+    "赫尔辛基": ["HJK", "HJK Helsinki"],
+    "哈尔姆斯": ["Halmstads BK", "Halmstad"],
+    "天狼星": ["IK Sirius", "Sirius"],
+    "佐加顿斯": ["Djurgardens IF", "Djurgarden"],
+    "韦斯特罗": ["Vasteras SK", "Vasteras"],
+    "巴竞技": ["Athletico Paranaense", "Athletico-PR"],
+    "维多利亚": ["EC Vitoria", "Vitoria"]
+  }
+}
+
