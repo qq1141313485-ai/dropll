@@ -320,6 +320,38 @@ def _load_provider_events(
     return events, usage
 
 
+def estimated_request_credits(sport_keys: Iterable[str]) -> int:
+    return len(set(sport_keys)) * len(MARKETS)
+
+
+def budget_block_reason(
+    sport_keys: Iterable[str],
+    previous_remaining: int | None,
+    minimum_remaining: int,
+    maximum_run_credits: int,
+) -> str | None:
+    estimated = estimated_request_credits(sport_keys)
+    if estimated > maximum_run_credits:
+        return f"estimated run cost {estimated} exceeds limit {maximum_run_credits}"
+    if previous_remaining is not None and previous_remaining - estimated < minimum_remaining:
+        return (
+            f"estimated remaining credits {previous_remaining - estimated} "
+            f"would fall below reserve {minimum_remaining}"
+        )
+    return None
+
+
+def _previous_remaining(output: Path | None) -> int | None:
+    if output is None or not output.exists():
+        return None
+    try:
+        payload = _read_json(output)
+        value = payload.get("usage", {}).get("remaining")
+        return int(value) if value is not None else None
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+
+
 def audit(
     matches: list[dict[str, Any]],
     events_by_sport: dict[str, list[dict[str, Any]]],
@@ -387,6 +419,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--region", default="eu")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--snapshot", type=Path)
+    parser.add_argument("--minimum-remaining", type=int, default=100)
+    parser.add_argument("--maximum-run-credits", type=int, default=12)
     return parser
 
 
@@ -419,6 +453,15 @@ def main() -> int:
         }
         usage = {"last": 0, "used": None, "remaining": None}
     else:
+        blocked = budget_block_reason(
+            active_sports,
+            _previous_remaining(args.output),
+            args.minimum_remaining,
+            args.maximum_run_credits,
+        )
+        if blocked:
+            print(f"Odds sync skipped: {blocked}", file=sys.stderr)
+            return 3
         api_key = os.environ.get("THE_ODDS_API_KEY", "").strip()
         if args.api_key_file:
             api_key = args.api_key_file.read_text(encoding="utf-8").strip()

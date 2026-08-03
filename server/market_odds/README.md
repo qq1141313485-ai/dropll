@@ -53,6 +53,13 @@ market payloads. Install `market_odds_api.py` in the FastAPI application to
 serve `GET /v1/matches/{match_id}/market-odds`. A missing strict match returns
 `available: false` instead of guessing.
 
+## Cost guard
+
+The production service is intentionally scheduled only once per day. With the
+current two active sport keys, one run costs 6 request credits. It refuses a
+run when the estimate exceeds 12 credits or would reduce the last known balance
+below the 100-credit reserve.
+
 The provider map is intentionally separate from the existing official match
 data. Expand league keys and team aliases only after checking provider event
 names from real responses.

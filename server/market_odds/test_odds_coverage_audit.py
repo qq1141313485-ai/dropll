@@ -3,6 +3,7 @@ import unittest
 from odds_coverage_audit import (
     audit,
     build_public_snapshot,
+    budget_block_reason,
     decide_event,
     market_coverage,
     merge_opening_prices,
@@ -152,6 +153,12 @@ class OddsCoverageAuditTest(unittest.TestCase):
         outcome = merged["items"]["official-1"]["bookmakers"][0]["markets"]["h2h"][0]
         self.assertEqual(outcome["price"], 2.0)
         self.assertEqual(outcome["openingPrice"], 2.2)
+
+    def test_budget_blocks_expensive_or_low_balance_runs(self):
+        sports = ["one", "two"]
+        self.assertIsNone(budget_block_reason(sports, 470, 100, 12))
+        self.assertIn("exceeds limit", budget_block_reason(sports, 470, 100, 5))
+        self.assertIn("below reserve", budget_block_reason(sports, 105, 100, 12))
 
 
 if __name__ == "__main__":

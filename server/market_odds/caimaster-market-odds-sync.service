@@ -1,0 +1,13 @@
+[Unit]
+Description=Caimaster strict-match market odds snapshot
+After=network-online.target caimaster-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/caimaster-api/market_odds
+ExecStart=/opt/caimaster-api/.venv/bin/python /opt/caimaster-api/market_odds/odds_coverage_audit.py --api-key-file /opt/caimaster-api/market_odds/.odds-api-key --output /opt/caimaster-api/market_odds/work/coverage.json --snapshot /opt/caimaster-api/market_odds/work/latest.json --minimum-remaining 100 --maximum-run-credits 12
+
+[Install]
+WantedBy=multi-user.target

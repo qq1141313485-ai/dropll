@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh strict-match market odds once daily
+
+[Timer]
+OnCalendar=*-*-* 15:05:00 Asia/Shanghai
+Persistent=false
+RandomizedDelaySec=300
+Unit=caimaster-market-odds-sync.service
+
+[Install]
+WantedBy=timers.target
