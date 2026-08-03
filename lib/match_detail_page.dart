@@ -143,7 +143,11 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
     _refreshTimer?.cancel();
     _reloading = true;
     final future = _loadAndSchedule();
-    if (mounted) setState(() => _future = future);
+    if (mounted) {
+      setState(() {
+        _future = future;
+      });
+    }
     try {
       await future;
     } finally {
@@ -174,7 +178,16 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
           return const _DetailLoadingScaffold();
         }
         final match = data.match;
-        final selectedTab = math.min(_tab, 1);
+        final headerStandings = data.analysis?.standings.hasContent == true
+            ? data.analysis!.standings
+            : data.fallbackStandings;
+        final detailTabs = <String>[
+          '概览',
+          '基本面',
+          '赔率',
+          if (match.matchState == MatchState.finished) '赛果',
+        ];
+        final selectedTab = math.min(_tab, detailTabs.length - 1);
         return Scaffold(
           backgroundColor: _page,
           appBar: AppBar(
@@ -212,8 +225,8 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
                   child: _MatchHero(
                     match: match,
                     canSelect: data.canSelect,
-                    homeRank: data.analysis?.standings.home.total.ranking ?? 0,
-                    awayRank: data.analysis?.standings.away.total.ranking ?? 0,
+                    homeRank: headerStandings?.home.total.ranking ?? 0,
+                    awayRank: headerStandings?.away.total.ranking ?? 0,
                     homeBadgeUrl: data.teamMetadata[match.home]?.badgeUrl,
                     awayBadgeUrl: data.teamMetadata[match.away]?.badgeUrl,
                   ),
@@ -228,24 +241,30 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
                   _LoadError(message: data.error!, onRetry: _reload),
                 _DetailTabs(
                   value: selectedTab,
+                  labels: detailTabs,
                   onChanged: (value) => setState(() => _tab = value),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 22),
                   child: switch (selectedTab) {
-                    0 => _ResearchTab(
+                    0 => _DetailOverview(
+                        match: match,
+                        analysis: data.analysis,
+                        predictions: data.predictions,
+                        loadedAt: data.loadedAt,
+                        onOpenOdds: () => setState(() => _tab = 2),
+                      ),
+                    1 => _FundamentalsTab(
                         match: match,
                         analysis: data.analysis,
                         fallbackStandings: data.fallbackStandings,
-                        predictions: data.predictions,
-                        loadedAt: data.loadedAt,
-                        onOpenOdds: () => setState(() => _tab = 1),
                       ),
-                    1 => _OddsTab(
+                    2 => _OddsHub(
                         match: match,
                         loadedAt: data.loadedAt,
                         history: data.oddsHistory,
                       ),
+                    3 => _ResultsTab(match: match),
                     _ => const SizedBox.shrink(),
                   },
                 ),
@@ -661,15 +680,16 @@ class _Meta extends StatelessWidget {
 class _DetailTabs extends StatelessWidget {
   const _DetailTabs({
     required this.value,
+    required this.labels,
     required this.onChanged,
   });
 
   final int value;
+  final List<String> labels;
   final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    const labels = <String>['分析', '赔率'];
     return Container(
       height: 47,
       margin: const EdgeInsets.only(top: 6),
@@ -714,11 +734,10 @@ class _DetailTabs extends StatelessWidget {
   }
 }
 
-class _ResearchTab extends StatelessWidget {
-  const _ResearchTab({
+class _DetailOverview extends StatelessWidget {
+  const _DetailOverview({
     required this.match,
     required this.analysis,
-    required this.fallbackStandings,
     required this.predictions,
     required this.loadedAt,
     required this.onOpenOdds,
@@ -726,7 +745,6 @@ class _ResearchTab extends StatelessWidget {
 
   final MatchItem match;
   final MatchAnalysisData? analysis;
-  final MatchStandings? fallbackStandings;
   final List<Map<String, dynamic>> predictions;
   final DateTime? loadedAt;
   final VoidCallback onOpenOdds;
@@ -734,20 +752,13 @@ class _ResearchTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final data = analysis;
-    if ((data == null || !data.hasContent) &&
-        fallbackStandings?.hasContent != true) {
-      return _OverviewTab(
-        match: match,
-        loadedAt: loadedAt,
-        onOpenOdds: onOpenOdds,
-      );
-    }
-    final standings = data?.standings.hasContent == true
-        ? data!.standings
-        : fallbackStandings;
+    final hasFormData = data != null &&
+        (data.headToHead.matches.isNotEmpty ||
+            data.homeRecent.matches.isNotEmpty ||
+            data.awayRecent.matches.isNotEmpty);
     return Column(
       children: [
-        if (data != null && data.hasContent) ...[
+        if (hasFormData) ...[
           _DataSummaryPanel(
             homeName: data.homeTeam.isEmpty ? match.home : data.homeTeam,
             awayName: data.awayTeam.isEmpty ? match.away : data.awayTeam,
@@ -757,84 +768,19 @@ class _ResearchTab extends StatelessWidget {
           ),
           const SizedBox(height: 10),
         ],
-        if (standings?.hasContent == true) ...[
-          _StandingsPanel(standings: standings!),
-          const SizedBox(height: 10),
-        ],
-        if (data?.injuries.hasContent == true) ...[
-          _PersonnelPanel(
-            title: '伤停信息',
-            sides: data!.injuries,
-            injuries: true,
-          ),
-          const SizedBox(height: 10),
-        ],
-        if (data?.keyPlayers.hasContent == true) ...[
-          _PersonnelPanel(
-            title: '关键球员',
-            sides: data!.keyPlayers,
-            injuries: false,
-          ),
-          const SizedBox(height: 10),
-        ],
-        if (data?.future.hasContent == true) ...[
-          _FutureSchedulePanel(
-            schedules: data!.future,
-            currentKickoff: match.kickoff,
-          ),
-          const SizedBox(height: 10),
-        ],
-        if (data != null && data.headToHead.matches.isNotEmpty) ...[
-          _RecordPanel(
-            title: '历史交锋',
-            group: data.headToHead,
-            perspective: data.homeTeam,
-            currentLeague: match.league,
-            filterKind: _RecordFilterKind.headToHead,
-          ),
-          const SizedBox(height: 10),
-        ],
-        if (data != null && data.homeRecent.matches.isNotEmpty) ...[
-          _RecordPanel(
-            title: '主队近期战绩',
-            group: MatchRecordGroup(
-              summary: data.homeRecent.summary,
-              matches: data.homeRecent.matches,
-            ),
-            perspective: data.homeRecent.team.isEmpty
-                ? match.home
-                : data.homeRecent.team,
-            team: data.homeRecent.team.isEmpty
-                ? match.home
-                : data.homeRecent.team,
-            currentLeague: match.league,
-            filterKind: _RecordFilterKind.homeRecent,
-          ),
-          const SizedBox(height: 10),
-        ],
-        if (data != null && data.awayRecent.matches.isNotEmpty) ...[
-          _RecordPanel(
-            title: '客队近期战绩',
-            group: MatchRecordGroup(
-              summary: data.awayRecent.summary,
-              matches: data.awayRecent.matches,
-            ),
-            perspective: data.awayRecent.team.isEmpty
-                ? match.away
-                : data.awayRecent.team,
-            team: data.awayRecent.team.isEmpty
-                ? match.away
-                : data.awayRecent.team,
-            currentLeague: match.league,
-            filterKind: _RecordFilterKind.awayRecent,
-          ),
-          const SizedBox(height: 10),
-        ],
-        if (predictions.isNotEmpty)
+        _OverviewTab(
+          match: match,
+          loadedAt: loadedAt,
+          onOpenOdds: onOpenOdds,
+        ),
+        const SizedBox(height: 10),
+        if (predictions.isNotEmpty) ...[
           _AnalysisTab(
             match: match,
             predictions: predictions,
           ),
+        ] else
+          _RiskPanel(match: match),
         if (data?.stale == true) ...[
           const SizedBox(height: 8),
           const Text(
@@ -843,6 +789,219 @@ class _ResearchTab extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _FundamentalsTab extends StatefulWidget {
+  const _FundamentalsTab({
+    required this.match,
+    required this.analysis,
+    required this.fallbackStandings,
+  });
+
+  final MatchItem match;
+  final MatchAnalysisData? analysis;
+  final MatchStandings? fallbackStandings;
+
+  @override
+  State<_FundamentalsTab> createState() => _FundamentalsTabState();
+}
+
+class _FundamentalsTabState extends State<_FundamentalsTab> {
+  int _section = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = widget.analysis;
+    final hasFormData = data != null &&
+        (data.headToHead.matches.isNotEmpty ||
+            data.homeRecent.matches.isNotEmpty ||
+            data.awayRecent.matches.isNotEmpty);
+    final standings = data?.standings.hasContent == true
+        ? data!.standings
+        : widget.fallbackStandings;
+    return Column(
+      children: [
+        _DetailSubTabs(
+          labels: const ['战绩', '排名', '状态', '阵容', '赛程'],
+          value: _section,
+          onChanged: (value) => setState(() => _section = value),
+        ),
+        const SizedBox(height: 10),
+        ...switch (_section) {
+          0 => _recordContent(data),
+          1 => [
+              if (standings?.hasContent == true)
+                _StandingsPanel(standings: standings!)
+              else
+                const _Surface(child: _Empty(text: '暂无排名数据')),
+            ],
+          2 => [
+              if (hasFormData)
+                _DataSummaryPanel(
+                  homeName:
+                      data.homeTeam.isEmpty ? widget.match.home : data.homeTeam,
+                  awayName:
+                      data.awayTeam.isEmpty ? widget.match.away : data.awayTeam,
+                  home: data.homeRecent,
+                  away: data.awayRecent,
+                  headToHead: data.headToHead,
+                )
+              else
+                const _Surface(child: _Empty(text: '暂无状态数据')),
+            ],
+          3 => _lineupContent(data),
+          4 => [
+              if (data?.future.hasContent == true)
+                _FutureSchedulePanel(
+                  schedules: data!.future,
+                  currentKickoff: widget.match.kickoff,
+                )
+              else
+                const _Surface(child: _Empty(text: '暂无赛程数据')),
+            ],
+          _ => const [],
+        },
+        if (data?.stale == true) ...[
+          const SizedBox(height: 8),
+          const Text(
+            '部分资料来自最近一次成功更新',
+            style: TextStyle(fontSize: 10, color: _muted),
+          ),
+        ],
+      ],
+    );
+  }
+
+  List<Widget> _recordContent(MatchAnalysisData? data) {
+    if (data == null ||
+        (data.headToHead.matches.isEmpty &&
+            data.homeRecent.matches.isEmpty &&
+            data.awayRecent.matches.isEmpty)) {
+      return const [_Surface(child: _Empty(text: '暂无战绩数据'))];
+    }
+    return [
+      if (data.headToHead.matches.isNotEmpty) ...[
+        _RecordPanel(
+          title: '历史交锋',
+          group: data.headToHead,
+          perspective:
+              data.homeTeam.isEmpty ? widget.match.home : data.homeTeam,
+          currentLeague: widget.match.league,
+          filterKind: _RecordFilterKind.headToHead,
+        ),
+        const SizedBox(height: 10),
+      ],
+      if (data.homeRecent.matches.isNotEmpty) ...[
+        _RecordPanel(
+          title: '主队近期战绩',
+          group: MatchRecordGroup(
+            summary: data.homeRecent.summary,
+            matches: data.homeRecent.matches,
+          ),
+          perspective: data.homeRecent.team.isEmpty
+              ? widget.match.home
+              : data.homeRecent.team,
+          team: data.homeRecent.team.isEmpty
+              ? widget.match.home
+              : data.homeRecent.team,
+          currentLeague: widget.match.league,
+          filterKind: _RecordFilterKind.homeRecent,
+        ),
+        const SizedBox(height: 10),
+      ],
+      if (data.awayRecent.matches.isNotEmpty)
+        _RecordPanel(
+          title: '客队近期战绩',
+          group: MatchRecordGroup(
+            summary: data.awayRecent.summary,
+            matches: data.awayRecent.matches,
+          ),
+          perspective: data.awayRecent.team.isEmpty
+              ? widget.match.away
+              : data.awayRecent.team,
+          team: data.awayRecent.team.isEmpty
+              ? widget.match.away
+              : data.awayRecent.team,
+          currentLeague: widget.match.league,
+          filterKind: _RecordFilterKind.awayRecent,
+        ),
+    ];
+  }
+
+  List<Widget> _lineupContent(MatchAnalysisData? data) {
+    if (data == null ||
+        (!data.injuries.hasContent && !data.keyPlayers.hasContent)) {
+      return const [_Surface(child: _Empty(text: '暂无阵容数据'))];
+    }
+    return [
+      if (data.injuries.hasContent) ...[
+        _PersonnelPanel(
+          title: '伤停信息',
+          sides: data.injuries,
+          injuries: true,
+        ),
+        if (data.keyPlayers.hasContent) const SizedBox(height: 10),
+      ],
+      if (data.keyPlayers.hasContent)
+        _PersonnelPanel(
+          title: '关键球员',
+          sides: data.keyPlayers,
+          injuries: false,
+        ),
+    ];
+  }
+}
+
+class _DetailSubTabs extends StatelessWidget {
+  const _DetailSubTabs({
+    required this.labels,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final List<String> labels;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 39,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xffeef1f0),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Row(
+        children: List.generate(labels.length, (index) {
+          final selected = index == value;
+          return Expanded(
+            child: InkWell(
+              onTap: () => onChanged(index),
+              borderRadius: BorderRadius.circular(6),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  border: selected ? Border.all(color: _line) : null,
+                ),
+                child: Text(
+                  labels[index],
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: selected ? _greenDark : const Color(0xff555d61),
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
     );
   }
 }
@@ -2254,6 +2413,93 @@ class _RiskPanel extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _OddsHub extends StatefulWidget {
+  const _OddsHub({
+    required this.match,
+    required this.loadedAt,
+    required this.history,
+  });
+
+  final MatchItem match;
+  final DateTime? loadedAt;
+  final List<Map<String, dynamic>> history;
+
+  @override
+  State<_OddsHub> createState() => _OddsHubState();
+}
+
+class _OddsHubState extends State<_OddsHub> {
+  int _section = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    const labels = ['竞彩', '欧赔', '亚赔', '大小球'];
+    return Column(
+      children: [
+        _DetailSubTabs(
+          labels: labels,
+          value: _section,
+          onChanged: (value) => setState(() => _section = value),
+        ),
+        const SizedBox(height: 10),
+        switch (_section) {
+          0 => _OddsTab(
+              match: widget.match,
+              loadedAt: widget.loadedAt,
+              history: widget.history,
+            ),
+          1 => const _ExternalOddsEmpty(
+              icon: Icons.public_rounded,
+              title: '暂无欧赔数据',
+            ),
+          2 => const _ExternalOddsEmpty(
+              icon: Icons.swap_horiz_rounded,
+              title: '暂无亚赔数据',
+            ),
+          3 => const _ExternalOddsEmpty(
+              icon: Icons.unfold_more_rounded,
+              title: '暂无大小球数据',
+            ),
+          _ => const SizedBox.shrink(),
+        },
+      ],
+    );
+  }
+}
+
+class _ExternalOddsEmpty extends StatelessWidget {
+  const _ExternalOddsEmpty({required this.icon, required this.title});
+
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Surface(
+      child: SizedBox(
+        height: 150,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 28, color: const Color(0xffa8afac)),
+              const SizedBox(height: 9),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: _muted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
