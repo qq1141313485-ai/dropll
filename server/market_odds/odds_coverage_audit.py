@@ -17,6 +17,11 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Iterable
 
+try:
+    from .build_team_alias_review import build_review_queue, merge_review_queue
+except ImportError:  # Direct execution by the systemd oneshot service.
+    from build_team_alias_review import build_review_queue, merge_review_queue
+
 
 SHANGHAI = timezone(timedelta(hours=8))
 MARKETS = ("h2h", "spreads", "totals")
@@ -51,6 +56,42 @@ def _json_get(url: str, *, headers: dict[str, str] | None = None) -> tuple[Any, 
 
 def _read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_metadata_aliases(path: Path | None) -> dict[str, list[str]]:
+    """Reuse verified local-to-provider names from the badge metadata cache."""
+    if path is None or not path.exists():
+        return {}
+    try:
+        payload = _read_json(path)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    teams = payload.get("teams") if isinstance(payload, dict) else None
+    if not isinstance(teams, dict):
+        return {}
+    aliases: dict[str, list[str]] = {}
+    for local_name, metadata in teams.items():
+        if not isinstance(metadata, dict):
+            continue
+        source_name = str(metadata.get("sourceName") or "").strip()
+        local = str(local_name or "").strip()
+        if local and source_name:
+            aliases[local] = [source_name]
+    return aliases
+
+
+def merge_team_aliases(
+    configured: dict[str, list[str]],
+    metadata: dict[str, list[str]],
+) -> dict[str, list[str]]:
+    merged = {name: list(values) for name, values in configured.items()}
+    for name, values in metadata.items():
+        bucket = merged.setdefault(name, [])
+        for value in values:
+            clean = str(value).strip()
+            if clean and clean not in bucket:
+                bucket.append(clean)
+    return merged
 
 
 def _parse_time(value: Any) -> datetime | None:
@@ -234,6 +275,7 @@ def build_public_snapshot(
 def merge_opening_prices(
     current: dict[str, Any],
     previous: dict[str, Any] | None,
+    active_match_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     previous_items = previous.get("items", {}) if isinstance(previous, dict) else {}
     for match_id, item in current.get("items", {}).items():
@@ -261,6 +303,14 @@ def merge_opening_prices(
                         str(outcome.get("point") or ""),
                     )
                     outcome["openingPrice"] = old_prices.get(key, outcome.get("price"))
+    if active_match_ids is not None and isinstance(previous_items, dict):
+        retained = {
+            str(match_id): item
+            for match_id, item in previous_items.items()
+            if str(match_id) in active_match_ids and isinstance(item, dict)
+        }
+        retained.update(current.get("items", {}))
+        current["items"] = retained
     return current
 
 
@@ -341,6 +391,69 @@ def budget_block_reason(
     return None
 
 
+def select_active_sports(
+    matches: Iterable[dict[str, Any]],
+    league_map: dict[str, str],
+    league_priority: Iterable[str],
+    maximum_sports: int,
+    previous_selected: Iterable[str] = (),
+    *,
+    now: datetime | None = None,
+    urgency_window: timedelta = timedelta(hours=12),
+) -> tuple[list[str], set[str]]:
+    """Prioritize imminent fixtures, then rotate fairly within the remaining sports."""
+    match_rows = list(matches)
+    matched_leagues = {
+        str(match.get("league") or "")
+        for match in match_rows
+        if str(match.get("league") or "") in league_map
+    }
+    priority_index = {league: index for index, league in enumerate(league_priority)}
+    ordered_leagues = sorted(
+        matched_leagues,
+        key=lambda league: (priority_index.get(league, len(priority_index)), league),
+    )
+    current_time = (now or datetime.now(SHANGHAI)).astimezone(SHANGHAI)
+    imminent_by_league: dict[str, datetime] = {}
+    for match in match_rows:
+        league = str(match.get("league") or "")
+        kickoff = _parse_time(match.get("kickoff"))
+        if (
+            league not in matched_leagues
+            or kickoff is None
+            or kickoff < current_time
+            or kickoff > current_time + urgency_window
+        ):
+            continue
+        previous_kickoff = imminent_by_league.get(league)
+        if previous_kickoff is None or kickoff < previous_kickoff:
+            imminent_by_league[league] = kickoff
+
+    imminent_leagues = sorted(
+        imminent_by_league,
+        key=lambda league: (
+            imminent_by_league[league],
+            priority_index.get(league, len(priority_index)),
+            league,
+        ),
+    )
+    remaining_leagues = [league for league in ordered_leagues if league not in imminent_by_league]
+    if remaining_leagues:
+        ordered_sports = [league_map[league] for league in remaining_leagues]
+        previous = [sport for sport in previous_selected if sport in ordered_sports]
+        if previous:
+            anchor = ordered_sports.index(previous[-1])
+            remaining_leagues = remaining_leagues[anchor + 1 :] + remaining_leagues[: anchor + 1]
+    ordered_leagues = imminent_leagues + remaining_leagues
+    selected_leagues = ordered_leagues[:maximum_sports]
+    selected_sports = [league_map[league] for league in selected_leagues]
+    deferred_sports = {
+        league_map[league]
+        for league in ordered_leagues[maximum_sports:]
+    }
+    return selected_sports, deferred_sports
+
+
 def _previous_remaining(output: Path | None) -> int | None:
     if output is None or not output.exists():
         return None
@@ -352,19 +465,52 @@ def _previous_remaining(output: Path | None) -> int | None:
         return None
 
 
+def _previous_selected_sports(output: Path | None) -> list[str]:
+    if output is None or not output.exists():
+        return []
+    try:
+        payload = _read_json(output)
+        value = payload.get("selection", {}).get("selectedSports", [])
+        selected = [str(item) for item in value if str(item).strip()]
+        if selected:
+            return selected
+        # Backward compatibility for reports written before selection metadata.
+        return list(
+            dict.fromkeys(
+                str(item.get("sportKey") or "")
+                for item in payload.get("items", [])
+                if isinstance(item, dict)
+                and item.get("status") not in {"unmapped_league", "deferred_budget"}
+                and str(item.get("sportKey") or "").strip()
+            )
+        )
+    except (OSError, json.JSONDecodeError, TypeError, AttributeError):
+        return []
+
+
 def audit(
     matches: list[dict[str, Any]],
     events_by_sport: dict[str, list[dict[str, Any]]],
     league_map: dict[str, str],
     team_aliases: dict[str, list[str]],
     usage: dict[str, int | None] | None = None,
+    deferred_sports: set[str] | None = None,
 ) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
+    deferred_sports = deferred_sports or set()
     for match in matches:
         league = str(match.get("league") or "")
         sport_key = league_map.get(league)
         if not sport_key:
             decision = MatchDecision("unmapped_league", None, 0, None, "league has no provider sport key")
+        elif sport_key in deferred_sports:
+            decision = MatchDecision(
+                "deferred_budget",
+                None,
+                0,
+                None,
+                "provider sport deferred by per-run credit budget",
+            )
         else:
             decision = decide_event(match, events_by_sport.get(sport_key, []), team_aliases)
         coverage = market_coverage(decision.event)
@@ -399,6 +545,7 @@ def audit(
             "review": sum(row["status"] == "review" for row in rows),
             "unmatched": sum(row["status"] == "unmatched" for row in rows),
             "unmappedLeagues": sum(row["status"] == "unmapped_league" for row in rows),
+            "deferredByBudget": sum(row["status"] == "deferred_budget" for row in rows),
             "allMarketsComplete": len(complete),
             "strictMatchRate": round(len(matched) / len(rows), 4) if rows else 0,
             "completeCoverageRate": round(len(complete) / len(rows), 4) if rows else 0,
@@ -413,11 +560,22 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="https://api.cclloo.com")
     parser.add_argument("--provider-map", type=Path, default=root / "provider_map.json")
+    parser.add_argument(
+        "--team-metadata-manifest",
+        type=Path,
+        default=root.parent / "team_metadata" / "cache" / "manifest.json",
+    )
     parser.add_argument("--matches-file", type=Path)
     parser.add_argument("--provider-fixtures", type=Path)
     parser.add_argument("--api-key-file", type=Path)
     parser.add_argument("--region", default="eu")
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--alias-review-output",
+        type=Path,
+        default=root / "work" / "team_alias_review.json",
+        help="Write review-only time-aligned team alias candidates.",
+    )
     parser.add_argument("--snapshot", type=Path)
     parser.add_argument("--minimum-remaining", type=int, default=100)
     parser.add_argument("--maximum-run-credits", type=int, default=12)
@@ -432,17 +590,28 @@ def main() -> int:
     args = _parser().parse_args()
     mapping = _read_json(args.provider_map)
     league_map = {str(key): str(value) for key, value in mapping.get("leagues", {}).items()}
-    team_aliases = {
+    league_priority = [
+        str(value)
+        for value in mapping.get("leaguePriority", [])
+        if str(value) in league_map
+    ]
+    configured_aliases = {
         str(key): [str(value) for value in values]
         for key, values in mapping.get("teams", {}).items()
         if isinstance(values, list)
     }
+    team_aliases = merge_team_aliases(
+        configured_aliases,
+        load_metadata_aliases(args.team_metadata_manifest),
+    )
     matches = _load_matches(args.base_url, args.matches_file)
-    active_sports = {
-        league_map[str(match.get("league") or "")]
-        for match in matches
-        if str(match.get("league") or "") in league_map
-    }
+    active_sports, deferred_sports = select_active_sports(
+        matches,
+        league_map,
+        league_priority,
+        args.maximum_run_credits // len(MARKETS),
+        _previous_selected_sports(args.output),
+    )
 
     if args.provider_fixtures:
         payload = _read_json(args.provider_fixtures)
@@ -473,10 +642,45 @@ def main() -> int:
             return 2
         events_by_sport, usage = _load_provider_events(active_sports, api_key, args.region)
 
-    result = audit(matches, events_by_sport, league_map, team_aliases, usage)
+    result = audit(
+        matches,
+        events_by_sport,
+        league_map,
+        team_aliases,
+        usage,
+        deferred_sports,
+    )
+    result["selection"] = {
+        "selectedSports": active_sports,
+        "deferredSports": sorted(deferred_sports),
+    }
     rendered = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:
         _write_json_atomic(args.output, result)
+    if args.alias_review_output:
+        previous_review: list[dict[str, Any]] = []
+        if args.alias_review_output.exists():
+            try:
+                payload = _read_json(args.alias_review_output)
+                if isinstance(payload.get("items"), list):
+                    previous_review = payload["items"]
+            except (OSError, json.JSONDecodeError, AttributeError):
+                previous_review = []
+        active_match_ids = {
+            str(row.get("matchId") or "")
+            for row in result.get("items", [])
+            if str(row.get("matchId") or "")
+        }
+        review = {
+            "checkedAt": result["checkedAt"],
+            "items": merge_review_queue(
+                build_review_queue(result, events_by_sport),
+                previous_review,
+                team_aliases,
+                active_match_ids,
+            ),
+        }
+        _write_json_atomic(args.alias_review_output, review)
     if args.snapshot:
         previous = None
         if args.snapshot.exists():
@@ -485,7 +689,15 @@ def main() -> int:
             except (OSError, json.JSONDecodeError):
                 previous = None
         snapshot = build_public_snapshot(result, events_by_sport)
-        _write_json_atomic(args.snapshot, merge_opening_prices(snapshot, previous))
+        active_match_ids = {
+            str(row.get("matchId") or "")
+            for row in result.get("items", [])
+            if str(row.get("matchId") or "")
+        }
+        _write_json_atomic(
+            args.snapshot,
+            merge_opening_prices(snapshot, previous, active_match_ids),
+        )
     print(rendered)
     return 0
 

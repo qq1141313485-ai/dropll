@@ -1,8 +1,14 @@
 {
   "leagues": {
     "芬超": "soccer_finland_veikkausliiga",
-    "瑞超": "soccer_sweden_allsvenskan"
+    "瑞超": "soccer_sweden_allsvenskan",
+    "韩职": "soccer_korea_kleague1",
+    "荷甲": "soccer_netherlands_eredivisie",
+    "葡超": "soccer_portugal_primeira_liga",
+    "西甲": "soccer_spain_la_liga",
+    "挪超": "soccer_norway_eliteserien"
   },
+  "leaguePriority": ["韩职", "荷甲", "葡超", "西甲", "挪超", "芬超", "瑞超"],
   "teams": {
     "塞伊奈": ["SJK", "SJK Seinajoki"],
     "赫尔辛基": ["HJK", "HJK Helsinki"],
@@ -11,7 +17,29 @@
     "佐加顿斯": ["Djurgardens IF", "Djurgarden"],
     "韦斯特罗": ["Vasteras SK", "Vasteras"],
     "巴竞技": ["Athletico Paranaense", "Athletico-PR"],
-    "维多利亚": ["EC Vitoria", "Vitoria"]
+    "维多利亚": ["EC Vitoria", "Vitoria"],
+    "海牙": ["ADO Den Haag"],
+    "格罗宁根": ["Groningen"],
+    "葡国民": ["Nacional"],
+    "埃斯托里": ["Estoril"],
+    "阿贾克斯": ["Ajax"],
+    "海伦芬": ["Heerenveen"],
+    "桑坦德": ["Real Racing Club de Santander"],
+    "比利亚雷": ["Villarreal"],
+    "西班牙人": ["Espanyol"],
+    "莱万特": ["Levante"],
+    "阿罗卡": ["Arouca"],
+    "摩雷伦斯": ["Moreirense FC"],
+    "拉科": ["Deportivo La Coruña"],
+    "埃尔切": ["Elche CF"],
+    "卡萨皮亚": ["Casa Pia"],
+    "本菲卡": ["Benfica"],
+    "奥勒松": ["Aalesund"],
+    "腓特烈": ["Fredrikstad FK"],
+    "克里斯蒂": ["Kristiansund BK"],
+    "赫尔火花": ["IF Gnistan"],
+    "坦山猫": ["Ilves Tampere"],
+    "赫根": ["BK Hacken"],
+    "金泉尚武": ["Sangju Sangmu FC"]
   }
 }
-

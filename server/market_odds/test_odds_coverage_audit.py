@@ -1,4 +1,8 @@
 import unittest
+import json
+import tempfile
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from odds_coverage_audit import (
     audit,
@@ -6,7 +10,12 @@ from odds_coverage_audit import (
     budget_block_reason,
     decide_event,
     market_coverage,
+    load_metadata_aliases,
+    merge_team_aliases,
     merge_opening_prices,
+    _previous_remaining,
+    _previous_selected_sports,
+    select_active_sports,
 )
 
 
@@ -159,6 +168,132 @@ class OddsCoverageAuditTest(unittest.TestCase):
         self.assertIsNone(budget_block_reason(sports, 470, 100, 12))
         self.assertIn("exceeds limit", budget_block_reason(sports, 470, 100, 5))
         self.assertIn("below reserve", budget_block_reason(sports, 105, 100, 12))
+
+    def test_select_active_sports_respects_priority_and_budget(self):
+        matches = [
+            {"league": "低优先级"},
+            {"league": "高优先级"},
+            {"league": "未映射"},
+        ]
+        selected, deferred = select_active_sports(
+            matches,
+            {"高优先级": "sport-high", "低优先级": "sport-low"},
+            ["高优先级", "低优先级"],
+            1,
+        )
+        self.assertEqual(selected, ["sport-high"])
+        self.assertEqual(deferred, {"sport-low"})
+
+    def test_select_active_sports_rotates_after_previous_selection(self):
+        matches = [
+            {"league": "甲"},
+            {"league": "乙"},
+            {"league": "丙"},
+        ]
+        selected, deferred = select_active_sports(
+            matches,
+            {"甲": "sport-a", "乙": "sport-b", "丙": "sport-c"},
+            ["甲", "乙", "丙"],
+            2,
+            ["sport-a", "sport-b"],
+        )
+        self.assertEqual(selected, ["sport-c", "sport-a"])
+        self.assertEqual(deferred, {"sport-b"})
+
+    def test_select_active_sports_prioritizes_imminent_fixture_before_rotation(self):
+        now = datetime(2026, 8, 16, 12, tzinfo=timezone(timedelta(hours=8)))
+        matches = [
+            {"league": "甲", "kickoff": "2026-08-17 09:00"},
+            {"league": "乙", "kickoff": "2026-08-16 18:30"},
+            {"league": "丙", "kickoff": "2026-08-17 10:00"},
+        ]
+        selected, deferred = select_active_sports(
+            matches,
+            {"甲": "sport-a", "乙": "sport-b", "丙": "sport-c"},
+            ["甲", "乙", "丙"],
+            2,
+            ["sport-a", "sport-b"],
+            now=now,
+        )
+        self.assertEqual(selected, ["sport-b", "sport-c"])
+        self.assertEqual(deferred, {"sport-a"})
+
+    def test_previous_run_state_reads_usage_and_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "coverage.json"
+            output.write_text(
+                json.dumps(
+                    {
+                        "usage": {"remaining": 386},
+                        "selection": {"selectedSports": ["sport-a", "sport-b"]},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(_previous_remaining(output), 386)
+            self.assertEqual(_previous_selected_sports(output), ["sport-a", "sport-b"])
+
+    def test_previous_run_state_falls_back_to_legacy_active_sports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "coverage.json"
+            output.write_text(
+                json.dumps(
+                    {
+                        "items": [
+                            {"sportKey": "sport-a", "status": "matched"},
+                            {"sportKey": "sport-b", "status": "unmatched"},
+                            {"sportKey": "sport-c", "status": "deferred_budget"},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(_previous_selected_sports(output), ["sport-a", "sport-b"])
+
+    def test_snapshot_retains_deferred_active_match(self):
+        current = {"items": {"current": {"matchId": "current", "bookmakers": []}}}
+        previous = {
+            "items": {
+                "deferred": {"matchId": "deferred", "bookmakers": []},
+                "expired": {"matchId": "expired", "bookmakers": []},
+            }
+        }
+        merged = merge_opening_prices(current, previous, {"current", "deferred"})
+        self.assertEqual(set(merged["items"]), {"current", "deferred"})
+
+    def test_exact_aliases_produce_strict_match(self):
+        decision = decide_event(
+            {
+                "home": "中文主队",
+                "away": "中文客队",
+                "kickoff": "2026-08-04 00:00:00",
+            },
+            [event(home="Provider Home", away="Provider Away")],
+            {"中文主队": ["Provider Home"], "中文客队": ["Provider Away"]},
+        )
+        self.assertEqual(decision.status, "matched")
+        self.assertEqual(decision.score, 100.0)
+
+    def test_metadata_aliases_extend_configured_aliases(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "manifest.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "teams": {
+                            "Home CN": {"sourceName": "Home FC"},
+                            "Ignored": {"sourceName": ""},
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            aliases = merge_team_aliases(
+                {"Home CN": ["Home United"]},
+                load_metadata_aliases(manifest),
+            )
+        self.assertEqual(aliases["Home CN"], ["Home United", "Home FC"])
+        self.assertNotIn("Ignored", aliases)
 
 
 if __name__ == "__main__":

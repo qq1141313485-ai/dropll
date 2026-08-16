@@ -520,29 +520,13 @@ class _SelectionPageState extends State<SelectionPage> {
   }
 
   void _calculate({bool optimize = false}) {
-    if (selectionIssues.isNotEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请先处理失效选号后再生成方案')));
-      return;
-    }
     final selected = picks;
-    if (selected.isEmpty) return;
-    if (selected.length == 1) {
-      final m = matches.firstWhere((x) => x.id == selected.first.matchId);
-      final plays = selected.first.options
-          .map((option) => option.play ?? selected.first.play)
-          .toSet();
-      if (!m.canSingle ||
-          plays.any((play) {
-            final pool = m.pools[play.poolCode];
-            return pool is! Map || pool['single'] != true;
-          })) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('当前玩法不支持单关')));
-        return;
-      }
+    final validationIssue = _quickValidationIssue(selected);
+    if (validationIssue != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(validationIssue)),
+      );
+      return;
     }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -802,6 +786,28 @@ class _SelectionPageState extends State<SelectionPage> {
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  int? _minimumPass(List<PassMethod> methods) {
+    final sizes = methods.expand((method) => method.subPassSizes);
+    if (sizes.isEmpty) return null;
+    return sizes.reduce(math.min);
+  }
+
+  String? _quickValidationIssue(List<MatchPick> selected) {
+    if (selectionIssues.isNotEmpty) return '请先处理失效选号后再生成方案';
+    if (selected.isEmpty) return '请至少选择一场比赛';
+    if (quickPasses.isEmpty) return '请选择过关方式';
+    try {
+      const BettingEngine().calculateMultiple(
+        picks: selected,
+        passes: quickPasses,
+        multiple: quickMultiple,
+      );
+      return null;
+    } on ArgumentError catch (error) {
+      return error.message?.toString() ?? '当前选号暂不能生成方案';
     }
   }
 
@@ -2016,6 +2022,8 @@ class _SelectionPageState extends State<SelectionPage> {
       0,
       (sum, item) => sum + item.options.length,
     );
+    final bankerCount = selected.where((item) => item.banker).length;
+    final minimumPass = _minimumPass(quickPasses);
     final preview = _quickResult(selected);
     return Container(
       height: 104,
@@ -2050,15 +2058,36 @@ class _SelectionPageState extends State<SelectionPage> {
                     color: Color(0xff6f7773),
                   ),
                 ),
-                Text(
-                  '已选${selected.length}场/$optionCount项',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xff4f5753),
-                    fontWeight: FontWeight.w600,
+                SizedBox(
+                  width: 92,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '已选${selected.length}场/$optionCount项',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          color: Color(0xff4f5753),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        '$bankerCount胆 · 最低${minimumPass ?? '--'}关',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 9.5,
+                          color: Color(0xff7d8581),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 5),
                 Expanded(
                   child: InkWell(
                     onTap: hasSelection && !blocked ? _chooseQuickPass : null,
@@ -2159,8 +2188,8 @@ class _SelectionPageState extends State<SelectionPage> {
                               : blocked
                                   ? '请处理失效选号'
                                   : preview == null
-                                      ? '请选择过关方式'
-                                      : '${preview.notes}注  ${preview.amount.toStringAsFixed(0)}元',
+                                      ? '当前 -- 注'
+                                      : '当前${preview.notes}注  ${preview.amount.toStringAsFixed(0)}元',
                           style: const TextStyle(
                             fontSize: 11,
                             color: Color(0xff3f4743),

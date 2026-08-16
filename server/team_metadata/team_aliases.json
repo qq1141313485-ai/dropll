@@ -236,5 +236,397 @@
     "sourceTeamId": "134280",
     "sourceName": "Vitória",
     "country": "Brazil"
+  },
+  "曼城": {
+    "provider": "thesportsdb",
+    "query": "Manchester City",
+    "sourceTeamId": "133613",
+    "sourceName": "Manchester City",
+    "country": "England"
+  },
+  "阿森纳": {
+    "provider": "thesportsdb",
+    "query": "Arsenal",
+    "sourceTeamId": "133604",
+    "sourceName": "Arsenal",
+    "country": "England"
+  },
+  "西汉姆联": {
+    "provider": "thesportsdb",
+    "query": "West Ham United",
+    "sourceTeamId": "133636",
+    "sourceName": "West Ham United",
+    "country": "England"
+  },
+  "伯恩利": {
+    "provider": "thesportsdb",
+    "query": "Burnley",
+    "sourceTeamId": "133623",
+    "sourceName": "Burnley",
+    "country": "England"
+  },
+  "德岛漩涡": {
+    "provider": "thesportsdb",
+    "query": "Tokushima Vortis",
+    "sourceTeamId": "139898",
+    "sourceName": "Tokushima Vortis",
+    "country": "Japan"
+  },
+  "鸟栖沙岩": {
+    "provider": "thesportsdb",
+    "query": "Sagan Tosu",
+    "sourceTeamId": "137712",
+    "sourceName": "Sagan Tosu",
+    "country": "Japan"
+  },
+  "海牙": {
+    "provider": "thesportsdb",
+    "query": "ADO Den Haag",
+    "sourceTeamId": "133769",
+    "sourceName": "ADO Den Haag",
+    "country": "The Netherlands"
+  },
+  "阿贾克斯": {
+    "provider": "thesportsdb",
+    "query": "Ajax",
+    "sourceTeamId": "133772",
+    "sourceName": "Ajax",
+    "country": "The Netherlands"
+  },
+  "费耶诺德": {
+    "provider": "thesportsdb",
+    "query": "Feyenoord",
+    "sourceTeamId": "133758",
+    "sourceName": "Feyenoord",
+    "country": "The Netherlands"
+  },
+  "本菲卡": {
+    "provider": "thesportsdb",
+    "query": "Benfica",
+    "sourceTeamId": "134108",
+    "sourceName": "Benfica",
+    "country": "Portugal"
+  },
+  "比利亚雷": {
+    "provider": "thesportsdb",
+    "query": "Villarreal",
+    "sourceTeamId": "133740",
+    "sourceName": "Villarreal",
+    "country": "Spain"
+  },
+  "莱万特": {
+    "provider": "thesportsdb",
+    "query": "Levante",
+    "sourceTeamId": "133732",
+    "sourceName": "Levante",
+    "country": "Spain"
+  },
+  "西班牙人": {
+    "provider": "thesportsdb",
+    "query": "Espanyol",
+    "sourceTeamId": "133734",
+    "sourceName": "Espanyol",
+    "country": "Spain"
+  },
+  "埃尔切": {
+    "provider": "thesportsdb",
+    "query": "Elche",
+    "sourceTeamId": "134384",
+    "sourceName": "Elche",
+    "country": "Spain"
+  },
+  "桑坦德": {
+    "provider": "thesportsdb",
+    "query": "Racing Santander",
+    "sourceTeamId": "133726",
+    "sourceName": "Racing de Santander",
+    "country": "Spain"
+  },
+  "AC奥卢": {
+    "provider": "thesportsdb",
+    "query": "AC Oulu",
+    "sourceTeamId": "140517",
+    "sourceName": "AC Oulu",
+    "country": "Finland"
+  },
+  "代格福什": {
+    "provider": "thesportsdb",
+    "query": "Degerfors IF",
+    "sourceTeamId": "134728",
+    "sourceName": "Degerfors",
+    "country": "Sweden"
+  },
+  "克里斯蒂": {
+    "provider": "thesportsdb",
+    "query": "Kristiansund BK",
+    "sourceTeamId": "134754",
+    "sourceName": "Kristiansund",
+    "country": "Norway"
+  },
+  "兹沃勒": {
+    "provider": "thesportsdb",
+    "query": "PEC Zwolle",
+    "sourceTeamId": "133936",
+    "sourceName": "PEC Zwolle",
+    "country": "The Netherlands"
+  },
+  "前进之鹰": {
+    "provider": "thesportsdb",
+    "query": "Go Ahead Eagles",
+    "sourceTeamId": "134304",
+    "sourceName": "Go Ahead Eagles",
+    "country": "The Netherlands"
+  },
+  "加的夫城": {
+    "provider": "thesportsdb",
+    "query": "Cardiff City",
+    "sourceTeamId": "133637",
+    "sourceName": "Cardiff City",
+    "country": "Wales"
+  },
+  "卡尔马": {
+    "provider": "thesportsdb",
+    "query": "Kalmar FF",
+    "sourceTeamId": "134002",
+    "sourceName": "Kalmar",
+    "country": "Sweden"
+  },
+  "卡萨皮亚": {
+    "provider": "thesportsdb",
+    "query": "Casa Pia",
+    "sourceTeamId": "138864",
+    "sourceName": "Casa Pia",
+    "country": "Portugal"
+  },
+  "厄格里特": {
+    "provider": "thesportsdb",
+    "query": "Orgryte IS",
+    "sourceTeamId": "135668",
+    "sourceName": "Örgryte",
+    "country": "Sweden"
+  },
+  "哈马比": {
+    "provider": "thesportsdb",
+    "query": "Hammarby",
+    "sourceTeamId": "134731",
+    "sourceName": "Hammarby",
+    "country": "Sweden"
+  },
+  "哥德堡": {
+    "provider": "thesportsdb",
+    "query": "IFK Goteborg",
+    "sourceTeamId": "134161",
+    "sourceName": "IFK Göteborg",
+    "country": "Sweden"
+  },
+  "国际图尔": {
+    "provider": "thesportsdb",
+    "query": "Inter Turku",
+    "sourceTeamId": "134086",
+    "sourceName": "Inter Turku",
+    "country": "Finland"
+  },
+  "坦山猫": {
+    "provider": "thesportsdb",
+    "query": "Ilves",
+    "sourceTeamId": "136687",
+    "sourceName": "Ilves",
+    "country": "Finland"
+  },
+  "埃斯托里": {
+    "provider": "thesportsdb",
+    "query": "Estoril",
+    "sourceTeamId": "134106",
+    "sourceName": "Estoril Praia",
+    "country": "Portugal"
+  },
+  "奥勒松": {
+    "provider": "thesportsdb",
+    "query": "Aalesund",
+    "sourceTeamId": "133998",
+    "sourceName": "Aalesund",
+    "country": "Norway"
+  },
+  "巴西国际": {
+    "provider": "thesportsdb",
+    "query": "Internacional",
+    "sourceTeamId": "134281",
+    "sourceName": "Internacional",
+    "country": "Brazil"
+  },
+  "布兰": {
+    "provider": "thesportsdb",
+    "query": "SK Brann",
+    "sourceTeamId": "134571",
+    "sourceName": "Brann",
+    "country": "Norway"
+  },
+  "布鲁马波": {
+    "provider": "thesportsdb",
+    "query": "Brommapojkarna",
+    "sourceTeamId": "134170",
+    "sourceName": "Brommapojkarna",
+    "country": "Sweden"
+  },
+  "摩雷伦斯": {
+    "provider": "thesportsdb",
+    "query": "Moreirense",
+    "sourceTeamId": "134112",
+    "sourceName": "Moreirense",
+    "country": "Portugal"
+  },
+  "桑托斯": {
+    "provider": "thesportsdb",
+    "query": "Santos",
+    "sourceTeamId": "134286",
+    "sourceName": "Santos",
+    "country": "Brazil"
+  },
+  "桑纳菲": {
+    "provider": "thesportsdb",
+    "query": "Sandefjord",
+    "sourceTeamId": "135715",
+    "sourceName": "Sandefjord",
+    "country": "Norway"
+  },
+  "法马利康": {
+    "provider": "thesportsdb",
+    "query": "Famalicao",
+    "sourceTeamId": "136854",
+    "sourceName": "Famalicao",
+    "country": "Portugal"
+  },
+  "海伦芬": {
+    "provider": "thesportsdb",
+    "query": "Heerenveen",
+    "sourceTeamId": "133759",
+    "sourceName": "Heerenveen",
+    "country": "The Netherlands"
+  },
+  "特温特": {
+    "provider": "thesportsdb",
+    "query": "FC Twente",
+    "sourceTeamId": "133774",
+    "sourceName": "Twente",
+    "country": "The Netherlands"
+  },
+  "特罗姆瑟": {
+    "provider": "thesportsdb",
+    "query": "Tromso",
+    "sourceTeamId": "133997",
+    "sourceName": "Tromsø",
+    "country": "Norway"
+  },
+  "盖斯": {
+    "provider": "thesportsdb",
+    "query": "GAIS",
+    "sourceTeamId": "134725",
+    "sourceName": "GAIS",
+    "country": "Sweden"
+  },
+  "索尔纳": {
+    "provider": "thesportsdb",
+    "query": "AIK",
+    "sourceTeamId": "134011",
+    "sourceName": "AIK",
+    "country": "Sweden"
+  },
+  "腓特烈": {
+    "provider": "thesportsdb",
+    "query": "Fredrikstad",
+    "sourceTeamId": "134749",
+    "sourceName": "Fredrikstad",
+    "country": "Norway"
+  },
+  "莫尔德": {
+    "provider": "thesportsdb",
+    "query": "Molde",
+    "sourceTeamId": "133958",
+    "sourceName": "Molde",
+    "country": "Norway"
+  },
+  "萨普斯堡": {
+    "provider": "thesportsdb",
+    "query": "Sarpsborg 08",
+    "sourceTeamId": "134566",
+    "sourceName": "Sarpsborg 08",
+    "country": "Norway"
+  },
+  "费城": {
+    "provider": "thesportsdb",
+    "query": "Philadelphia Union",
+    "sourceTeamId": "134142",
+    "sourceName": "Philadelphia Union",
+    "country": "United States"
+  },
+  "赫尔火花": {
+    "provider": "thesportsdb",
+    "query": "FC Haka",
+    "sourceTeamId": "139982",
+    "sourceName": "Haka",
+    "country": "Finland"
+  },
+  "达伽马": {
+    "provider": "thesportsdb",
+    "query": "Vasco da Gama",
+    "sourceTeamId": "134282",
+    "sourceName": "Vasco da Gama",
+    "country": "Brazil"
+  },
+  "里莫": {
+    "provider": "thesportsdb",
+    "query": "Remo",
+    "sourceTeamId": "137818",
+    "sourceName": "Remo",
+    "country": "Brazil"
+  },
+  "阿罗卡": {
+    "provider": "thesportsdb",
+    "query": "Arouca",
+    "sourceTeamId": "134387",
+    "sourceName": "Arouca",
+    "country": "Portugal"
+  },
+  "雷克斯": {
+    "provider": "thesportsdb",
+    "query": "Wrexham",
+    "sourceTeamId": "134775",
+    "sourceName": "Wrexham",
+    "country": "Wales"
+  },
+  "马里迪莫": {
+    "provider": "thesportsdb",
+    "query": "Maritimo",
+    "sourceTeamId": "134023",
+    "sourceName": "Marítimo",
+    "country": "Portugal"
+  },
+  "拉科": {
+    "provider": "thesportsdb",
+    "query": "Deportivo La Coruna",
+    "sourceTeamId": "133816",
+    "sourceName": "Deportivo de A Coruña",
+    "country": "Spain"
+  },
+  "赫根": {
+    "provider": "thesportsdb",
+    "query": "BK Hacken",
+    "sourceTeamId": "134160",
+    "sourceName": "Häcken",
+    "country": "Sweden"
+  },
+  "葡国民": {
+    "provider": "thesportsdb",
+    "query": "Nacional de Madeira",
+    "sourceTeamId": "134109",
+    "sourceName": "Nacional de Madeira",
+    "country": "Portugal"
+  },
+  "马尔默": {
+    "provider": "thesportsdb",
+    "query": "Malmo FF",
+    "sourceTeamId": "134166",
+    "sourceName": "Malmö",
+    "country": "Sweden"
   }
 }

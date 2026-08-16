@@ -54,10 +54,13 @@ def _write_json(path: Path, value: Any) -> None:
 
 
 def _source_team(query: str, api_key: str, expected_id: str) -> dict[str, Any]:
-    parameters = urllib.parse.urlencode({"t": query})
+    # The mapping is an approved source identity. Name search can return a
+    # reserve or women's team with the same alias, so resolve the exact ID.
+    del query
+    parameters = urllib.parse.urlencode({"id": expected_id})
     url = (
         f"https://www.thesportsdb.com/api/v1/json/{api_key}/"
-        f"searchteams.php?{parameters}"
+        f"lookupteam.php?{parameters}"
     )
     teams = [
         item
@@ -114,6 +117,9 @@ def sync(
     output_dir: Path,
     api_key: str,
     delay: float,
+    *,
+    refresh_existing: bool = False,
+    names: set[str] | None = None,
 ) -> dict[str, Any]:
     aliases = json.loads(aliases_path.read_text(encoding="utf-8"))
     if not isinstance(aliases, dict):
@@ -127,31 +133,55 @@ def sync(
             existing_teams = existing["teams"]
     except (FileNotFoundError, OSError, json.JSONDecodeError, AttributeError):
         pass
-    manifest_items: dict[str, Any] = {}
+    # Incremental runs retain already-verified mappings not requested in this batch.
+    manifest_items: dict[str, Any] = dict(existing_teams) if names is not None else {}
     errors: list[dict[str, str]] = []
     retained_count = 0
+    cached_count = 0
 
     for index, (local_name, mapping) in enumerate(sorted(aliases.items())):
+        if names is not None and local_name not in names:
+            continue
         if index:
             time.sleep(max(0, delay))
         try:
             if not isinstance(mapping, dict):
                 raise ValueError("mapping must be an object")
             expected_id = str(mapping.get("sourceTeamId") or "")
+            expected_name = str(mapping.get("sourceName") or "")
+            expected_country = str(mapping.get("country") or "")
+            existing_item = existing_teams.get(local_name)
+            existing_badge_file = (
+                str(existing_item.get("badgeFile") or "")
+                if isinstance(existing_item, dict)
+                else ""
+            )
+            existing_badge_path = (output_dir / existing_badge_file).resolve()
+            if (
+                not refresh_existing
+                and isinstance(existing_item, dict)
+                and str(existing_item.get("sourceTeamId") or "") == expected_id
+                and str(existing_item.get("sourceName") or "") == expected_name
+                and str(existing_item.get("country") or "") == expected_country
+                and existing_badge_file.startswith("badges/")
+                and existing_badge_path.parent == badges_dir.resolve()
+                and existing_badge_path.is_file()
+            ):
+                manifest_items[local_name] = existing_item
+                cached_count += 1
+                continue
             source = _source_team(
                 str(mapping.get("query") or ""),
                 api_key,
                 expected_id,
             )
             source_name = str(source.get("strTeam") or "")
-            expected_name = str(mapping.get("sourceName") or "")
             if source_name != expected_name:
                 raise ValueError(
                     f"source name changed: expected {expected_name}, got {source_name}"
                 )
             if str(source.get("strSport") or "") != "Soccer":
                 raise ValueError("source team is not a soccer team")
-            expected_country = str(mapping.get("country") or "")
             source_country = str(source.get("strCountry") or "")
             if expected_country and source_country != expected_country:
                 raise ValueError(
@@ -198,6 +228,7 @@ def sync(
         "teamCount": len(manifest_items),
         "errorCount": len(errors),
         "retainedCount": retained_count,
+        "cachedCount": cached_count,
         "teams": manifest_items,
         "errors": errors,
     }
@@ -211,8 +242,26 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--api-key", default=os.environ.get("THESPORTSDB_API_KEY", "123"))
     parser.add_argument("--delay", type=float, default=2.1)
+    parser.add_argument(
+        "--refresh-existing",
+        action="store_true",
+        help="revalidate and redownload every mapped team instead of reusing valid cache",
+    )
+    parser.add_argument(
+        "--names",
+        help="comma-separated local team names for a cache-preserving incremental run",
+    )
     args = parser.parse_args()
-    result = sync(args.aliases, args.output_dir, args.api_key, args.delay)
+    result = sync(
+        args.aliases,
+        args.output_dir,
+        args.api_key,
+        args.delay,
+        refresh_existing=args.refresh_existing,
+        names={name.strip() for name in args.names.split(",") if name.strip()}
+        if args.names
+        else None,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["errorCount"] == 0 else 1
 
