@@ -192,7 +192,7 @@ class PlanSourceSyncTest(unittest.TestCase):
             ],
         )
 
-    def test_queued_pending_name_only_retries_recent_articles(self) -> None:
+    def test_queued_articles_require_an_explicit_admin_action(self) -> None:
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
         conn.executescript(
@@ -231,6 +231,8 @@ class PlanSourceSyncTest(unittest.TestCase):
                  "plan OCR usage limit reached: daily OCR limit reached (200/200)", yesterday),
                 ("hongxisaishi", "3", "20260730 人工配置", yesterday, "name_configured",
                  "", yesterday),
+                ("hongxisaishi", "4", "20260731 人工重试", today, "retry_queued",
+                 "", today),
             ],
         )
         conn.commit()
@@ -239,9 +241,18 @@ class PlanSourceSyncTest(unittest.TestCase):
         with mock.patch.object(plan_source_sync, "_connect", return_value=conn):
             items = plan_source_sync._fetch_queued_articles()
 
-        self.assertIn("1", items)
+        self.assertNotIn("1", items)
         self.assertIn("3", items)
+        self.assertIn("4", items)
         self.assertNotIn("2", items)
+
+    def test_unavailable_ocr_is_held_for_review(self) -> None:
+        self.assertEqual(
+            plan_source_sync._status_for_source_error(
+                "plan OCR unavailable: Alibaba OCR service expired"
+            ),
+            "pending_name",
+        )
 
 
 if __name__ == "__main__":

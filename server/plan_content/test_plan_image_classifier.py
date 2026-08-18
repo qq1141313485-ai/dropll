@@ -4,6 +4,7 @@ from unittest import mock
 
 from plan_image_classifier import (
     ImageAuthorClassifier,
+    OcrProviderUnavailable,
     OcrUsageLimitReached,
     OcrText,
     classify_ocr_text,
@@ -21,6 +22,12 @@ def rules() -> PlanNameRules:
 
 
 class PlanImageClassifierTest(unittest.TestCase):
+    def test_ocr_provider_unavailable_is_a_distinct_error(self) -> None:
+        self.assertIsInstance(
+            OcrProviderUnavailable("Alibaba OCR service expired"),
+            RuntimeError,
+        )
+
     def test_title_candidates_ignore_series_descriptors(self) -> None:
         self.assertEqual(
             title_candidates("扫地僧早场，平哥3.0", rules()),

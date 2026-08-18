@@ -35,6 +35,7 @@ from plans import (
 )
 from plan_image_classifier import (
     ImageAuthorClassifier,
+    OcrProviderUnavailable,
     OcrUsageLimitReached,
     aliyun_general_ocr,
     aliyun_ocr_enabled,
@@ -51,10 +52,6 @@ MAX_PAGES = max(1, int(os.environ.get("CAIMASTER_PLAN_SOURCE_MAX_PAGES", "30")))
 LOOKBACK_DAYS = max(
     1,
     int(os.environ.get("CAIMASTER_PLAN_SOURCE_LOOKBACK_DAYS", "2")),
-)
-PENDING_RETRY_DAYS = max(
-    0,
-    int(os.environ.get("CAIMASTER_PLAN_SOURCE_PENDING_RETRY_DAYS", "0")),
 )
 QUEUED_RETRY_LIMIT = max(
     1,
@@ -301,38 +298,18 @@ def _load_name_rules() -> PlanNameRules:
     return PlanNameRules.from_mapping(raw)
 
 
-def _pending_retry_cutoff() -> int:
-    window_start = datetime.now(CHINA_TZ).replace(
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
-    if PENDING_RETRY_DAYS > 0:
-        window_start -= timedelta(days=PENDING_RETRY_DAYS)
-    return int(window_start.timestamp())
-
-
 def _fetch_queued_articles() -> dict[str, dict[str, Any]]:
-    retry_cutoff = _pending_retry_cutoff()
     with closing(_connect()) as conn:
         rows = conn.execute(
             """
             SELECT source_article_id, source_title, published_at
             FROM plan_sync_articles
             WHERE source_name = ?
-              AND (
-                    status IN ('name_configured', 'retry_queued')
-                    OR (
-                        status = 'pending_name'
-                        AND error LIKE 'plan OCR usage limit reached:%'
-                        AND published_at >= ?
-                    )
-                  )
+              AND status IN ('name_configured', 'retry_queued')
             ORDER BY synced_at, id
             LIMIT ?
             """,
-            (SOURCE_NAME, retry_cutoff, QUEUED_RETRY_LIMIT),
+            (SOURCE_NAME, QUEUED_RETRY_LIMIT),
         ).fetchall()
     return {
         str(row["source_article_id"]): {
@@ -357,7 +334,9 @@ def _fetch_articles(*, use_sync_store: bool = True) -> list[dict[str, Any]]:
                     """
                     SELECT source_article_id FROM plan_sync_articles
                     WHERE source_name = ?
-                      AND status IN ('imported', 'duplicate', 'ignored')
+                      AND status IN (
+                          'imported', 'duplicate', 'ignored', 'pending_name'
+                      )
                     """,
                     (SOURCE_NAME,),
                 )
@@ -575,6 +554,8 @@ def _ocr_image_plan_names(
                 )
             except OcrUsageLimitReached as exc:
                 raise SourceError(f"plan OCR usage limit reached: {exc}") from exc
+            except OcrProviderUnavailable as exc:
+                raise SourceError(f"plan OCR unavailable: {exc}") from exc
         conn.commit()
     unresolved = [decision for decision in decisions if decision.plan_name is None]
     if unresolved:
@@ -848,6 +829,7 @@ def _status_for_source_error(message: str) -> str:
             "plan OCR has no known author candidates",
             "plan OCR awaits review",
             "plan OCR usage limit reached",
+            "plan OCR unavailable",
         )
     ):
         return "pending_name"

@@ -43,6 +43,10 @@ class OcrUsageLimitReached(RuntimeError):
     pass
 
 
+class OcrProviderUnavailable(RuntimeError):
+    """The configured OCR provider cannot currently process requests."""
+
+
 def _reserve_ocr_call(
     conn: sqlite3.Connection,
     *,
@@ -309,10 +313,17 @@ def aliyun_general_ocr(contents: bytes) -> OcrText:
             "ALIYUN_OCR_ENDPOINT", "ocr-api.cn-hangzhou.aliyuncs.com"
         ),
     )
-    response = OcrClient(config).recognize_general_with_options(
-        RecognizeGeneralRequest(body=io.BytesIO(contents)),
-        RuntimeOptions(),
-    )
+    try:
+        response = OcrClient(config).recognize_general_with_options(
+            RecognizeGeneralRequest(body=io.BytesIO(contents)),
+            RuntimeOptions(),
+        )
+    except Exception as exc:
+        # An expired OCR subscription will not recover on the next five-minute
+        # source sync. Surface it as a controllable pending state instead.
+        if "OcrServiceExpired" in str(exc):
+            raise OcrProviderUnavailable("Alibaba OCR service expired") from exc
+        raise
     raw_data = getattr(response.body, "data", "") or "{}"
     data = raw_data if isinstance(raw_data, dict) else json.loads(raw_data)
     words = data.get("prism_wordsInfo") or []
