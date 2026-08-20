@@ -47,8 +47,8 @@ class PlanActivityTest(unittest.TestCase):
                 """
                 INSERT INTO plans(id, slug, name, uploader_name, is_active, created_at, updated_at)
                 VALUES
-                  (1, 'recent', '近期计划', '竞球镜助手', 1, 1, 1),
-                  (2, 'history', '历史计划', '竞球镜助手', 1, 1, 1);
+                  (1, 'recent', '近期计划', '球镜助手', 1, 1, 1),
+                  (2, 'history', '历史计划', '球镜助手', 1, 1, 1);
                 """
             )
             for plan_id, published_at in ((1, recent), (2, history)):

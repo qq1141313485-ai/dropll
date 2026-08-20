@@ -451,7 +451,7 @@ def _find_or_create_plan(conn: sqlite3.Connection, name: str, now: int) -> int:
         """
         INSERT INTO plans(
             slug, name, uploader_name, is_active, created_at, updated_at
-        ) VALUES (?, ?, '竞球镜助手', 1, ?, ?)
+        ) VALUES (?, ?, '球镜助手', 1, ?, ?)
         """,
         (slug, name, now, now),
     )

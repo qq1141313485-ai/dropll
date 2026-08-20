@@ -2116,7 +2116,7 @@ class PlanSource {
     return PlanSource(
       id: '${json['id'] ?? ''}',
       name: '${json['name'] ?? '未命名计划'}',
-      uploaderName: '${json['uploaderName'] ?? '竞球镜助手'}',
+      uploaderName: '${json['uploaderName'] ?? '球镜助手'}',
       brandColor: const Color(0xff079669),
       isRemote: true,
       updatedToday: json['updatedToday'] as bool?,

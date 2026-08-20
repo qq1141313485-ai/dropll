@@ -45,8 +45,8 @@ class PlanAliasTest(unittest.TestCase):
                 """
                 INSERT INTO plans(id, slug, name, uploader_name, is_active, created_at, updated_at)
                 VALUES
-                  (1, 'target', '标准计划', '竞球镜助手', 1, 1, 1),
-                  (2, 'source', '旧名称晚场', '竞球镜助手', 1, 1, 2);
+                  (1, 'target', '标准计划', '球镜助手', 1, 1, 1),
+                  (2, 'source', '旧名称晚场', '球镜助手', 1, 1, 2);
                 INSERT INTO plan_updates(id, plan_id, title, published_at, is_active, created_at)
                 VALUES (10, 2, '今日更新', 2, 1, 2);
                 INSERT INTO plan_images(

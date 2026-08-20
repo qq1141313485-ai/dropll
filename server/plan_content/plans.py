@@ -326,7 +326,7 @@ def _init_store() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 slug TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL,
-                uploader_name TEXT NOT NULL DEFAULT '竞球镜助手',
+                uploader_name TEXT NOT NULL DEFAULT '球镜助手',
                 is_active INTEGER NOT NULL DEFAULT 1,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
@@ -1196,7 +1196,7 @@ def create_plan(body: dict[str, Any] = Body(default={})) -> dict[str, Any]:
     if not name:
         raise HTTPException(status_code=400, detail="请输入计划名称")
     uploader_name = _clean_name(
-        body.get("uploaderName") or "竞球镜助手",
+        body.get("uploaderName") or "球镜助手",
         maximum=40,
     )
     slug = _slug(_clean_name(body.get("slug")) or name)

@@ -1,11 +1,11 @@
 {
-  "name": "竞球镜",
-  "short_name": "竞球镜",
+  "name": "球镜",
+  "short_name": "球镜",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#FFFFFF",
   "theme_color": "#008A65",
-  "description": "竞球镜赛事数据与方案工具",
+  "description": "球镜足球赛事数据与资料工具",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
   "icons": [

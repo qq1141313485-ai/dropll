@@ -184,7 +184,7 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
     final score = _displayScore(match);
     await SharePlus.instance.share(
       ShareParams(
-        subject: '竞球镜·比赛详情',
+        subject: '球镜·比赛详情',
         text: '${match.number} ${match.league}\n'
             '${match.home} vs ${match.away}\n'
             '${match.kickoffDisplayLabel}  ${_statusText(match)}'

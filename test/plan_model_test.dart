@@ -7,7 +7,7 @@ void main() {
     final source = PlanSource.fromSummaryJson({
       'id': 12,
       'name': '单刀',
-      'uploaderName': '竞球镜助手',
+      'uploaderName': '球镜助手',
       'latestUpdatedAt': '2026-07-25T16:20+08:00',
       'updatedToday': true,
       'aliasIds': [3, '7', '', null],

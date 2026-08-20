@@ -2284,7 +2284,7 @@ class _SelectionPageState extends State<SelectionPage> {
                     child: Row(
                       children: [
                         const Text(
-                          '竞球镜',
+                          '球镜',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
@@ -2691,7 +2691,7 @@ class _SchemePageState extends State<_SchemePage> {
     final prize = _actualPrize;
     final settled = _isSettled;
     final buffer = StringBuffer()
-      ..writeln('竞球镜｜竞彩足球计算方案（非出票凭证）')
+      ..writeln('球镜｜足球赛事数据方案（非出票凭证）')
       ..writeln(
         '$_passLabel｜${value.notes}注｜${value.amount.toStringAsFixed(0)}元',
       )
@@ -2910,7 +2910,7 @@ class _SchemePageState extends State<_SchemePage> {
       canvas.restore();
       final title = TextPainter(
         text: const TextSpan(
-          text: '竞球镜',
+          text: '球镜',
           style: TextStyle(
             color: Color(0xff17231e),
             fontSize: 48,
@@ -2921,7 +2921,7 @@ class _SchemePageState extends State<_SchemePage> {
       )..layout(maxWidth: width - horizontal * 2);
       title.paint(canvas, const Offset(horizontal + 122, 42));
       painter(
-        '竞彩足球数据与方案工具',
+        '足球赛事数据与资料工具',
         style: const TextStyle(color: Color(0xff737d78), fontSize: 23),
       ).paint(canvas, const Offset(horizontal + 122, 102));
 
@@ -3310,7 +3310,7 @@ class _SchemePageState extends State<_SchemePage> {
         );
       }
       paintCentered(
-        '由「竞球镜」App 生成',
+        '由「球镜」App 生成',
         Rect.fromLTWH(horizontal, height - 250, contentWidth, 38),
         style: const TextStyle(
           color: Color(0xff168f62),
@@ -3360,12 +3360,12 @@ class _SchemePageState extends State<_SchemePage> {
             XFile(
               shareFile.path,
               mimeType: 'image/png',
-              name: '竞球镜方案.png',
+              name: '球镜方案.png',
             ),
           ],
-          fileNameOverrides: const ['竞球镜方案.png'],
-          text: '竞球镜·方案分享',
-          subject: '竞球镜·方案分享',
+          fileNameOverrides: const ['球镜方案.png'],
+          text: '球镜·方案分享',
+          subject: '球镜·方案分享',
           sharePositionOrigin: _sharePositionOrigin(),
         ),
       );
@@ -3379,7 +3379,7 @@ class _SchemePageState extends State<_SchemePage> {
         final fallbackResult = await SharePlus.instance.share(
           ShareParams(
             text: _schemeText(value),
-            subject: '竞球镜·方案分享',
+            subject: '球镜·方案分享',
             sharePositionOrigin: _sharePositionOrigin(),
           ),
         );

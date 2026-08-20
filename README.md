@@ -1,6 +1,6 @@
-# 竞球镜
+# 球镜
 
-竞球镜 Flutter App，维护 iOS、Android 和 Web 三个平台，以及配套的计划内容服务。
+球镜 Flutter App，维护 iOS、Android 和 Web 三个平台，以及配套的计划内容服务。
 
 ## 项目入口
 

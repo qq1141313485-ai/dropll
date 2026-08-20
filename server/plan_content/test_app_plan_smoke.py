@@ -9,7 +9,7 @@ def _summary(plan_id: str = "12") -> dict:
         "id": plan_id,
         "slug": f"plan-{plan_id}",
         "name": "单刀",
-        "uploaderName": "竞球镜助手",
+        "uploaderName": "球镜助手",
         "latestUpdatedAt": "2026-07-25T16:20+08:00",
         "updatedToday": True,
         "latestImageCount": 2,
@@ -23,7 +23,7 @@ def _updates_body() -> dict:
             "id": "12",
             "slug": "plan-12",
             "name": "单刀",
-            "uploaderName": "竞球镜助手",
+            "uploaderName": "球镜助手",
         },
         "items": [
             {

@@ -65,7 +65,7 @@ class ServiceCenterPage extends StatelessWidget {
             action: '联系客服',
             onTap: () => _sendMail(
               context,
-              subject: '竞球镜使用咨询',
+              subject: '球镜使用咨询',
               body: '请描述你遇到的问题：\n\n',
             ),
           ),
@@ -76,7 +76,7 @@ class ServiceCenterPage extends StatelessWidget {
             action: '提交申请',
             onTap: () => _sendMail(
               context,
-              subject: '竞球镜内容投诉或下架申请',
+              subject: '球镜内容投诉或下架申请',
               body: '涉及的计划名称或页面：\n'
                   '问题说明：\n'
                   '相关权利证明（如适用）：\n\n',
