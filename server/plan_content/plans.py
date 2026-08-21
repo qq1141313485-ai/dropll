@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import logging
 import os
 import secrets
 import sqlite3
@@ -70,6 +71,7 @@ PLAN_SYNC_TIMER_PATH = Path("/etc/systemd/system/caimaster-plan-source-sync.time
 
 public_router = APIRouter(prefix="/v1")
 admin_router = APIRouter(prefix="/v1/admin")
+logger = logging.getLogger("caimaster.plan_api")
 
 
 def _connect() -> sqlite3.Connection:
@@ -516,6 +518,7 @@ def list_plans(
     limit: int = Query(default=20, ge=1, le=50),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
+    started_at = time.monotonic()
     keyword = _clean_name(q)
     activity = activity.strip().lower()
     if activity not in {"all", "recent", "history"}:
@@ -558,11 +561,13 @@ def list_plans(
         query += " ORDER BY u.published_at DESC, p.id DESC LIMIT ? OFFSET ?"
         params.extend([limit + 1, offset])
         rows = conn.execute(query, params).fetchall()
+        logger.info("list_plans query_done rows=%s elapsed=%.3f", len(rows), time.monotonic() - started_at)
         has_more = len(rows) > limit
         visible = rows[:limit]
         items = [
             _serialize_plan_summary(request, conn, row) for row in visible
         ]
+    logger.info("list_plans done items=%s elapsed=%.3f", len(items), time.monotonic() - started_at)
     return {
         "items": items,
         "count": len(items),
@@ -577,11 +582,14 @@ def recent_plans(
     request: Request,
     limit: int = Query(default=6, ge=1, le=20),
 ) -> dict[str, Any]:
+    started_at = time.monotonic()
     query = _plan_summary_query()
     query += " ORDER BY u.published_at DESC, p.id DESC LIMIT ?"
     with closing(_connect()) as conn:
         rows = conn.execute(query, (limit,)).fetchall()
+        logger.info("recent_plans query_done rows=%s elapsed=%.3f", len(rows), time.monotonic() - started_at)
         items = [_serialize_plan_summary(request, conn, row) for row in rows]
+    logger.info("recent_plans done items=%s elapsed=%.3f", len(items), time.monotonic() - started_at)
     return {"items": items, "count": len(items)}
 
 
