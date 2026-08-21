@@ -74,9 +74,11 @@ admin_router = APIRouter(prefix="/v1/admin")
 
 def _connect() -> sqlite3.Connection:
     PLAN_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(PLAN_DB_PATH, timeout=10)
+    conn = sqlite3.connect(PLAN_DB_PATH, timeout=15)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # WAL keeps public reads available while the scheduled source sync writes.
+    conn.execute("PRAGMA busy_timeout = 15000")
     return conn
 
 
