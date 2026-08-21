@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
-import logging
 import os
 import secrets
 import sqlite3
@@ -71,7 +70,6 @@ PLAN_SYNC_TIMER_PATH = Path("/etc/systemd/system/caimaster-plan-source-sync.time
 
 public_router = APIRouter(prefix="/v1")
 admin_router = APIRouter(prefix="/v1/admin")
-logger = logging.getLogger("uvicorn.error")
 
 
 def _connect() -> sqlite3.Connection:
@@ -481,31 +479,41 @@ def _serialize_plan_summary(
 
 def _plan_summary_query(*, include_inactive: bool = False) -> str:
     active_clause = "" if include_inactive else "WHERE p.is_active = 1"
-    update_active_clause = "" if include_inactive else "AND u.is_active = 1"
+    update_active_clause = "" if include_inactive else "WHERE u.is_active = 1"
     image_active_clause = "" if include_inactive else "AND i.is_active = 1"
     image_exists_active_clause = (
         "" if include_inactive else "AND i2.is_active = 1"
     )
     return f"""
+        WITH eligible_updates AS (
+            SELECT u.id,
+                   u.plan_id,
+                   u.published_at,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY u.plan_id
+                       ORDER BY u.published_at DESC, u.id DESC
+                   ) AS row_number
+            FROM plan_updates u
+            {update_active_clause}
+              AND EXISTS (
+                  SELECT 1 FROM plan_images i2
+                  WHERE i2.update_id = u.id {image_exists_active_clause}
+              )
+        ), latest_updates AS (
+            SELECT id, plan_id, published_at
+            FROM eligible_updates
+            WHERE row_number = 1
+        )
         SELECT p.*,
                u.id AS latest_update_id,
                u.published_at,
-               (
-                   SELECT COUNT(*) FROM plan_images i
-                   WHERE i.update_id = u.id {image_active_clause}
-               ) AS image_count
+               COUNT(i.id) AS image_count
         FROM plans p
-        JOIN plan_updates u ON u.id = (
-            SELECT u2.id FROM plan_updates u2
-            WHERE u2.plan_id = p.id {update_active_clause}
-              AND EXISTS (
-                  SELECT 1 FROM plan_images i2
-                  WHERE i2.update_id = u2.id {image_exists_active_clause}
-              )
-            ORDER BY u2.published_at DESC, u2.id DESC
-            LIMIT 1
-        )
+        JOIN latest_updates u ON u.plan_id = p.id
+        LEFT JOIN plan_images i
+          ON i.update_id = u.id {image_active_clause}
         {active_clause}
+        GROUP BY p.id, u.id
     """
 
 
@@ -518,7 +526,6 @@ def list_plans(
     limit: int = Query(default=20, ge=1, le=50),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
-    started_at = time.monotonic()
     keyword = _clean_name(q)
     activity = activity.strip().lower()
     if activity not in {"all", "recent", "history"}:
@@ -561,13 +568,11 @@ def list_plans(
         query += " ORDER BY u.published_at DESC, p.id DESC LIMIT ? OFFSET ?"
         params.extend([limit + 1, offset])
         rows = conn.execute(query, params).fetchall()
-        logger.info("list_plans query_done rows=%s elapsed=%.3f", len(rows), time.monotonic() - started_at)
         has_more = len(rows) > limit
         visible = rows[:limit]
         items = [
             _serialize_plan_summary(request, conn, row) for row in visible
         ]
-    logger.info("list_plans done items=%s elapsed=%.3f", len(items), time.monotonic() - started_at)
     return {
         "items": items,
         "count": len(items),
@@ -582,14 +587,11 @@ def recent_plans(
     request: Request,
     limit: int = Query(default=6, ge=1, le=20),
 ) -> dict[str, Any]:
-    started_at = time.monotonic()
     query = _plan_summary_query()
     query += " ORDER BY u.published_at DESC, p.id DESC LIMIT ?"
     with closing(_connect()) as conn:
         rows = conn.execute(query, (limit,)).fetchall()
-        logger.info("recent_plans query_done rows=%s elapsed=%.3f", len(rows), time.monotonic() - started_at)
         items = [_serialize_plan_summary(request, conn, row) for row in rows]
-    logger.info("recent_plans done items=%s elapsed=%.3f", len(items), time.monotonic() - started_at)
     return {"items": items, "count": len(items)}
 
 
