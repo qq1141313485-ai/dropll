@@ -71,7 +71,7 @@ PLAN_SYNC_TIMER_PATH = Path("/etc/systemd/system/caimaster-plan-source-sync.time
 
 public_router = APIRouter(prefix="/v1")
 admin_router = APIRouter(prefix="/v1/admin")
-logger = logging.getLogger("caimaster.plan_api")
+logger = logging.getLogger("uvicorn.error")
 
 
 def _connect() -> sqlite3.Connection:
