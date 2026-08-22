@@ -771,6 +771,119 @@ def admin_list_plan_sync_articles(
     }
 
 
+@admin_router.get(
+    "/plan-sync/pending-names",
+    dependencies=[Depends(_require_admin)],
+)
+def admin_list_pending_plan_names(
+    q: str = Query(default="", max_length=60),
+    limit: int = Query(default=40, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    keyword = _clean_name(q)
+    with closing(_connect()) as conn:
+        if not _ensure_plan_sync_article_columns(conn):
+            return {
+                "items": [],
+                "count": 0,
+                "totalNames": 0,
+                "unidentifiedArticles": 0,
+                "hasMore": False,
+                "nextOffset": None,
+            }
+        where_keyword = ""
+        params: list[Any] = []
+        if keyword:
+            where_keyword = "AND raw_plan_name LIKE ?"
+            params.append(f"%{keyword}%")
+        total_names = int(
+            conn.execute(
+                f"""
+                SELECT COUNT(*) FROM (
+                    SELECT raw_plan_name
+                    FROM plan_sync_articles
+                    WHERE status = 'pending_name'
+                      AND TRIM(raw_plan_name) != ''
+                      {where_keyword}
+                    GROUP BY raw_plan_name
+                )
+                """,
+                params,
+            ).fetchone()[0]
+        )
+        unidentified_articles = int(
+            conn.execute(
+                """
+                SELECT COUNT(*) FROM plan_sync_articles
+                WHERE status = 'pending_name'
+                  AND TRIM(raw_plan_name) = ''
+                """
+            ).fetchone()[0]
+        )
+        rows = conn.execute(
+            f"""
+            WITH grouped AS (
+                SELECT raw_plan_name,
+                       COUNT(*) AS article_count,
+                       MIN(synced_at) AS oldest_synced_at,
+                       MAX(synced_at) AS newest_synced_at
+                FROM plan_sync_articles
+                WHERE status = 'pending_name'
+                  AND TRIM(raw_plan_name) != ''
+                  {where_keyword}
+                GROUP BY raw_plan_name
+            )
+            SELECT g.*,
+                   (
+                       SELECT source_title FROM plan_sync_articles a
+                       WHERE a.status = 'pending_name'
+                         AND a.raw_plan_name = g.raw_plan_name
+                       ORDER BY a.synced_at DESC, a.id DESC LIMIT 1
+                   ) AS sample_title,
+                   (
+                       SELECT source_article_id FROM plan_sync_articles a
+                       WHERE a.status = 'pending_name'
+                         AND a.raw_plan_name = g.raw_plan_name
+                       ORDER BY a.synced_at DESC, a.id DESC LIMIT 1
+                   ) AS sample_article_id,
+                   (
+                       SELECT error FROM plan_sync_articles a
+                       WHERE a.status = 'pending_name'
+                         AND a.raw_plan_name = g.raw_plan_name
+                       ORDER BY a.synced_at DESC, a.id DESC LIMIT 1
+                   ) AS sample_error
+            FROM grouped g
+            ORDER BY g.article_count DESC,
+                     g.oldest_synced_at,
+                     g.raw_plan_name COLLATE NOCASE
+            LIMIT ? OFFSET ?
+            """,
+            (*params, limit + 1, offset),
+        ).fetchall()
+    has_more = len(rows) > limit
+    visible = rows[:limit]
+    return {
+        "items": [
+            {
+                "rawPlanName": row["raw_plan_name"],
+                "articleCount": int(row["article_count"]),
+                "oldestAt": _iso_time(int(row["oldest_synced_at"])),
+                "newestAt": _iso_time(int(row["newest_synced_at"])),
+                "sampleTitle": row["sample_title"],
+                "sampleArticleId": str(row["sample_article_id"]),
+                "sampleError": row["sample_error"],
+            }
+            for row in visible
+        ],
+        "count": len(visible),
+        "totalNames": total_names,
+        "unidentifiedArticles": unidentified_articles,
+        "offset": offset,
+        "hasMore": has_more,
+        "nextOffset": offset + len(visible) if has_more else None,
+    }
+
+
 @admin_router.get("/plan-sync/summary", dependencies=[Depends(_require_admin)])
 def admin_plan_sync_summary() -> dict[str, Any]:
     now = _now_ts()

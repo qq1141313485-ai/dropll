@@ -121,6 +121,8 @@ python3 verify_plan_release.py --base-url https://api.cclloo.com
 `python3 app_plan_smoke.py --base-url https://api.cclloo.com`。
 管理后台的同步概览会把待治理文章数、去重名称数、积压年龄、失败数，以及
 “已启用 / App 实际可见”计划数分开显示；待治理文章数不能直接当作缺失计划数。
+待确认内容通过 `/v1/admin/plan-sync/pending-names` 按名称聚合，后台一次确认会处理
+当前所有同名待确认文章，并在执行前显示影响篇数。
 需要启用同步 timer 时执行：
 
 ```bash

@@ -3,485 +3,182 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>球镜计划管理</title>
+  <title>球镜内容后台</title>
   <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; background: #f5f7f6; color: #171a19; font: 15px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; }
-    header { height: 58px; display: flex; align-items: center; padding: 0 24px; background: #fff; border-bottom: 1px solid #e2e7e4; }
-    header strong { font-size: 19px; }
-    main { width: min(960px, calc(100% - 28px)); margin: 22px auto 48px; }
-    section { margin-bottom: 18px; padding: 18px; background: #fff; border: 1px solid #e2e7e4; border-radius: 8px; }
-    h2 { margin: 0 0 14px; font-size: 17px; }
-    .row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
-    label { display: grid; gap: 6px; color: #5f6864; font-size: 13px; }
-    input, select { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #ccd5d0; border-radius: 6px; background: #fff; font: inherit; }
-    input[type=file] { height: auto; padding: 9px; }
-    button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 6px; background: #0b8f55; color: #fff; font-weight: 700; cursor: pointer; }
-    button.secondary { background: #fff; color: #0b8f55; border: 1px solid #0b8f55; }
-    button.danger { background: #fff; color: #b24a4a; border: 1px solid #dfbcbc; }
-    .auth { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
-    .plans { display: grid; gap: 8px; }
-    .plan { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 11px 0; border-bottom: 1px solid #edf0ee; }
-    .plan:last-child { border-bottom: 0; }
-    .sync-item { display: grid; gap: 5px; padding: 11px 0; border-bottom: 1px solid #edf0ee; }
-    .sync-item:last-child { border-bottom: 0; }
-    .sync-title { font-weight: 700; }
-    .sync-actions { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 8px; align-items: end; margin-top: 6px; }
-    .summary { display: flex; flex-wrap: wrap; gap: 8px; }
-    .pill { padding: 6px 9px; border-radius: 6px; background: #eef4f1; color: #43504a; font-size: 12px; }
-    .pill.ok { background: #eaf6ef; color: #1f6845; }
-    .pill.warn { background: #fff4db; color: #875b00; }
-    .pill.error { background: #fde9e9; color: #a33b3b; }
-    .health { display: grid; gap: 6px; margin-top: 10px; }
-    .health-row { display: grid; grid-template-columns: 70px 180px 1fr; gap: 8px; align-items: start; font-size: 12px; }
-    .run { display: grid; grid-template-columns: 132px 84px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid #edf0ee; font-size: 12px; }
-    .run:last-child { border-bottom: 0; }
-    .muted { color: #87908c; font-size: 12px; }
-    .status { min-height: 22px; margin-top: 10px; color: #0b8f55; }
-    .status.error { color: #b64242; }
-    @media (max-width: 680px) {
-      header { padding: 0 16px; }
-      .row { grid-template-columns: 1fr; }
-      .auth { grid-template-columns: 1fr; }
-      .sync-actions { grid-template-columns: 1fr; }
-      .health-row { grid-template-columns: 1fr; }
-      .run { grid-template-columns: 1fr; }
-    }
+    :root{--green:#087d4e;--green-dark:#075f3d;--green-soft:#e9f6ef;--ink:#18201c;--muted:#68736d;--line:#dce4df;--surface:#fff;--canvas:#f3f6f4;--amber:#a56500;--amber-soft:#fff3d6;--red:#ad3f3f;--red-soft:#fdecec;--shadow:0 10px 30px rgba(20,55,39,.07)}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--canvas);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+    button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.55}
+    .topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;min-height:64px;padding:0 28px;background:rgba(255,255,255,.94);border-bottom:1px solid var(--line);backdrop-filter:blur(12px)}
+    .brand{display:flex;align-items:center;gap:12px}.brand-mark{display:grid;width:34px;height:34px;place-items:center;border-radius:10px;background:var(--green);color:#fff;font-weight:900}.brand strong{display:block;font-size:17px}.brand small{display:block;color:var(--muted);font-size:11px}
+    .account{display:flex;align-items:center;gap:10px}.connection{padding:5px 10px;border-radius:999px;background:#eef2f0;color:var(--muted);font-size:12px}.connection.online{background:var(--green-soft);color:var(--green-dark)}
+    main{width:min(1120px,calc(100% - 32px));margin:28px auto 64px}.card{margin-bottom:18px;padding:22px;background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow)}
+    .login-card{width:min(560px,100%);margin:64px auto;padding:30px}.eyebrow{margin:0 0 6px;color:var(--green);font-size:12px;font-weight:800;letter-spacing:.08em}h1,h2,h3,p{margin-top:0}h1{margin-bottom:10px;font-size:clamp(25px,4vw,36px);line-height:1.2}h2{margin-bottom:6px;font-size:21px}h3{margin-bottom:4px;font-size:16px}.lead,.section-help{color:var(--muted)}
+    .section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}.section-head p{margin-bottom:0}
+    label{display:grid;gap:7px;color:#4d5953;font-size:13px;font-weight:700}input,select{width:100%;min-height:44px;padding:0 12px;border:1px solid #cbd6d0;border-radius:10px;background:#fff;color:var(--ink);outline:none}input:focus,select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(8,125,78,.1)}input[type=file]{height:auto;padding:10px}
+    .button{min-height:42px;padding:0 16px;border:1px solid transparent;border-radius:10px;background:var(--green);color:#fff;font-weight:800}.button:hover{background:var(--green-dark)}.button.secondary{border-color:#a9cbbb;background:#fff;color:var(--green-dark)}.button.secondary:hover{background:var(--green-soft)}.button.ghost{border-color:var(--line);background:#fff;color:#425049}.button.danger{border-color:#e7bcbc;background:#fff;color:var(--red)}.button.danger:hover{background:var(--red-soft)}.button.small{min-height:36px;padding:0 12px;font-size:13px}
+    .login-row,.form-grid,.merge-grid{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end}.form-grid.three{grid-template-columns:1fr 1fr auto}.merge-grid{grid-template-columns:1fr 1fr auto}.helper{margin:10px 0 0;color:var(--muted);font-size:12px}.status{min-height:22px;margin-top:10px;color:var(--green-dark);font-size:13px}.status.error{color:var(--red)}
+    .hero{padding:28px;color:#fff;background:linear-gradient(135deg,#096f47,#0b8d58 62%,#21a66f);border:0}.hero .eyebrow,.hero .lead{color:rgba(255,255,255,.82)}.hero h1{margin-bottom:8px}.hero-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}.hero-actions .button{background:#fff;color:var(--green-dark)}.hero-actions .button.secondary{border-color:rgba(255,255,255,.4);background:transparent;color:#fff}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:24px}.stat{padding:15px;border-radius:12px;background:rgba(255,255,255,.12)}.stat strong{display:block;font-size:25px;line-height:1.2}.stat span{color:rgba(255,255,255,.78);font-size:12px}
+    .quick-nav{position:sticky;top:76px;z-index:10;display:flex;gap:8px;margin-bottom:18px;padding:8px;overflow-x:auto;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}.quick-nav a{flex:0 0 auto;padding:8px 12px;border-radius:8px;color:#405047;text-decoration:none;font-weight:700}.quick-nav a:hover{background:var(--green-soft);color:var(--green-dark)}
+    .notice{padding:13px 15px;border-radius:10px;background:var(--amber-soft);color:#704a0b;font-size:13px}.notice.info{background:#edf4ff;color:#315e91}.notice.danger{background:var(--red-soft);color:#823535}
+    .task-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.task-panel{padding:18px;border:1px solid var(--line);border-radius:13px;background:#fbfcfb}.task-count{float:right;padding:4px 9px;border-radius:999px;background:var(--amber-soft);color:var(--amber);font-size:12px}
+    .toolbar{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px;margin-bottom:14px}.list{display:grid;gap:10px}.list-item{padding:15px;border:1px solid var(--line);border-radius:12px;background:#fff}.item-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.item-title{font-weight:900;font-size:16px}.badge{flex:0 0 auto;padding:4px 8px;border-radius:999px;background:#edf2ef;color:#56635c;font-size:11px}.badge.warn{background:var(--amber-soft);color:var(--amber)}.item-meta{margin-top:4px;color:var(--muted);font-size:12px}.item-actions{display:grid;grid-template-columns:1fr 1fr auto auto;gap:9px;align-items:end;margin-top:13px}
+    .plan-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}.plan-row{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:14px;border:1px solid var(--line);border-radius:12px}.plan-row.inactive{background:#f7f7f7;opacity:.76}.empty{padding:28px;color:var(--muted);text-align:center;border:1px dashed #cdd7d2;border-radius:12px}
+    details.panel{margin-bottom:18px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}details.panel>summary{padding:18px 22px;cursor:pointer;font-weight:900;list-style:none}details.panel>summary::-webkit-details-marker{display:none}details.panel>summary::after{content:"展开";float:right;color:var(--green);font-size:12px}details.panel[open]>summary::after{content:"收起"}.panel-body{padding:0 22px 22px}
+    .summary-pills{display:flex;flex-wrap:wrap;gap:7px}.pill{padding:5px 8px;border-radius:7px;background:#eef3f0;color:#46524b;font-size:11px}.pill.ok{background:var(--green-soft);color:var(--green-dark)}.pill.warn{background:var(--amber-soft);color:var(--amber)}.pill.error{background:var(--red-soft);color:var(--red)}.health{display:grid;gap:7px;margin-top:12px}.health-row{display:grid;grid-template-columns:65px 180px 1fr;gap:8px;font-size:12px}.run{display:grid;grid-template-columns:140px 90px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid #edf0ee;font-size:12px}.muted{color:var(--muted);font-size:12px}.danger-zone{border-color:#ebcaca}
+    dialog{width:min(520px,calc(100% - 28px));padding:0;border:0;border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.24)}dialog::backdrop{background:rgba(10,25,18,.5)}.dialog-body{padding:24px}.dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}[hidden]{display:none!important}
+    @media(max-width:820px){.stats,.task-grid,.plan-list{grid-template-columns:1fr 1fr}.item-actions{grid-template-columns:1fr 1fr}.item-actions .button{width:100%}}
+    @media(max-width:620px){.topbar{padding:0 16px}main{width:min(100% - 20px,1120px);margin-top:16px}.card{padding:18px;border-radius:13px}.hero{padding:22px 18px}.task-grid,.plan-list{grid-template-columns:1fr}.login-row,.form-grid,.form-grid.three,.merge-grid,.toolbar,.item-actions{grid-template-columns:1fr}.quick-nav{top:70px}.section-head{display:block}.health-row,.run{grid-template-columns:1fr}.brand small{display:none}}
   </style>
 </head>
 <body>
-  <header><strong>球镜计划管理</strong></header>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">球</span><div><strong>球镜内容后台</strong><small>管理计划抓取与展示</small></div></div>
+    <div class="account"><span id="connectionState" class="connection">未登录</span><button id="logout" class="button ghost small" hidden>退出</button></div>
+  </header>
   <main>
-    <section>
-      <h2>管理员验证</h2>
-      <div class="auth">
-        <input id="token" type="password" placeholder="输入管理员密钥">
-        <button id="login">进入管理</button>
-      </div>
-      <div id="localNotice" class="status error" hidden></div>
-      <div id="authStatus" class="status"></div>
+    <section id="loginCard" class="card login-card">
+      <p class="eyebrow">仅管理员使用</p><h1>进入内容后台</h1>
+      <p class="lead">这里用于查看抓取情况、确认计划名称和处理异常。日常没有提示时，不需要操作。</p>
+      <div class="login-row"><label>管理员密钥<input id="token" type="password" autocomplete="current-password" placeholder="粘贴管理员密钥"></label><button id="login" class="button">进入后台</button></div>
+      <p class="helper">管理员密钥与服务器登录密码不是同一个。密钥只保存在当前浏览器标签会话中。</p>
+      <div id="localNotice" class="status error" hidden></div><div id="authStatus" class="status"></div>
     </section>
-
     <div id="workspace" hidden>
-      <section>
-        <h2>自动同步状态</h2>
-        <div id="syncSummary" class="summary"></div>
-        <div id="syncSummaryMeta" class="muted" style="margin-top:8px"></div>
-        <div id="syncGovernance" class="summary" style="margin-top:10px"></div>
-        <div id="syncGovernanceMeta" class="muted" style="margin-top:8px"></div>
-        <div id="syncRuns" style="margin-top:12px"></div>
+      <section class="card hero">
+        <p class="eyebrow">今天先看这里</p><h1 id="overviewTitle">正在读取计划数据</h1><p id="overviewText" class="lead">请稍候，系统正在检查是否有需要你处理的内容。</p>
+        <div class="hero-actions"><button class="button" data-jump="needsAttention">查看待处理</button><button class="button secondary" data-jump="planManagement">查找计划</button></div>
+        <div class="stats"><div class="stat"><strong id="statPending">—</strong><span>需要确认的名称</span></div><div class="stat"><strong id="statNew">—</strong><span>近 24 小时新增文章</span></div><div class="stat"><strong id="statFailed">—</strong><span>抓取失败文章</span></div><div class="stat"><strong id="statVisible">—</strong><span>App 当前可见计划</span></div></div>
       </section>
-
-      <section>
-        <h2>健康检查</h2>
-        <div id="syncHealth" class="health"></div>
-      </section>
-
-      <section>
-        <h2>新建计划</h2>
-        <div class="row">
-          <label>计划名称<input id="planName" placeholder="例如：单刀"></label>
-          <span></span>
-          <button id="createPlan">新建</button>
+      <nav class="quick-nav"><a href="#needsAttention">待处理</a><a href="#planManagement">计划管理</a><a href="#mergePlans">合并重复计划</a><a href="#manualTools">手动新增与上传</a><a href="#systemDetails">系统信息</a></nav>
+      <section id="needsAttention" class="card">
+        <div class="section-head"><div><p class="eyebrow">建议从这里开始</p><h2>需要你处理</h2><p class="section-help">先处理失败，再逐个确认高频名称。看不确定的内容可以暂时不动。</p></div></div>
+        <div class="task-grid">
+          <div class="task-panel"><span id="failedBadge" class="task-count">读取中</span><h3>抓取失败</h3><p class="section-help">通常是图片或来源网络临时异常。可以先单篇重试。</p><div id="syncFailed" class="list"></div><button id="retryAllFailed" class="button secondary small" style="margin-top:12px">重试全部失败项</button></div>
+          <div class="task-panel"><span id="unidentifiedBadge" class="task-count">读取中</span><h3>名称没有提取出来</h3><p class="section-help">这类文章需要改进识别程序，暂时不建议在这里手动处理。</p><div id="unidentifiedHelp" class="notice info">系统正在读取数量。</div></div>
         </div>
-        <div id="createStatus" class="status"></div>
+        <div style="height:20px"></div>
+        <div class="section-head"><div><h3>确认计划名称</h3><p class="section-help">已按名称合并显示。同一个名称出现多篇，只需要确认一次。</p></div></div>
+        <div class="toolbar"><input id="pendingSearch" type="search" placeholder="搜索待确认名称，例如：北哥"><button id="pendingSearchButton" class="button secondary">搜索</button></div>
+        <div id="pendingSummary" class="notice">正在读取待确认名称。</div><div id="syncPending" class="list" style="margin-top:12px"></div><button id="pendingLoadMore" class="button ghost" style="margin-top:12px" hidden>加载更多名称</button>
       </section>
-
-      <section>
-        <h2>上传今日图片</h2>
-        <div class="row">
-          <label>选择计划<select id="planSelect"></select></label>
-          <label>更新时间<input id="publishedAt" type="datetime-local"></label>
-          <span></span>
-        </div>
-        <div style="height:10px"></div>
-        <div class="row">
-          <label>批次名称<input id="batchTitle" value="今日更新"></label>
-          <label>计划图片<input id="images" type="file" accept="image/*" multiple></label>
-          <button id="upload">上传图片</button>
-        </div>
-        <div id="uploadStatus" class="status"></div>
+      <section id="planManagement" class="card">
+        <div class="section-head"><div><p class="eyebrow">查找与上下架</p><h2>计划管理</h2><p class="section-help">先搜索再操作，避免在数百个计划中翻找。</p></div></div>
+        <div class="toolbar"><input id="planSearch" type="search" placeholder="输入计划名称"><select id="planFilter"><option value="active">只看展示中的计划</option><option value="all">全部计划</option><option value="inactive">只看已下架或已合并</option></select></div>
+        <div id="planListSummary" class="notice info"></div><div id="plans" class="plan-list" style="margin-top:12px"></div>
       </section>
-
-      <section>
-        <h2>计划列表</h2>
-        <div id="plans" class="plans"></div>
+      <section id="mergePlans" class="card danger-zone">
+        <div class="section-head"><div><p class="eyebrow">仅处理确认过的重复项</p><h2>合并重复计划</h2><p class="section-help">“要合并掉的计划”会停止单独展示，所有更新会迁移到“最终保留的计划”。旧收藏会自动转过去。</p></div></div>
+        <div class="notice danger">合并后只能用数据库备份回滚。不确定是否为同一个计划时，请不要操作。</div>
+        <div class="merge-grid" style="margin-top:14px"><label>第 1 步：选择要合并掉的计划<select id="mergeSource"></select></label><label>第 2 步：选择最终保留的计划<select id="mergeTarget"></select></label><button id="mergePlan" class="button danger">第 3 步：查看影响</button></div><div id="mergeStatus" class="status"></div>
       </section>
-
-      <section>
-        <h2>合并重复计划</h2>
-        <div class="row">
-          <label>来源计划<select id="mergeSource"></select></label>
-          <label>保留为标准计划<select id="mergeTarget"></select></label>
-          <button id="mergePlan" class="danger">预览并合并</button>
-        </div>
-        <div class="muted" style="margin-top:8px">旧计划 ID 会保留为重定向，App 收藏将在刷新时自动迁移。</div>
-        <div id="mergeStatus" class="status"></div>
-      </section>
-
-      <section>
-        <h2>待治理名称</h2>
-        <div id="syncPending" class="plans"></div>
-      </section>
-
-      <section>
-        <h2>失败文章</h2>
-        <div style="margin-bottom:10px">
-          <button class="secondary" id="retryAllFailed">全部重试</button>
-        </div>
-        <div id="syncFailed" class="plans"></div>
-      </section>
+      <details id="manualTools" class="panel">
+        <summary>手动新增计划或上传图片（一般不需要）</summary>
+        <div class="panel-body"><div class="task-grid">
+          <div class="task-panel"><h3>新建计划</h3><p class="section-help">仅用于自动抓取无法覆盖、且名称已经确认的计划。</p><div class="form-grid"><label>计划名称<input id="planName" placeholder="例如：单刀"></label><button id="createPlan" class="button">新建</button></div><div id="createStatus" class="status"></div></div>
+          <div class="task-panel"><h3>上传计划图片</h3><div class="form-grid three"><label>选择计划<select id="planSelect"></select></label><label>发布时间<input id="publishedAt" type="datetime-local"></label><span></span></div><div class="form-grid three" style="margin-top:10px"><label>本次更新名称<input id="batchTitle" value="今日更新"></label><label>选择图片<input id="images" type="file" accept="image/*" multiple></label><button id="upload" class="button">上传</button></div><div id="uploadStatus" class="status"></div></div>
+        </div></div>
+      </details>
+      <details id="systemDetails" class="panel">
+        <summary>系统信息（排查故障时再看）</summary>
+        <div class="panel-body"><h3>自动获取记录</h3><div id="syncSummary" class="summary-pills"></div><div id="syncSummaryMeta" class="muted" style="margin-top:8px"></div><div id="syncGovernance" class="summary-pills" style="margin-top:10px"></div><div id="syncGovernanceMeta" class="muted" style="margin-top:8px"></div><div id="syncRuns" style="margin-top:12px"></div><h3 style="margin-top:20px">服务检查</h3><div id="syncHealth" class="health"></div></div>
+      </details>
     </div>
   </main>
+  <dialog id="mergeDialog"><div class="dialog-body"><p class="eyebrow">合并前最后确认</p><h2 id="mergeDialogTitle">确认合并计划</h2><p id="mergeDialogText" class="lead"></p><div id="mergeDialogImpact" class="notice danger"></div><div class="dialog-actions"><button id="cancelMerge" class="button ghost">取消</button><button id="confirmMerge" class="button danger">确认合并</button></div></div></dialog>
   <script>
-    const $ = (id) => document.getElementById(id);
-    let token = sessionStorage.getItem("planAdminToken") || "";
-    let plans = [];
-    let pendingItems = [];
-    let failedItems = [];
-
-    if (location.protocol === "file:") {
-      $("localNotice").hidden = false;
-      $("localNotice").textContent = "当前是本地文件预览，请打开服务器 /admin/plans 管理入口后再登录。";
+    const $=(id)=>document.getElementById(id);
+    const previewMode=location.hostname==="127.0.0.1"&&new URLSearchParams(location.search).get("preview")==="1";
+    let token=sessionStorage.getItem("planAdminToken")||"",plans=[],failedItems=[],pendingItems=[],pendingOffset=0,pendingHasMore=false,pendingSearchTimer=null,mergePreview=null;
+    if(location.protocol==="file:"){$("localNotice").hidden=false;$("localNotice").textContent="本地文件不能登录，请打开服务器上的管理地址。"}
+    function status(id,text,error=false){const node=$(id);node.textContent=text;node.classList.toggle("error",error)}
+    function escapeHtml(value){return String(value??"").replace(/[&<>"']/g,(char)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]))}
+    function localDateTime(){const now=new Date();now.setMinutes(now.getMinutes()-now.getTimezoneOffset());return now.toISOString().slice(0,16)}
+    async function previewApi(path,options){
+      if(options.method&&options.method!=="GET")return{ok:true,updatedRows:3,imageCount:2};
+      if(path==="/v1/admin/plans")return{items:[{id:"253",name:"CC",isActive:true,updateCount:4,aliasCount:0},{id:"355",name:"cc",isActive:true,updateCount:2,aliasCount:0},{id:"134",name:"龙行",isActive:true,updateCount:18,aliasCount:0},{id:"19",name:"北哥",isActive:true,updateCount:12,aliasCount:1},{id:"8",name:"旧计划",isActive:false,updateCount:3,aliasCount:0,canonicalPlanId:"19"}]};
+      if(path.startsWith("/v1/admin/plan-sync/pending-names"))return{items:[{rawPlanName:"北哥",articleCount:19,newestAt:"2026-08-22T13:43+08:00",sampleTitle:"20260822 北哥"},{rawPlanName:"赢金",articleCount:18,newestAt:"2026-08-22T11:47+08:00",sampleTitle:"20260822 赢金"},{rawPlanName:"曼城",articleCount:14,newestAt:"2026-08-22T16:09+08:00",sampleTitle:"20260822 曼城"}],totalNames:507,unidentifiedArticles:348,hasMore:true,nextOffset:3};
+      if(path==="/v1/admin/plan-sync/summary")return{items:{imported:3610,duplicate:420,failed:2,ignored:90,pending_name:1247},lastSyncedAt:"2026-08-22T17:20+08:00",governance:{pendingArticles:1247,pendingDistinctNames:507,pendingUnidentifiedArticles:348,pendingLast24Hours:65,pendingOlderThan7Days:827,failedArticles:2,retryQueued:0,activePlans:361,visiblePlans:361}};
+      if(path.startsWith("/v1/admin/plan-sync/runs"))return{items:[{status:"ok",startedAt:"2026-08-22T17:20+08:00",candidates:4,counts:{imported:2,pending_name:2,failed:0}}]};
+      if(path==="/v1/admin/plan-sync/health")return{checks:[{level:"ok",name:"计划服务",detail:"运行正常"},{level:"warn",name:"待确认名称",detail:"1247"}]};
+      if(path.startsWith("/v1/admin/plan-sync/articles?status=failed"))return{items:[{rawPlanName:"示例计划",sourceTitle:"20260822 示例计划",sourceArticleId:"403300",syncedAt:"2026-08-22T16:20+08:00",error:"图片下载超时"}]};
+      return{items:[]};
     }
-
-    function status(id, text, error = false) {
-      const node = $(id);
-      node.textContent = text;
-      node.classList.toggle("error", error);
+    async function api(path,options={}){
+      if(previewMode)return previewApi(path,options);
+      const headers=new Headers(options.headers||{});headers.set("Authorization",`Bearer ${token}`);
+      if(options.body&&!(options.body instanceof FormData))headers.set("Content-Type","application/json");
+      const response=await fetch(path,{...options,headers}),body=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(body.detail||`请求失败 ${response.status}`);return body;
     }
-
-    function escapeHtml(value) {
-      return String(value || "").replace(/[&<>"']/g, (char) => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;"
-      })[char]);
+    function renderPlans(){
+      const keyword=$("planSearch").value.trim().toLowerCase(),filter=$("planFilter").value;
+      const visible=plans.filter((plan)=>{if(keyword&&!plan.name.toLowerCase().includes(keyword))return false;if(filter==="active"&&(!plan.isActive||plan.canonicalPlanId))return false;if(filter==="inactive"&&plan.isActive&&!plan.canonicalPlanId)return false;return true});
+      $("planListSummary").textContent=keyword?`找到 ${visible.length} 个包含“${keyword}”的计划`:`当前显示 ${visible.length} 个计划；输入名称可以快速查找。`;
+      $("plans").innerHTML=visible.length?visible.map((plan)=>`<div class="plan-row ${plan.isActive?"":"inactive"}"><div><div class="item-title">${escapeHtml(plan.name)}</div><div class="item-meta">${escapeHtml(plan.updateCount)} 次更新${plan.canonicalPlanId?` · 已合并到 #${escapeHtml(plan.canonicalPlanId)}`:plan.aliasCount?` · 已接收 ${escapeHtml(plan.aliasCount)} 个旧计划`:""}</div></div><button class="button ${plan.isActive?"danger":"secondary"} small" data-plan-id="${escapeHtml(plan.id)}" data-active="${plan.isActive}">${plan.isActive?"停止展示":"恢复展示"}</button></div>`).join(""):'<div class="empty">没有找到符合条件的计划</div>';
+      document.querySelectorAll("[data-plan-id]").forEach((button)=>button.addEventListener("click",()=>togglePlan(button)));
     }
-
-    async function api(path, options = {}) {
-      const headers = new Headers(options.headers || {});
-      headers.set("Authorization", `Bearer ${token}`);
-      if (options.body && !(options.body instanceof FormData)) {
-        headers.set("Content-Type", "application/json");
-      }
-      const response = await fetch(path, {...options, headers});
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.detail || `请求失败 ${response.status}`);
-      return body;
+    async function loadPlans(){
+      const body=await api("/v1/admin/plans");plans=body.items||[];
+      const active=plans.filter((plan)=>plan.isActive&&!plan.canonicalPlanId);
+      $("planSelect").innerHTML=active.map((plan)=>`<option value="${escapeHtml(plan.id)}">${escapeHtml(plan.name)}</option>`).join("");
+      const options=active.map((plan)=>`<option value="${escapeHtml(plan.id)}">${escapeHtml(plan.name)} (#${escapeHtml(plan.id)})</option>`).join("");
+      $("mergeSource").innerHTML=`<option value="">请选择要合并掉的计划</option>${options}`;$("mergeTarget").innerHTML=`<option value="">请选择最终保留的计划</option>${options}`;renderPlans();
     }
-
-    function localDateTime() {
-      const now = new Date();
-      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-      return now.toISOString().slice(0, 16);
+    async function togglePlan(button){
+      const nextActive=button.dataset.active!=="true",plan=plans.find((item)=>item.id===button.dataset.planId);
+      if(!nextActive&&!window.confirm(`确认停止展示“${plan?.name||"这个计划"}”？App 中将暂时看不到它。`))return;
+      button.disabled=true;try{await api(`/v1/admin/plans/${button.dataset.planId}`,{method:"PATCH",body:JSON.stringify({isActive:nextActive})});await loadPlans()}catch(error){status("authStatus",error.message,true)}
     }
-
-    async function loadPlans() {
-      const body = await api("/v1/admin/plans");
-      plans = body.items || [];
-      $("planSelect").innerHTML = plans
-        .filter((plan) => plan.isActive)
-        .map((plan) => `<option value="${escapeHtml(plan.id)}">${escapeHtml(plan.name)}</option>`)
-        .join("");
-      const canonicalPlans = plans.filter((plan) => plan.isActive && !plan.canonicalPlanId);
-      const planOptions = canonicalPlans
-        .map((plan) => `<option value="${escapeHtml(plan.id)}">${escapeHtml(plan.name)} (#${escapeHtml(plan.id)})</option>`)
-        .join("");
-      $("mergeSource").innerHTML = planOptions;
-      $("mergeTarget").innerHTML = planOptions;
-      $("plans").innerHTML = plans.length ? plans.map((plan) => `
-        <div class="plan">
-          <div>
-            <strong>${escapeHtml(plan.name)}</strong>
-            <div class="muted">${escapeHtml(plan.updateCount)} 次更新 · ${plan.isActive ? "展示中" : "已下架"}${plan.canonicalPlanId ? ` · 已合并到 #${escapeHtml(plan.canonicalPlanId)}` : plan.aliasCount ? ` · 接收 ${escapeHtml(plan.aliasCount)} 个旧 ID` : ""}</div>
-          </div>
-          <button class="${plan.isActive ? "danger" : "secondary"}" data-id="${escapeHtml(plan.id)}" data-active="${plan.isActive}">
-            ${plan.isActive ? "下架" : "恢复"}
-          </button>
-        </div>
-      `).join("") : '<div class="muted">还没有计划</div>';
-      document.querySelectorAll("[data-id]").forEach((button) => {
-        button.addEventListener("click", async () => {
-          try {
-            await api(`/v1/admin/plans/${button.dataset.id}`, {
-              method: "PATCH",
-              body: JSON.stringify({isActive: button.dataset.active !== "true"})
-            });
-            await loadPlans();
-          } catch (error) {
-            status("authStatus", error.message, true);
-          }
-        });
-      });
+    async function loadSyncSummary(){
+      const [body,runsBody]=await Promise.all([api("/v1/admin/plan-sync/summary"),api("/v1/admin/plan-sync/runs?limit=5")]),items=body.items||{},g=body.governance||{};
+      $("statPending").textContent=g.pendingDistinctNames??0;$("statNew").textContent=g.pendingLast24Hours??0;$("statFailed").textContent=g.failedArticles??0;$("statVisible").textContent=g.visiblePlans??0;$("failedBadge").textContent=`${g.failedArticles||0} 篇`;$("unidentifiedBadge").textContent=`${g.pendingUnidentifiedArticles||0} 篇`;
+      $("unidentifiedHelp").textContent=g.pendingUnidentifiedArticles?`当前有 ${g.pendingUnidentifiedArticles} 篇没有提取出名称。先交给程序改进，不需要你逐篇判断。`:"当前没有未提取名称的文章。";
+      if((g.failedArticles||0)>0){$("overviewTitle").textContent=`有 ${g.failedArticles} 篇抓取失败`;$("overviewText").textContent="建议先查看失败原因并重试；其他抓取服务仍在正常运行。"}else if((g.pendingLast24Hours||0)>0){$("overviewTitle").textContent="自动抓取正常运行";$("overviewText").textContent=`今天新增 ${g.pendingLast24Hours} 篇需要确认名称，可以从高频名称开始处理。`}else{$("overviewTitle").textContent="今天没有紧急事项";$("overviewText").textContent="自动抓取和 App 展示均正常，不需要操作。"}
+      const labels={imported:"已导入",duplicate:"重复内容",failed:"失败",ignored:"已忽略",name_configured:"等待重跑",pending_name:"等待确认",retry_queued:"等待重试"};
+      $("syncSummary").innerHTML=Object.keys(labels).map((key)=>`<span class="pill">${labels[key]} ${escapeHtml(items[key]||0)}</span>`).join("");$("syncSummaryMeta").textContent=body.lastSyncedAt?`最后获取：${body.lastSyncedAt}`:"还没有获取记录";
+      $("syncGovernance").innerHTML=[`待确认 ${g.pendingDistinctNames||0} 个名称 / ${g.pendingArticles||0} 篇`,`未提取名称 ${g.pendingUnidentifiedArticles||0} 篇`,`7 天以上积压 ${g.pendingOlderThan7Days||0} 篇`,`App 可见 ${g.visiblePlans||0} / 启用 ${g.activePlans||0}`].map((text)=>`<span class="pill">${escapeHtml(text)}</span>`).join("");$("syncGovernanceMeta").textContent=g.oldestPendingAt?`最早待确认时间：${g.oldestPendingAt}`:"没有待确认积压";
+      const runs=runsBody.items||[];$("syncRuns").innerHTML=runs.length?runs.map((run)=>{const c=run.counts||{};return`<div class="run"><strong>${run.status==="ok"?"运行正常":"运行失败"}</strong><span>${escapeHtml(run.startedAt)}</span><span>发现 ${run.candidates} 篇 · 导入 ${c.imported||0} · 待确认 ${c.pending_name||0} · 失败 ${c.failed||0}</span></div>`}).join(""):'<div class="muted">暂无运行记录</div>';
     }
-
-    async function loadSyncSummary() {
-      const body = await api("/v1/admin/plan-sync/summary");
-      const runsBody = await api("/v1/admin/plan-sync/runs?limit=5");
-      const items = body.items || {};
-      const labels = {
-        imported: "已导入",
-        duplicate: "重复",
-        failed: "失败",
-        ignored: "已忽略",
-        name_configured: "已配置待重跑",
-        pending_name: "待治理",
-        retry_queued: "失败待重跑"
-      };
-      $("syncSummary").innerHTML = Object.keys(labels).map((key) => (
-        `<span class="pill">${labels[key]} ${escapeHtml(items[key] || 0)}</span>`
-      )).join("");
-      $("syncSummaryMeta").textContent = body.lastSyncedAt
-        ? `最后同步：${body.lastSyncedAt} · 规则文件：${body.rulesPath}`
-        : `尚无同步记录 · 规则文件：${body.rulesPath}`;
-      const governance = body.governance || {};
-      $("syncGovernance").innerHTML = [
-        `待治理名称 ${governance.pendingDistinctNames || 0} 种 / ${governance.pendingArticles || 0} 篇`,
-        `未提取名称 ${governance.pendingUnidentifiedArticles || 0} 篇`,
-        `近 24 小时新增 ${governance.pendingLast24Hours || 0} 篇`,
-        `7 天以上积压 ${governance.pendingOlderThan7Days || 0} 篇`,
-        `失败 ${governance.failedArticles || 0} 篇`,
-        `App 可见 ${governance.visiblePlans || 0} / 启用 ${governance.activePlans || 0}`
-      ].map((text) => `<span class="pill">${escapeHtml(text)}</span>`).join("");
-      const topPendingNames = governance.topPendingNames || [];
-      const topPendingText = topPendingNames.length
-        ? `高频待治理：${topPendingNames.map((item) => `${item.name}(${item.articleCount})`).join("、")}`
-        : "暂无待治理名称";
-      $("syncGovernanceMeta").textContent = governance.oldestPendingAt
-        ? `最早积压：${governance.oldestPendingAt} · ${topPendingText}`
-        : topPendingText;
-      const runs = runsBody.items || [];
-      $("syncRuns").innerHTML = runs.length ? runs.map((run) => {
-        const counts = run.counts || {};
-        const countText = [
-          `候选 ${run.candidates}`,
-          `导入 ${counts.imported || 0}`,
-          `待治理 ${counts.pending_name || 0}`,
-          `失败 ${counts.failed || 0}`
-        ].join(" · ");
-        return `<div class="run">
-          <strong>${escapeHtml(run.status)}</strong>
-          <span>${escapeHtml(run.startedAt)}</span>
-          <span>${escapeHtml(countText)}${run.error ? ` · ${escapeHtml(run.error)}` : ""}</span>
-        </div>`;
-      }).join("") : '<div class="muted">暂无运行记录</div>';
+    async function loadSyncHealth(){const body=await api("/v1/admin/plan-sync/health"),names={ok:"正常",warn:"注意",error:"异常"};$("syncHealth").innerHTML=(body.checks||[]).map((check)=>`<div class="health-row"><span class="pill ${escapeHtml(check.level)}">${names[check.level]||check.level}</span><strong>${escapeHtml(check.name)}</strong><span class="muted">${escapeHtml(check.detail)}</span></div>`).join("")||'<div class="muted">暂无检查结果</div>'}
+    async function loadPendingNames({reset=false}={}){
+      if(reset){pendingOffset=0;pendingItems=[]}const keyword=$("pendingSearch").value.trim(),query=new URLSearchParams({q:keyword,limit:"40",offset:String(pendingOffset)}),body=await api(`/v1/admin/plan-sync/pending-names?${query}`);
+      pendingItems=reset?(body.items||[]):[...pendingItems,...(body.items||[])];pendingHasMore=body.hasMore===true;pendingOffset=body.nextOffset??pendingItems.length;$("pendingLoadMore").hidden=!pendingHasMore;
+      $("pendingSummary").textContent=keyword?`找到 ${body.totalNames||0} 个包含“${keyword}”的待确认名称。`:`共有 ${body.totalNames||0} 个名称需要确认，按出现次数从高到低排列。`;renderPendingNames();
     }
-
-    async function loadSyncHealth() {
-      const body = await api("/v1/admin/plan-sync/health");
-      const checks = body.checks || [];
-      $("syncHealth").innerHTML = checks.length ? checks.map((check) => `
-        <div class="health-row">
-          <span class="pill ${escapeHtml(check.level)}">${escapeHtml(check.level)}</span>
-          <strong>${escapeHtml(check.name)}</strong>
-          <span class="muted">${escapeHtml(check.detail)}</span>
-        </div>
-      `).join("") : '<div class="muted">暂无健康检查结果</div>';
+    function renderPendingNames(){
+      $("syncPending").innerHTML=pendingItems.length?pendingItems.map((item,index)=>`<div class="list-item"><div class="item-head"><div><div class="item-title">${escapeHtml(item.rawPlanName)}</div><div class="item-meta">最近文章：${escapeHtml(item.sampleTitle)} · ${escapeHtml(item.newestAt)}</div></div><span class="badge warn">影响 ${escapeHtml(item.articleCount)} 篇</span></div><div class="item-actions"><label>归入已有计划<select data-pending-plan="${index}"><option value="">不选择已有计划</option>${plans.filter((p)=>p.isActive&&!p.canonicalPlanId).map((p)=>`<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join("")}</select></label><label>或确认标准名称<input data-pending-name="${index}" value="${escapeHtml(item.rawPlanName)}"></label><button class="button small" data-pending-action="allow" data-index="${index}">确认名称</button><button class="button danger small" data-pending-action="ignore" data-index="${index}">这不是计划</button></div></div>`).join(""):'<div class="empty">没有找到需要确认的名称</div>';
+      document.querySelectorAll("[data-pending-action]").forEach((button)=>button.addEventListener("click",()=>applyNameRule(button)));
     }
-
-    async function loadSyncPending() {
-      const body = await api("/v1/admin/plan-sync/articles?status=pending_name&limit=80");
-      pendingItems = body.items || [];
-      $("syncPending").innerHTML = pendingItems.length ? pendingItems.map((item, index) => `
-        <div class="sync-item">
-          <div class="sync-title">${escapeHtml(item.rawPlanName || "未识别名称")}</div>
-          <div>${escapeHtml(item.sourceTitle)}</div>
-          <div class="muted">${escapeHtml(item.sourceName)} #${escapeHtml(item.sourceArticleId)} · ${escapeHtml(item.syncedAt)}</div>
-          <div class="muted">${escapeHtml(item.error)}</div>
-          <div class="sync-actions">
-            <label>标准名称<input data-sync-standard="${index}" value="${escapeHtml(item.rawPlanName)}"></label>
-            <label>映射到计划<select data-sync-plan="${index}">
-              <option value="">不映射</option>
-              ${plans.map((plan) => `<option value="${escapeHtml(plan.name)}">${escapeHtml(plan.name)}</option>`).join("")}
-            </select></label>
-            <button data-sync-action="allow" data-index="${index}">保存规则</button>
-            <button class="danger" data-sync-action="ignore" data-index="${index}">忽略</button>
-          </div>
-        </div>
-      `).join("") : '<div class="muted">暂无待治理名称</div>';
-      document.querySelectorAll("[data-sync-action]").forEach((button) => {
-        button.addEventListener("click", () => applyNameRule(button));
-      });
+    async function loadSyncFailed(){
+      const body=await api("/v1/admin/plan-sync/articles?status=failed&limit=50");failedItems=body.items||[];$("retryAllFailed").hidden=failedItems.length===0;
+      $("syncFailed").innerHTML=failedItems.length?failedItems.map((item,index)=>`<div class="list-item"><div class="item-head"><div><div class="item-title">${escapeHtml(item.rawPlanName||item.resolvedPlanName||"未命名文章")}</div><div class="item-meta">${escapeHtml(item.sourceTitle)} · ${escapeHtml(item.syncedAt)}</div></div><span class="badge warn">失败</span></div><div class="notice danger" style="margin-top:10px">${escapeHtml(item.error||"未记录失败原因")}</div><button class="button secondary small" data-retry-index="${index}" style="margin-top:10px">重试这一篇</button></div>`).join(""):'<div class="empty">没有抓取失败的文章</div>';
+      document.querySelectorAll("[data-retry-index]").forEach((button)=>button.addEventListener("click",()=>retryFailedArticle(button)));
     }
-
-    async function loadSyncFailed() {
-      const body = await api("/v1/admin/plan-sync/articles?status=failed&limit=50");
-      failedItems = body.items || [];
-      $("syncFailed").innerHTML = failedItems.length ? failedItems.map((item, index) => `
-        <div class="sync-item">
-          <div class="sync-title">${escapeHtml(item.rawPlanName || item.resolvedPlanName || "同步失败")}</div>
-          <div>${escapeHtml(item.sourceTitle)}</div>
-          <div class="muted">${escapeHtml(item.sourceName)} #${escapeHtml(item.sourceArticleId)} · ${escapeHtml(item.syncedAt)}</div>
-          <div class="muted">${escapeHtml(item.error)}</div>
-          <div>
-            <button class="secondary" data-retry-index="${index}">重试</button>
-          </div>
-        </div>
-      `).join("") : '<div class="muted">暂无失败文章</div>';
-      document.querySelectorAll("[data-retry-index]").forEach((button) => {
-        button.addEventListener("click", () => retryFailedArticle(button));
-      });
+    async function retryFailedArticle(button){const item=failedItems[Number(button.dataset.retryIndex)];if(!item)return;button.disabled=true;try{await api("/v1/admin/plan-sync/articles/retry",{method:"POST",body:JSON.stringify({sourceArticleId:item.sourceArticleId})});await Promise.all([loadSyncSummary(),loadSyncHealth(),loadSyncFailed()])}catch(error){status("authStatus",error.message,true)}finally{button.disabled=false}}
+    async function retryAllFailed(){if(!window.confirm(`确认把当前 ${failedItems.length} 篇失败文章加入重试队列？`))return;try{await api("/v1/admin/plan-sync/articles/retry",{method:"POST",body:JSON.stringify({all:true})});await Promise.all([loadSyncSummary(),loadSyncHealth(),loadSyncFailed()])}catch(error){status("authStatus",error.message,true)}}
+    async function applyNameRule(button){
+      const item=pendingItems[Number(button.dataset.index)];if(!item)return;const action=button.dataset.pendingAction,selected=document.querySelector(`[data-pending-plan="${button.dataset.index}"]`).value,typed=document.querySelector(`[data-pending-name="${button.dataset.index}"]`).value.trim(),standardName=selected||typed||item.rawPlanName;
+      const message=action==="ignore"?`确认“${item.rawPlanName}”不是计划名称？这会忽略当前 ${item.articleCount} 篇同名文章。`:`确认把“${item.rawPlanName}”识别为“${standardName}”？这会处理当前 ${item.articleCount} 篇同名文章。`;if(!window.confirm(message))return;
+      button.disabled=true;try{await api("/v1/admin/plan-sync/name-rules/actions",{method:"POST",body:JSON.stringify({action,rawName:item.rawPlanName,standardName})});await Promise.all([loadSyncSummary(),loadSyncHealth()]);await loadPendingNames({reset:true})}catch(error){status("authStatus",error.message,true)}finally{button.disabled=false}
     }
-
-    async function retryFailedArticle(button) {
-      const item = failedItems[Number(button.dataset.retryIndex)];
-      if (!item) return;
-      button.disabled = true;
-      try {
-        await api("/v1/admin/plan-sync/articles/retry", {
-          method: "POST",
-          body: JSON.stringify({sourceArticleId: item.sourceArticleId})
-        });
-        status("authStatus", "已加入失败重试队列");
-        await loadSyncSummary();
-        await loadSyncHealth();
-        await loadSyncFailed();
-      } catch (error) {
-        status("authStatus", error.message, true);
-      } finally {
-        button.disabled = false;
-      }
+    async function login(){
+      token=$("token").value.trim()||token;if(!token)return status("authStatus","请粘贴管理员密钥",true);$("login").disabled=true;status("authStatus","正在读取数据…");
+      try{await loadPlans();await Promise.all([loadSyncSummary(),loadSyncHealth(),loadSyncFailed(),loadPendingNames({reset:true})]);if(!previewMode)sessionStorage.setItem("planAdminToken",token);$("workspace").hidden=false;$("loginCard").hidden=true;$("logout").hidden=false;$("connectionState").textContent="已连接";$("connectionState").classList.add("online");status("authStatus","")}catch(error){$("workspace").hidden=true;status("authStatus",`无法进入：${error.message}`,true)}finally{$("login").disabled=false}
     }
-
-    async function retryAllFailed() {
-      try {
-        await api("/v1/admin/plan-sync/articles/retry", {
-          method: "POST",
-          body: JSON.stringify({all: true})
-        });
-        status("authStatus", "失败文章已加入重试队列");
-        await loadSyncSummary();
-        await loadSyncHealth();
-        await loadSyncFailed();
-      } catch (error) {
-        status("authStatus", error.message, true);
-      }
-    }
-
-    async function applyNameRule(button) {
-      const item = pendingItems[Number(button.dataset.index)];
-      if (!item) return;
-      const action = button.dataset.syncAction;
-      const standardInput = document.querySelector(`[data-sync-standard="${button.dataset.index}"]`);
-      const planSelect = document.querySelector(`[data-sync-plan="${button.dataset.index}"]`);
-      const standardName = (planSelect.value || standardInput.value || item.rawPlanName).trim();
-      button.disabled = true;
-      try {
-        await api("/v1/admin/plan-sync/name-rules/actions", {
-          method: "POST",
-          body: JSON.stringify({
-            action,
-            rawName: item.rawPlanName,
-            standardName
-          })
-        });
-        status("authStatus", action === "ignore" ? "已加入忽略名单" : "名称规则已保存，等待下次同步");
-        await loadSyncSummary();
-        await loadSyncHealth();
-        await loadSyncPending();
-      } catch (error) {
-        status("authStatus", error.message, true);
-      } finally {
-        button.disabled = false;
-      }
-    }
-
-    async function login() {
-      token = $("token").value.trim() || token;
-      if (!token) return status("authStatus", "请输入管理员密钥", true);
-      try {
-        await loadSyncSummary();
-        await loadSyncHealth();
-        await loadPlans();
-        await loadSyncPending();
-        await loadSyncFailed();
-        sessionStorage.setItem("planAdminToken", token);
-        $("workspace").hidden = false;
-        status("authStatus", "验证成功");
-      } catch (error) {
-        $("workspace").hidden = true;
-        status("authStatus", error.message, true);
-      }
-    }
-
-    $("login").addEventListener("click", login);
-    $("createPlan").addEventListener("click", async () => {
-      const name = $("planName").value.trim();
-      if (!name) return status("createStatus", "请输入计划名称", true);
-      try {
-        await api("/v1/admin/plans", {method: "POST", body: JSON.stringify({name})});
-        $("planName").value = "";
-        status("createStatus", "计划已新建");
-        await loadSyncSummary();
-        await loadSyncHealth();
-        await loadPlans();
-        await loadSyncPending();
-        await loadSyncFailed();
-      } catch (error) {
-        status("createStatus", error.message, true);
-      }
+    function logout(){token="";sessionStorage.removeItem("planAdminToken");$("token").value="";$("workspace").hidden=true;$("loginCard").hidden=false;$("logout").hidden=true;$("connectionState").textContent="未登录";$("connectionState").classList.remove("online");status("authStatus","已退出后台")}
+    $("login").addEventListener("click",login);$("token").addEventListener("keydown",(event)=>{if(event.key==="Enter")login()});$("logout").addEventListener("click",logout);$("planSearch").addEventListener("input",renderPlans);$("planFilter").addEventListener("change",renderPlans);
+    $("pendingSearchButton").addEventListener("click",()=>loadPendingNames({reset:true}));$("pendingSearch").addEventListener("input",()=>{clearTimeout(pendingSearchTimer);pendingSearchTimer=setTimeout(()=>loadPendingNames({reset:true}),350)});$("pendingLoadMore").addEventListener("click",()=>loadPendingNames());$("retryAllFailed").addEventListener("click",retryAllFailed);
+    document.querySelectorAll("[data-jump]").forEach((button)=>button.addEventListener("click",()=>$(button.dataset.jump).scrollIntoView({behavior:"smooth"})));
+    $("createPlan").addEventListener("click",async()=>{const name=$("planName").value.trim();if(!name)return status("createStatus","请输入计划名称",true);if(!window.confirm(`确认新建计划“${name}”？`))return;try{await api("/v1/admin/plans",{method:"POST",body:JSON.stringify({name})});$("planName").value="";status("createStatus","计划已新建");await Promise.all([loadPlans(),loadSyncSummary(),loadSyncHealth()])}catch(error){status("createStatus",error.message,true)}});
+    $("mergePlan").addEventListener("click",async()=>{
+      const sourceId=$("mergeSource").value,targetId=$("mergeTarget").value;if(!sourceId||!targetId||sourceId===targetId)return status("mergeStatus","请选择两个不同的计划",true);
+      try{mergePreview=previewMode?{source:{id:sourceId,name:plans.find((p)=>p.id===sourceId)?.name},target:{id:targetId,name:plans.find((p)=>p.id===targetId)?.name},updateCount:2,imageCount:4}:await api(`/v1/admin/plans/${sourceId}/merge`,{method:"POST",body:JSON.stringify({targetPlanId:targetId,execute:false})});$("mergeDialogTitle").textContent=`把“${mergePreview.source.name}”合并到“${mergePreview.target.name}”`;$("mergeDialogText").textContent=`最终只保留“${mergePreview.target.name}”作为标准计划，“${mergePreview.source.name}”不再单独展示。`;$("mergeDialogImpact").textContent=`将迁移 ${mergePreview.updateCount} 次更新、${mergePreview.imageCount} 张图片。请确认已经有数据库备份。`;$("mergeDialog").showModal()}catch(error){status("mergeStatus",error.message,true)}
     });
-
-    $("mergePlan").addEventListener("click", async () => {
-      const sourceId = $("mergeSource").value;
-      const targetId = $("mergeTarget").value;
-      if (!sourceId || !targetId || sourceId === targetId) {
-        return status("mergeStatus", "请选择两个不同的计划", true);
-      }
-      try {
-        const preview = await api(`/v1/admin/plans/${sourceId}/merge`, {
-          method: "POST",
-          body: JSON.stringify({targetPlanId: targetId, execute: false})
-        });
-        const message = `确认把“${preview.source.name}”合并到“${preview.target.name}”？\n将迁移 ${preview.updateCount} 次更新、${preview.imageCount} 张图片。此操作需要用数据库备份回滚。`;
-        if (!window.confirm(message)) return;
-        await api(`/v1/admin/plans/${sourceId}/merge`, {
-          method: "POST",
-          body: JSON.stringify({targetPlanId: targetId, execute: true})
-        });
-        status("mergeStatus", "合并完成，旧 ID 重定向已生效");
-        await loadPlans();
-      } catch (error) {
-        status("mergeStatus", error.message, true);
-      }
-    });
-
-    $("upload").addEventListener("click", async () => {
-      const planId = $("planSelect").value;
-      const files = $("images").files;
-      if (!planId) return status("uploadStatus", "请先新建计划", true);
-      if (!files.length) return status("uploadStatus", "请选择图片", true);
-      const form = new FormData();
-      for (const file of files) form.append("files", file);
-      const query = new URLSearchParams({
-        title: $("batchTitle").value.trim() || "今日更新",
-        published_at: $("publishedAt").value
-      });
-      status("uploadStatus", "正在上传…");
-      try {
-        const result = await api(`/v1/admin/plans/${planId}/updates?${query}`, {
-          method: "POST",
-          body: form
-        });
-        $("images").value = "";
-        status("uploadStatus", `上传成功，共 ${result.imageCount} 张`);
-        await loadSyncSummary();
-        await loadSyncHealth();
-        await loadPlans();
-        await loadSyncPending();
-        await loadSyncFailed();
-      } catch (error) {
-        status("uploadStatus", error.message, true);
-      }
-    });
-
-    $("publishedAt").value = localDateTime();
-    $("retryAllFailed").addEventListener("click", retryAllFailed);
-    $("token").value = token;
-    if (token) login();
+    $("cancelMerge").addEventListener("click",()=>$("mergeDialog").close());
+    $("confirmMerge").addEventListener("click",async()=>{if(!mergePreview)return;$("confirmMerge").disabled=true;try{await api(`/v1/admin/plans/${mergePreview.source.id}/merge`,{method:"POST",body:JSON.stringify({targetPlanId:mergePreview.target.id,execute:true})});$("mergeDialog").close();status("mergeStatus","合并完成：旧计划已停止展示，更新和收藏会转到保留计划。");await Promise.all([loadPlans(),loadSyncSummary()])}catch(error){$("mergeDialog").close();status("mergeStatus",error.message,true)}finally{$("confirmMerge").disabled=false;mergePreview=null}});
+    $("upload").addEventListener("click",async()=>{const planId=$("planSelect").value,files=$("images").files;if(!planId)return status("uploadStatus","请先选择计划",true);if(!files.length)return status("uploadStatus","请选择图片",true);const form=new FormData();for(const file of files)form.append("files",file);const query=new URLSearchParams({title:$("batchTitle").value.trim()||"今日更新",published_at:$("publishedAt").value});status("uploadStatus","正在上传，请不要关闭页面…");try{const result=await api(`/v1/admin/plans/${planId}/updates?${query}`,{method:"POST",body:form});$("images").value="";status("uploadStatus",`上传完成，共 ${result.imageCount} 张图片`);await Promise.all([loadPlans(),loadSyncSummary(),loadSyncHealth()])}catch(error){status("uploadStatus",error.message,true)}});
+    $("publishedAt").value=localDateTime();$("token").value=token;if(previewMode){$("token").value="preview";login()}else if(token)login();
   </script>
 </body>
 </html>

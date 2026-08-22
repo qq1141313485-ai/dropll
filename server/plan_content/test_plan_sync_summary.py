@@ -106,6 +106,59 @@ class PlanSyncSummaryTest(unittest.TestCase):
         )
         self.assertEqual(plans._empty_sync_governance()["topPendingNames"], [])
 
+    def test_pending_names_are_grouped_for_nontechnical_admin(self) -> None:
+        with closing(plans._connect()) as conn:
+            conn.executescript(
+                """
+                CREATE TABLE plan_sync_articles(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_name TEXT NOT NULL,
+                    source_article_id TEXT NOT NULL,
+                    source_title TEXT NOT NULL,
+                    raw_plan_name TEXT NOT NULL DEFAULT '',
+                    resolved_plan_name TEXT NOT NULL DEFAULT '',
+                    plan_id INTEGER,
+                    update_id INTEGER,
+                    published_at INTEGER,
+                    status TEXT NOT NULL,
+                    error TEXT NOT NULL DEFAULT '',
+                    needs_review INTEGER NOT NULL DEFAULT 0,
+                    synced_at INTEGER NOT NULL
+                );
+                INSERT INTO plan_sync_articles(
+                    source_name, source_article_id, source_title,
+                    raw_plan_name, status, error, synced_at
+                ) VALUES
+                  ('source', '1', '旧文章', '公牛', 'pending_name', '待确认', 10),
+                  ('source', '2', '新文章', '公牛', 'pending_name', '待确认', 20),
+                  ('source', '3', '凤凰文章', '凤凰', 'pending_name', '待确认', 15),
+                  ('source', '4', '无名称', '', 'pending_name', '待确认', 30),
+                  ('source', '5', '已处理', '公牛', 'imported', '', 40);
+                """
+            )
+            conn.commit()
+
+        result = plans.admin_list_pending_plan_names(
+            q="",
+            limit=20,
+            offset=0,
+        )
+
+        self.assertEqual(result["totalNames"], 2)
+        self.assertEqual(result["unidentifiedArticles"], 1)
+        self.assertFalse(result["hasMore"])
+        self.assertEqual(result["items"][0]["rawPlanName"], "公牛")
+        self.assertEqual(result["items"][0]["articleCount"], 2)
+        self.assertEqual(result["items"][0]["sampleTitle"], "新文章")
+
+        filtered = plans.admin_list_pending_plan_names(
+            q="凤",
+            limit=20,
+            offset=0,
+        )
+        self.assertEqual(filtered["totalNames"], 1)
+        self.assertEqual(filtered["items"][0]["rawPlanName"], "凤凰")
+
 
 if __name__ == "__main__":
     unittest.main()
