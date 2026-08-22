@@ -9,6 +9,9 @@
 | 2026-08-21 | `1.0.0+4` | Flutter Web Release | 构建并部署到 `/app/` | 未记录，工作区有未提交改动 | 测试构建 |
 | 2026-08-21 | `1.0.0+4` | iOS 无签名归档 | `flutter build ipa --release --no-codesign` 成功 | Windows 同步目录，commit 未记录 | 编译验证 |
 | 2026-08-21 | `1.0.0+4` | iPhone 15 Pro 开发签名 | 安装并启动成功 | Windows 同步目录，commit 未记录 | 真机测试 |
+| 2026-08-22 | `1.0.0+4` | Flutter Web Release | 本地 `/app/` 基路径构建成功，未部署 | `e772d05` | 编译验证 |
+
+2026-08-22 Web 验证使用 Flutter 3.44.4，产物位于本机忽略目录 `build/web/`；`flutter_bootstrap.js` SHA-256 为 `291DCB4473B0367873D480198B09B62FBD197577ADEC1AD3C1CD51B25668893B`。已检查模板占位符替换、JavaScript 语法、`/app/` 基路径和本地 CanvasKit 配置；未做线上浏览器或真机网络验收。
 
 ## 新记录必填
 
