@@ -6,6 +6,6 @@ _flutter.loader.load({
     canvasKitBaseUrl: "canvaskit/"
   },
   serviceWorkerSettings: {
-    serviceWorkerVersion: "{{flutter_service_worker_version}}"
+    serviceWorkerVersion: {{flutter_service_worker_version}}
   }
 });
