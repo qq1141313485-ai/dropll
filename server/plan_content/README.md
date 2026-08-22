@@ -153,7 +153,7 @@ python3 verify_plan_release.py --base-url https://api.cclloo.com --require-data
 本目录脚本测试：
 
 ```bash
-python3 -m unittest test_plan_source_sync.py test_plan_sync_summary.py test_plan_image_assignments.py test_app_plan_smoke.py test_deploy_check.py test_manage_api_env.py test_patch_api_app.py test_verify_plan_release.py
+python3 -m unittest test_plan_source_sync.py test_plan_article_mirror.py test_plan_articles.py test_plan_sync_summary.py test_plan_image_assignments.py test_app_plan_smoke.py test_deploy_check.py test_manage_api_env.py test_patch_api_app.py test_verify_plan_release.py
 ```
 
 本地模拟安装演练：

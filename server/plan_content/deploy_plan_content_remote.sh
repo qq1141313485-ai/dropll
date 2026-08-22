@@ -208,6 +208,8 @@ tar -xzf $(shell_quote "$PACKAGE_FILE")
 cd $(shell_quote "$PACKAGE_DIR")
 $(shell_quote "$PYTHON_BIN") -m unittest test_plan_aliases.py
 $(shell_quote "$PYTHON_BIN") -m unittest test_plan_activity.py
+$(shell_quote "$PYTHON_BIN") -m unittest test_plan_articles.py
+$(shell_quote "$PYTHON_BIN") -m unittest test_plan_article_mirror.py
 $(shell_quote "$PYTHON_BIN") -m unittest test_plan_sync_summary.py
 $(shell_quote "$PYTHON_BIN") -m unittest test_plan_image_assignments.py
 REMOTE

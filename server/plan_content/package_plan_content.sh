@@ -34,6 +34,8 @@ FILES=(
   test_manage_api_env.py
   test_plan_activity.py
   test_plan_aliases.py
+  test_plan_article_mirror.py
+  test_plan_articles.py
   test_plan_image_classifier.py
   test_plan_image_assignments.py
   test_patch_api_app.py
