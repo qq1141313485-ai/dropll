@@ -11,10 +11,13 @@
 | 2026-08-21 | `1.0.0+4` | iPhone 15 Pro 开发签名 | 安装并启动成功 | Windows 同步目录，commit 未记录 | 真机测试 |
 | 2026-08-22 | `1.0.0+4` | Flutter Web Release | 本地 `/app/` 基路径构建成功，未部署 | `e772d05` | 编译验证 |
 | 2026-08-22 | 不适用 | 计划内容服务部署包 | 搜索修复已部署到生产 API 并通过复验 | `6d8821a` | 生产部署 |
+| 2026-08-22 | `1.0.0+4` | iOS 无签名 Release App | 最新代码编译成功；签名构建受钥匙串权限阻塞 | `c31b384` | 编译验证 |
 
 2026-08-22 Web 验证使用 Flutter 3.44.4，产物位于本机忽略目录 `build/web/`；`flutter_bootstrap.js` SHA-256 为 `291DCB4473B0367873D480198B09B62FBD197577ADEC1AD3C1CD51B25668893B`。已检查模板占位符替换、JavaScript 语法、`/app/` 基路径和本地 CanvasKit 配置；未做线上浏览器或真机网络验收。
 
 计划内容服务生产包为 `outputs/release-20260822-plan-search/caimaster-plan-content-20260822-161132.tar.gz`，大小 56,489 字节，SHA-256 为 `6820acd18905fc8c7fafeeB197fbe2a4b87708e9ff007bc111408528f731b562`。服务器端校验和、Shell 语法和 9 项相关测试通过后安装；生产 API 重启成功。`verify_plan_release.py --require-data` 总验收退出码为 0，部署检查、来源同步 dry-run、公开接口冒烟和严格数据冒烟均通过。外部复验确认不存在名称为 0 条、近期与历史分离、指定 ID 只返回对应计划。部署前备份为 `/opt/caimaster-api/backups/plan-search-20260822-160921.tar.gz`，SHA-256 为 `df284de63f153647749b4de525a7d98117e713c02481e86920a039725e0864e8`。`160040`、`160105` 和 `161044` 均为部署前候选，不得再次使用。
+
+最新 iOS 编译目录为 `/Users/drop/Documents/Codex/2026-08-22/jingqiujing-c31b384`。无签名 `Runner.app` 构建成功，主可执行文件 SHA-256 为 `c69f0f79bf4b3853070985a7db2a7bc1442c840eedde09e01d815f6dcac519ee`；签名构建在 `Flutter.framework` 和 `objective_c.framework` 处因 `errSecInternalComponent` 失败，未安装、未归档、未上传 TestFlight。
 
 ## 新记录必填
 

@@ -23,7 +23,7 @@ Codex 任务摘要、`竞球镜_项目合并上下文_20260816.md` 和仓库专�
 Mac 历史工程、旧 APK、旧构建目录仅可用于排查，禁止反向覆盖正式基线。Mac 上供 iOS 构建的最新同步目录为：
 
 ```text
-/Users/drop/Documents/Codex/2026-08-21/jingqiujing-latest
+/Users/drop/Documents/Codex/2026-08-22/jingqiujing-c31b384
 ```
 
 ## 2. 已确认的产品规则
@@ -101,6 +101,7 @@ Mac 历史工程、旧 APK、旧构建目录仅可用于排查，禁止反向覆
 - iOS 最新代码已同步到 Mac，`flutter pub get` 成功，`flutter build ipa --release --no-codesign` 归档成功。
 - Mac 已配置 Apple Development 证书；iPhone 15 Pro 已被 Xcode/Flutter 识别。
 - 2026-08-21 已通过 `flutter run --release` 成功签名、安装并启动 iPhone 15 Pro。该结果只代表开发签名真机安装成功，不等于 TestFlight 或 App Store 发布验收完成。
+- 2026-08-22 已将来源 commit `c31b384` 以全新目录同步到 Mac；源码包 SHA-256 为 `afa677ba480fcb27f59003b68dc0952f85cfafffba1fcedecf5c7b80104f18da`。Mac 定向静态检查无问题、完整 Flutter 测试 54 项通过，`flutter build ios --release --no-codesign` 成功生成 1.0.0（构建 4）的 `Runner.app`。通过 SSH 执行签名构建仍因登录钥匙串 `errSecInternalComponent` 失败，因此该版本尚未安装到 iPhone，也不是 TestFlight 候选通过结论。
 
 ### 奖金计算
 
