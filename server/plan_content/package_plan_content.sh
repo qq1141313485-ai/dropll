@@ -46,7 +46,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$OUTPUT_DIR" "${WORK_DIR}/${PACKAGE_NAME}"
+mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
+mkdir -p "${WORK_DIR}/${PACKAGE_NAME}"
 
 for file in "${FILES[@]}"; do
   source="${SOURCE_DIR}/${file}"
