@@ -20,6 +20,19 @@ DateTime? savedSchemeCreatedAt(String raw) {
   return null;
 }
 
+String savedSchemeIdentity(String raw) {
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is Map) {
+      final id = '${decoded['id'] ?? ''}'.trim();
+      if (id.isNotEmpty) return 'id:$id';
+    }
+  } catch (_) {
+    // Older saved schemes may be plain text; their full value is the identity.
+  }
+  return 'raw:$raw';
+}
+
 List<String> retainRecentSavedSchemes(
   Iterable<String> values, {
   required DateTime now,

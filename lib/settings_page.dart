@@ -1,9 +1,11 @@
 import 'dart:convert';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'local_data_store.dart';
@@ -30,6 +32,7 @@ class _SettingsPageState extends State<SettingsPage> {
   );
   LocalDataSummary _data = const LocalDataSummary.empty();
   bool _loadingData = true;
+  bool _backupBusy = false;
   String _versionLabel = '正在读取';
 
   @override
@@ -112,6 +115,104 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _exportBackup() async {
+    if (_backupBusy) return;
+    setState(() => _backupBusy = true);
+    try {
+      final now = DateTime.now();
+      final contents = await _dataStore.createBackupJson(exportedAt: now);
+      final date = '${now.year.toString().padLeft(4, '0')}'
+          '${now.month.toString().padLeft(2, '0')}'
+          '${now.day.toString().padLeft(2, '0')}-'
+          '${now.hour.toString().padLeft(2, '0')}'
+          '${now.minute.toString().padLeft(2, '0')}';
+      await SharePlus.instance.share(
+        ShareParams(
+          subject: '球镜本机数据备份',
+          text: '球镜本机数据备份，请妥善保存。',
+          files: [
+            XFile.fromData(
+              Uint8List.fromList(utf8.encode(contents)),
+              mimeType: 'application/json',
+              name: '球镜本机数据备份-$date.json',
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('备份未完成，请稍后重试')),
+      );
+    } finally {
+      if (mounted) setState(() => _backupBusy = false);
+    }
+  }
+
+  Future<void> _restoreBackup() async {
+    if (_backupBusy) return;
+    setState(() => _backupBusy = true);
+    try {
+      const typeGroup = XTypeGroup(
+        label: '球镜备份',
+        extensions: ['json'],
+        mimeTypes: ['application/json'],
+      );
+      final file = await openFile(acceptedTypeGroups: const [typeGroup]);
+      if (file == null) return;
+      final backup = _dataStore.decodeBackup(
+        utf8.decode(await file.readAsBytes()),
+      );
+      if (!mounted) return;
+      final summary = backup.summary;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('恢复这份备份？'),
+          content: Text(
+            '备份中有：\n'
+            '内容收藏 ${summary.contentFavorites} 个\n'
+            '关注更新 ${summary.followedPlans} 个\n'
+            '保存方案 ${summary.savedSchemes} 个\n\n'
+            '恢复会保留本机现有内容，只补充缺少的数据。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('合并恢复'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      final result = await _dataStore.mergeBackup(backup);
+      await _loadData();
+      if (!mounted) return;
+      final message = result.totalAdded == 0
+          ? '恢复完成，没有需要补充的新内容'
+          : '恢复完成，新增 ${result.totalAdded} 项本机数据';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } on FormatException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法读取这份备份，请检查文件后重试')),
+      );
+    } finally {
+      if (mounted) setState(() => _backupBusy = false);
+    }
+  }
+
   Future<void> _open(BuildContext context, Uri uri) async {
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!context.mounted || opened) return;
@@ -183,7 +284,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Padding(
               padding: EdgeInsets.all(14),
               child: Text(
-                '以下内容只保存在本机。卸载 App、清除浏览器数据或更换设备后可能丢失。清理图片缓存不会删除这些内容。',
+                '以下内容只保存在本机。卸载 App、清除浏览器数据或更换设备前，建议先备份。清理图片缓存不会删除这些内容。',
                 style: TextStyle(color: _green, fontSize: 13, height: 1.5),
               ),
             ),
@@ -230,6 +331,19 @@ class _SettingsPageState extends State<SettingsPage> {
                     title: '保存方案',
                     message: '将删除最近7天保存的 ${_data.savedSchemes} 个方案。',
                   ),
+        ),
+        const _SectionLabel('备份与恢复'),
+        _SettingTile(
+          icon: Icons.backup_outlined,
+          title: '备份本机数据',
+          subtitle: _backupBusy ? '正在处理，请稍候' : '导出收藏、关注和保存方案',
+          onTap: _backupBusy ? null : _exportBackup,
+        ),
+        _SettingTile(
+          icon: Icons.settings_backup_restore_rounded,
+          title: '从备份恢复',
+          subtitle: _backupBusy ? '正在处理，请稍候' : '合并恢复，不覆盖现有内容',
+          onTap: _backupBusy ? null : _restoreBackup,
         ),
         const _SectionLabel('数据与使用说明'),
         _SettingTile(
