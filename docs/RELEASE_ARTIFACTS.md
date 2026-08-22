@@ -10,8 +10,11 @@
 | 2026-08-21 | `1.0.0+4` | iOS 无签名归档 | `flutter build ipa --release --no-codesign` 成功 | Windows 同步目录，commit 未记录 | 编译验证 |
 | 2026-08-21 | `1.0.0+4` | iPhone 15 Pro 开发签名 | 安装并启动成功 | Windows 同步目录，commit 未记录 | 真机测试 |
 | 2026-08-22 | `1.0.0+4` | Flutter Web Release | 本地 `/app/` 基路径构建成功，未部署 | `e772d05` | 编译验证 |
+| 2026-08-22 | 不适用 | 计划内容服务部署包 | 搜索修复候选包已生成并校验，未部署 | `7ea167a` | 待部署 |
 
 2026-08-22 Web 验证使用 Flutter 3.44.4，产物位于本机忽略目录 `build/web/`；`flutter_bootstrap.js` SHA-256 为 `291DCB4473B0367873D480198B09B62FBD197577ADEC1AD3C1CD51B25668893B`。已检查模板占位符替换、JavaScript 语法、`/app/` 基路径和本地 CanvasKit 配置；未做线上浏览器或真机网络验收。
+
+计划内容服务候选包为 `outputs/release-20260822-plan-search/caimaster-plan-content-20260822-160105.tar.gz`，大小 56,444 字节，SHA-256 为 `7b5fa7e98fbc985f947bf32449dbde4e6f9bba8d2eda30819a90725b60d5a9b7`。压缩包共 31 个条目，已确认包含计划筛选 SQL 修复、名称搜索冒烟检查及相对输出目录修复；尚未上传或安装。目录中的 `160040` 为提交前候选，不得部署。
 
 ## 新记录必填
 
