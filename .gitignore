@@ -46,6 +46,9 @@ server/market_odds/work/
 /build/
 /coverage/
 outputs/*-local.jsonl
+/outputs/filing-apk/
+/outputs/release-*/
+/outputs/web-qa/
 **/node_modules/
 
 # Symbolication related
