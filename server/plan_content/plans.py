@@ -79,6 +79,10 @@ PLAN_SOURCE_REQUEST_TIMEOUT = float(
 PLAN_ARTICLES_PUBLIC_ENABLED = (
     os.environ.get("CAIMASTER_PLAN_ARTICLES_PUBLIC_ENABLED", "0") == "1"
 )
+PLAN_ARTICLE_MIRROR_SINCE = max(
+    0,
+    int(os.environ.get("CAIMASTER_PLAN_SOURCE_MIRROR_SINCE", "0")),
+)
 Image.MAX_IMAGE_PIXELS = 60_000_000
 PLAN_SYNC_SERVICE_PATH = Path("/etc/systemd/system/caimaster-plan-source-sync.service")
 PLAN_SYNC_TIMER_PATH = Path("/etc/systemd/system/caimaster-plan-source-sync.timer")
@@ -1514,18 +1518,24 @@ def _sync_governance_summary(
                 "SELECT COUNT(*) FROM plan_article_versions"
             ).fetchone()[0]
         )
-        mirror_backlog = int(
-            conn.execute(
-                """
-                SELECT COUNT(*)
-                FROM plan_sync_articles sync
-                LEFT JOIN plan_articles article
-                  ON article.source_name = sync.source_name
-                 AND article.source_article_id = sync.source_article_id
-                WHERE sync.status != 'ignored' AND article.id IS NULL
-                """
-            ).fetchone()[0]
-        )
+        if PLAN_ARTICLE_MIRROR_SINCE > 0:
+            mirror_backlog = int(
+                conn.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM plan_sync_articles sync
+                    LEFT JOIN plan_articles article
+                      ON article.source_name = sync.source_name
+                     AND article.source_article_id = sync.source_article_id
+                    WHERE sync.status != 'ignored'
+                      AND sync.published_at >= ?
+                      AND article.id IS NULL
+                    """,
+                    (PLAN_ARTICLE_MIRROR_SINCE,),
+                ).fetchone()[0]
+            )
+        else:
+            mirror_backlog = 0
     else:
         mirrored_articles = 0
         mirrored_versions = 0

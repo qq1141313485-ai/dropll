@@ -113,6 +113,45 @@ class PlanSyncSummaryTest(unittest.TestCase):
         )
         self.assertEqual(plans._empty_sync_governance()["topPendingNames"], [])
 
+    def test_mirror_backlog_only_counts_articles_after_cutover(self) -> None:
+        with closing(plans._connect()) as conn:
+            conn.executescript(
+                """
+                CREATE TABLE plan_sync_articles(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_name TEXT NOT NULL,
+                    source_article_id TEXT NOT NULL,
+                    source_title TEXT NOT NULL,
+                    raw_plan_name TEXT NOT NULL DEFAULT '',
+                    resolved_plan_name TEXT NOT NULL DEFAULT '',
+                    plan_id INTEGER,
+                    update_id INTEGER,
+                    published_at INTEGER,
+                    status TEXT NOT NULL,
+                    error TEXT NOT NULL DEFAULT '',
+                    needs_review INTEGER NOT NULL DEFAULT 0,
+                    synced_at INTEGER NOT NULL
+                );
+                INSERT INTO plan_sync_articles(
+                    source_name, source_article_id, source_title,
+                    published_at, status, synced_at
+                ) VALUES
+                  ('source', 'old', '起点前', 99, 'imported', 99),
+                  ('source', 'new', '起点后', 101, 'imported', 101),
+                  ('source', 'done', '已镜像', 102, 'mirrored', 102);
+                INSERT INTO plan_articles(
+                    source_name, source_article_id, title, published_at,
+                    is_active, created_at, updated_at
+                ) VALUES ('source', 'done', '已镜像', 102, 1, 102, 102);
+                """
+            )
+            conn.commit()
+            with patch.object(plans, "PLAN_ARTICLE_MIRROR_SINCE", 100):
+                result = plans._sync_governance_summary(conn, now=200)
+
+        self.assertEqual(result["mirroredArticles"], 1)
+        self.assertEqual(result["mirrorBacklog"], 1)
+
     def test_pending_names_are_grouped_for_nontechnical_admin(self) -> None:
         with closing(plans._connect()) as conn:
             conn.executescript(

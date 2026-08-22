@@ -80,6 +80,10 @@ MIRROR_BACKFILL_LIMIT = max(
     1,
     int(os.environ.get("CAIMASTER_PLAN_SOURCE_MIRROR_BACKFILL_LIMIT", "10")),
 )
+MIRROR_SINCE = max(
+    0,
+    int(os.environ.get("CAIMASTER_PLAN_SOURCE_MIRROR_SINCE", "0")),
+)
 USER_AGENT = "CaimasterPlanSync/1.0 (+authorized-content-syndication)"
 logging.basicConfig(
     level=os.environ.get("CAIMASTER_PLAN_SOURCE_LOG_LEVEL", "INFO"),
@@ -329,6 +333,8 @@ def _fetch_queued_articles() -> dict[str, dict[str, Any]]:
 
 
 def _fetch_mirror_backlog() -> dict[str, dict[str, Any]]:
+    if MIRROR_SINCE <= 0:
+        return {}
     with closing(_connect()) as conn:
         rows = conn.execute(
             """
@@ -340,11 +346,12 @@ def _fetch_mirror_backlog() -> dict[str, dict[str, Any]]:
              AND article.source_article_id = sync.source_article_id
             WHERE sync.source_name = ?
               AND sync.status != 'ignored'
+              AND sync.published_at >= ?
               AND article.id IS NULL
             ORDER BY sync.published_at DESC, sync.id DESC
             LIMIT ?
             """,
-            (SOURCE_NAME, MIRROR_BACKFILL_LIMIT),
+            (SOURCE_NAME, MIRROR_SINCE, MIRROR_BACKFILL_LIMIT),
         ).fetchall()
     return {
         str(row["source_article_id"]): {
@@ -408,6 +415,11 @@ def _fetch_articles(*, use_sync_store: bool = True) -> list[dict[str, Any]]:
                 encountered_imported = True
                 continue
             published_ts = int(item.get("publishtime") or item.get("createtime") or 0)
+            if MIRROR_ARTICLES and (
+                published_ts <= 0 or published_ts < MIRROR_SINCE
+            ):
+                old_streak += 1
+                continue
             if published_ts and datetime.fromtimestamp(published_ts, CHINA_TZ) < cutoff:
                 old_streak += 1
                 continue
@@ -1125,6 +1137,12 @@ def _run_dry_run() -> int:
 
 
 def run() -> int:
+    if MIRROR_ARTICLES and MIRROR_SINCE <= 0:
+        logger.error(
+            "article mirror requires CAIMASTER_PLAN_SOURCE_MIRROR_SINCE; "
+            "refusing unbounded historical migration"
+        )
+        return 1
     if DRY_RUN:
         return _run_dry_run()
     if os.environ.get("CAIMASTER_PLAN_SOURCE_ENABLED", "0") != "1":

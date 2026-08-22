@@ -55,6 +55,26 @@ def _create_db(path: Path) -> None:
 
 
 class DeployCheckTest(unittest.TestCase):
+    def test_article_mirror_requires_explicit_start_time(self) -> None:
+        checks: list[deploy_check.Check] = []
+        with patch.dict(
+            os.environ,
+            {
+                "CAIMASTER_PLAN_ADMIN_TOKEN": "configured-token-value",
+                "CAIMASTER_PLAN_SOURCE_ENABLED": "1",
+                "CAIMASTER_PLAN_SOURCE_MIRROR_ARTICLES": "1",
+                "CAIMASTER_PLAN_SOURCE_MIRROR_SINCE": "0",
+                "CAIMASTER_PLAN_ARTICLES_PUBLIC_ENABLED": "0",
+            },
+            clear=True,
+        ):
+            deploy_check._check_environment(checks)
+
+        start_check = next(
+            check for check in checks if check.name == "article mirror start"
+        )
+        self.assertEqual(start_check.level, "error")
+
     def test_public_article_api_requires_mirror_mode(self) -> None:
         checks: list[deploy_check.Check] = []
         with patch.dict(

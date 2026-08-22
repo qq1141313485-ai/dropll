@@ -35,6 +35,27 @@ else:
 
 @unittest.skipIf(bool(IMPORT_ERROR), IMPORT_ERROR)
 class PlanArticleMirrorTest(unittest.TestCase):
+    def test_source_listing_ignores_articles_before_cutover(self) -> None:
+        response = {
+            "data": {
+                "pageList": {
+                    "data": [
+                        {"id": "old", "title": "旧文章", "publishtime": 1_780_000_000},
+                        {"id": "new", "title": "新文章", "publishtime": 1_800_000_000},
+                    ]
+                }
+            }
+        }
+        with (
+            mock.patch.object(plan_source_sync, "MIRROR_ARTICLES", True),
+            mock.patch.object(plan_source_sync, "MIRROR_SINCE", 1_790_000_000),
+            mock.patch.object(plan_source_sync, "MAX_PAGES", 1),
+            mock.patch.object(plan_source_sync, "_request_json", return_value=response),
+        ):
+            articles = plan_source_sync._fetch_articles(use_sync_store=False)
+
+        self.assertEqual([item["id"] for item in articles], ["new"])
+
     def test_mirror_keeps_order_and_only_adds_a_changed_full_version(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -60,6 +81,11 @@ class PlanArticleMirrorTest(unittest.TestCase):
                 mock.patch.object(plans, "PLAN_DB_PATH", database),
                 mock.patch.object(plans, "PLAN_MEDIA_DIR", media),
                 mock.patch.object(plan_source_sync, "PLAN_MEDIA_DIR", media),
+                mock.patch.object(
+                    plan_source_sync,
+                    "MIRROR_SINCE",
+                    1787414400,
+                ),
                 mock.patch.object(plan_source_sync, "_connect", connect),
                 mock.patch.object(
                     plan_source_sync,
@@ -114,7 +140,8 @@ class PlanArticleMirrorTest(unittest.TestCase):
                 changed = plan_source_sync._sync_article_mirror(article, rules)
 
             self.assertEqual((first, unchanged, changed), ("imported", "duplicate", "imported"))
-            self.assertIn("395789", backlog)
+            self.assertNotIn("395789", backlog)
+            self.assertIn("395790", backlog)
             with closing(connect()) as conn:
                 article_count = conn.execute(
                     "SELECT COUNT(*) FROM plan_articles"

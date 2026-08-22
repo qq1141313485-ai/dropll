@@ -135,8 +135,9 @@ python3 verify_plan_release.py --base-url https://api.cclloo.com
 符合计划文章格式的来源文章按原始图片顺序保存为一个独立合集；标题或图片内容变化时新增
 一个完整版本，不覆盖旧版本。公开读取接口为 `/v1/plan-articles`、
 `/v1/plan-articles/recent` 和 `/v1/plan-articles/{id}/versions`。首次生产启用前必须先在
-备份数据库上完成历史迁移与数量核对；每轮默认只回填 10 篇，可通过
-`CAIMASTER_PLAN_SOURCE_MIRROR_BACKFILL_LIMIT` 调整。迁移验收完成后再设置
+`CAIMASTER_PLAN_SOURCE_MIRROR_SINCE` 写入明确的 Unix 时间戳；同步只接收该时间之后发布
+的文章，未设置起点时会拒绝启动，避免意外搬运全部历史。每轮最多补抓 10 篇启用后漏掉
+的文章，可通过 `CAIMASTER_PLAN_SOURCE_MIRROR_BACKFILL_LIMIT` 调整。内容验收完成后再设置
 `CAIMASTER_PLAN_ARTICLES_PUBLIC_ENABLED=1` 让 App 切换到原文合集；两个开关默认关闭，
 不能仅因代码部署就直接开启。
 需要启用同步 timer 时执行：

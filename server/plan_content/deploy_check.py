@@ -72,6 +72,26 @@ def _check_environment(checks: list[Check]) -> None:
     public_enabled = (
         os.environ.get("CAIMASTER_PLAN_ARTICLES_PUBLIC_ENABLED") == "1"
     )
+    mirror_since_raw = os.environ.get(
+        "CAIMASTER_PLAN_SOURCE_MIRROR_SINCE", "0"
+    ).strip()
+    try:
+        mirror_since = int(mirror_since_raw)
+    except ValueError:
+        mirror_since = 0
+    checks.append(
+        Check(
+            "error" if mirror_enabled and mirror_since <= 0 else "ok",
+            "article mirror start",
+            (
+                "missing or invalid; refusing historical migration"
+                if mirror_enabled and mirror_since <= 0
+                else str(mirror_since)
+                if mirror_since > 0
+                else "not configured while mirror is off"
+            ),
+        )
+    )
     checks.append(
         Check(
             "ok" if mirror_enabled else "warn",
