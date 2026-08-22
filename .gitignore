@@ -44,6 +44,7 @@ server/market_odds/work/
 .pub-cache/
 .pub/
 /build/
+/dist/
 /coverage/
 outputs/*-local.jsonl
 /outputs/filing-apk/
