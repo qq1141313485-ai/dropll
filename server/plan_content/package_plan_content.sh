@@ -52,15 +52,28 @@ mkdir -p "${WORK_DIR}/${PACKAGE_NAME}"
 
 for file in "${FILES[@]}"; do
   source="${SOURCE_DIR}/${file}"
+  target="${WORK_DIR}/${PACKAGE_NAME}/${file}"
   if [[ ! -f "$source" ]]; then
     echo "Missing package file: $source" >&2
     exit 1
   fi
-  install -m 0644 "$source" "${WORK_DIR}/${PACKAGE_NAME}/${file}"
+  case "$file" in
+    *.sh|*.service|*.timer)
+      sed 's/\r$//' "$source" > "$target"
+      chmod 0644 "$target"
+      ;;
+    *)
+      install -m 0644 "$source" "$target"
+      ;;
+  esac
 done
 chmod 0755 "${WORK_DIR}/${PACKAGE_NAME}/install_plan_content.sh"
 chmod 0755 "${WORK_DIR}/${PACKAGE_NAME}/deploy_plan_content_remote.sh"
 chmod 0755 "${WORK_DIR}/${PACKAGE_NAME}/package_plan_content.sh" 2>/dev/null || true
+
+for script in "${WORK_DIR}/${PACKAGE_NAME}"/*.sh; do
+  bash -n "$script"
+done
 
 ARCHIVE="${OUTPUT_DIR}/${PACKAGE_NAME}.tar.gz"
 CHECKSUM="${ARCHIVE}.sha256"
