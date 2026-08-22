@@ -18,6 +18,8 @@
 
 计划内容服务生产包为 `outputs/release-20260822-plan-search/caimaster-plan-content-20260822-161132.tar.gz`，大小 56,489 字节，SHA-256 为 `6820acd18905fc8c7fafeeB197fbe2a4b87708e9ff007bc111408528f731b562`。服务器端校验和、Shell 语法和 9 项相关测试通过后安装；生产 API 重启成功。`verify_plan_release.py --require-data` 总验收退出码为 0，部署检查、来源同步 dry-run、公开接口冒烟和严格数据冒烟均通过。外部复验确认不存在名称为 0 条、近期与历史分离、指定 ID 只返回对应计划。部署前备份为 `/opt/caimaster-api/backups/plan-search-20260822-160921.tar.gz`，SHA-256 为 `df284de63f153647749b4de525a7d98117e713c02481e86920a039725e0864e8`。`160040`、`160105` 和 `161044` 均为部署前候选，不得再次使用。
 
+2026-08-23 原文合集服务端生产包来源 commit 为 `0c42455`，文件为 `dist/caimaster-plan-content-20260823-013055.tar.gz`，大小 79,534 字节，SHA-256 为 `cacca464068a641ce1df7bb5418b6c6dafba8b5288fa352c3057530a4eaa6325`。服务器校验和与安装前 31 项门禁通过，安装后 `verify_plan_release.py --require-data` 通过。生产只从 `2026-08-23 01:31:54 +08:00` 向前镜像，历史不迁移，App 公开入口保持关闭。试运行的 20 篇合集及 138 个媒体文件已清理，旧同步记录从部署前备份恢复；备份为 `/opt/caimaster-api/backups/plans-before-article-mirror-20260823-011657.db`，SHA-256 为 `d868e94def22882677d98e9432d57ec6774bd3584b17f37843c5d9a82b2e7d9d`。`010843`、`012528` 为部署候选，不得再次使用。
+
 最新 iOS 编译目录为 `/Users/drop/Documents/Codex/2026-08-22/jingqiujing-c31b384`。无签名 `Runner.app` 构建成功，主可执行文件 SHA-256 为 `c69f0f79bf4b3853070985a7db2a7bc1442c840eedde09e01d815f6dcac519ee`。SSH 签名最初在 `Flutter.framework` 和 `objective_c.framework` 处因 `errSecInternalComponent` 失败；用户在 Mac 前台授权钥匙串后重新构建成功，随后签名验证、设备安装、启动及计划名称搜索专项均通过。该构建未归档、未上传 TestFlight。
 
 ## 新记录必填
