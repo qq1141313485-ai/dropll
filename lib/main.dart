@@ -75,14 +75,16 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int index = 0;
+  int _settingsRefreshVersion = 0;
   final Set<int> _visitedPages = {0};
 
-  static const pages = [
-    ScoreBoardPage(),
-    SelectionPage(),
-    PlanCenterPage(),
-    SettingsPage(),
-  ];
+  Widget _pageAt(int pageIndex) => switch (pageIndex) {
+        0 => const ScoreBoardPage(),
+        1 => const SelectionPage(),
+        2 => const PlanCenterPage(),
+        3 => SettingsPage(refreshVersion: _settingsRefreshVersion),
+        _ => const SizedBox.shrink(),
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -91,9 +93,9 @@ class _AppShellState extends State<AppShell> {
         child: IndexedStack(
           index: index,
           children: List.generate(
-            pages.length,
+            4,
             (pageIndex) => _visitedPages.contains(pageIndex)
-                ? pages[pageIndex]
+                ? _pageAt(pageIndex)
                 : const SizedBox.shrink(),
           ),
         ),
@@ -106,6 +108,7 @@ class _AppShellState extends State<AppShell> {
           setState(() {
             index = value;
             _visitedPages.add(value);
+            if (value == 3) _settingsRefreshVersion += 1;
           });
         },
         destinations: const [

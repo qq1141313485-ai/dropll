@@ -10,9 +10,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
+import 'local_data_store.dart';
 import 'plan_content_favorite_store.dart';
-
-const _favoriteKey = 'plan_favorite_source_ids_v1';
 
 class PlanCenterPage extends StatefulWidget {
   const PlanCenterPage({super.key});
@@ -55,7 +54,8 @@ class _PlanCenterPageState extends State<PlanCenterPage> {
     try {
       final prefs = await SharedPreferences.getInstance();
       favoriteIds =
-          (prefs.getStringList(_favoriteKey) ?? const <String>[]).toSet();
+          (prefs.getStringList(planFavoriteSourceIdsKey) ?? const <String>[])
+              .toSet();
       contentFavorites = await const PlanContentFavoriteStore().load();
       try {
         final articleBody = await _client.fetchRecentPlanArticles(limit: 6);
@@ -106,7 +106,10 @@ class _PlanCenterPageState extends State<PlanCenterPage> {
           migratedFavorites = true;
         }
         if (migratedFavorites) {
-          await prefs.setStringList(_favoriteKey, favoriteIds.toList()..sort());
+          await prefs.setStringList(
+            planFavoriteSourceIdsKey,
+            favoriteIds.toList()..sort(),
+          );
         }
         final merged = <String, PlanSource>{
           for (final source in sources) source.id: source,
@@ -135,7 +138,8 @@ class _PlanCenterPageState extends State<PlanCenterPage> {
   Future<void> _reloadFavorites() async {
     final prefs = await SharedPreferences.getInstance();
     final favoriteIds =
-        (prefs.getStringList(_favoriteKey) ?? const <String>[]).toSet();
+        (prefs.getStringList(planFavoriteSourceIdsKey) ?? const <String>[])
+            .toSet();
     final contentFavorites = await const PlanContentFavoriteStore().load();
     if (!mounted) return;
     setState(() {
@@ -448,7 +452,7 @@ class _AllPlansPageState extends State<AllPlansPage> {
       var ids = const <String>[];
       if (widget.favoriteOnly) {
         final prefs = await SharedPreferences.getInstance();
-        ids = prefs.getStringList(_favoriteKey) ?? const <String>[];
+        ids = prefs.getStringList(planFavoriteSourceIdsKey) ?? const <String>[];
         if (ids.isEmpty) {
           if (!mounted || generation != _loadGeneration) return;
           setState(() {
@@ -773,21 +777,25 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
 
   Future<void> _loadFavorite() async {
     final prefs = await SharedPreferences.getInstance();
-    final ids = prefs.getStringList(_favoriteKey) ?? const <String>[];
+    final ids =
+        prefs.getStringList(planFavoriteSourceIdsKey) ?? const <String>[];
     if (!mounted) return;
     setState(() => _following = ids.contains(widget.source.id));
   }
 
   Future<void> _toggleFavorite() async {
     final prefs = await SharedPreferences.getInstance();
-    final ids = prefs.getStringList(_favoriteKey) ?? <String>[];
+    final ids = prefs.getStringList(planFavoriteSourceIdsKey) ?? <String>[];
     final nextIds = ids.toSet();
     if (_following) {
       nextIds.remove(widget.source.id);
     } else {
       nextIds.add(widget.source.id);
     }
-    await prefs.setStringList(_favoriteKey, nextIds.toList()..sort());
+    await prefs.setStringList(
+      planFavoriteSourceIdsKey,
+      nextIds.toList()..sort(),
+    );
     if (!mounted) return;
     setState(() => _following = !_following);
   }
