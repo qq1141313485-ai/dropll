@@ -16,11 +16,18 @@ class PlanSyncSummaryTest(unittest.TestCase):
         root = Path(self.temp_dir.name)
         self.db_patch = patch.object(plans, "PLAN_DB_PATH", root / "plans.db")
         self.media_patch = patch.object(plans, "PLAN_MEDIA_DIR", root / "media")
+        self.map_patch = patch.object(
+            plans,
+            "PLAN_SOURCE_MAP_PATH",
+            root / "plan_source_map.json",
+        )
         self.db_patch.start()
         self.media_patch.start()
+        self.map_patch.start()
         plans._init_store()
 
     def tearDown(self) -> None:
+        self.map_patch.stop()
         self.media_patch.stop()
         self.db_patch.stop()
         self.temp_dir.cleanup()
@@ -158,6 +165,108 @@ class PlanSyncSummaryTest(unittest.TestCase):
         )
         self.assertEqual(filtered["totalNames"], 1)
         self.assertEqual(filtered["items"][0]["rawPlanName"], "凤凰")
+
+    def test_image_split_rule_is_saved_once_and_queues_same_name(self) -> None:
+        now = 2_000_000_000
+        with closing(plans._connect()) as conn:
+            conn.executescript(
+                """
+                CREATE TABLE plan_sync_articles(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_name TEXT NOT NULL,
+                    source_article_id TEXT NOT NULL,
+                    source_title TEXT NOT NULL,
+                    raw_plan_name TEXT NOT NULL DEFAULT '',
+                    resolved_plan_name TEXT NOT NULL DEFAULT '',
+                    plan_id INTEGER,
+                    update_id INTEGER,
+                    published_at INTEGER,
+                    status TEXT NOT NULL,
+                    error TEXT NOT NULL DEFAULT '',
+                    needs_review INTEGER NOT NULL DEFAULT 0,
+                    synced_at INTEGER NOT NULL
+                );
+                INSERT INTO plan_sync_articles(
+                    source_name, source_article_id, source_title,
+                    raw_plan_name, status, synced_at
+                ) VALUES
+                  ('hongxisaishi', '10', '组合文章一', '甲，乙', 'pending_name', 1),
+                  ('hongxisaishi', '11', '组合文章二', '甲，乙', 'pending_name', 2);
+                """
+            )
+            conn.commit()
+
+        with patch.object(
+            plans,
+            "_fetch_source_article_images",
+            return_value=["https://one", "https://two", "https://three"],
+        ):
+            result = plans.admin_save_plan_image_assignment(
+                {
+                    "sourceArticleId": "10",
+                    "rawPlanName": "甲，乙",
+                    "targets": ["乙", plans.IGNORE_IMAGE_ASSIGNMENT, "甲"],
+                }
+            )
+
+        self.assertEqual(result["updatedRows"], 2)
+        self.assertEqual(result["planNames"], ["乙", "甲"])
+        rules = plans._load_source_name_rules()
+        self.assertEqual(
+            rules["imageAssignments"]["甲，乙"],
+            ["乙", plans.IGNORE_IMAGE_ASSIGNMENT, "甲"],
+        )
+        self.assertNotIn(plans.IGNORE_IMAGE_ASSIGNMENT, rules["allowedNames"])
+        with closing(plans._connect()) as conn:
+            statuses = conn.execute(
+                "SELECT status FROM plan_sync_articles ORDER BY id"
+            ).fetchall()
+        self.assertEqual(
+            [row["status"] for row in statuses],
+            ["name_configured", "name_configured"],
+        )
+
+    def test_image_split_rejects_changed_image_count(self) -> None:
+        with closing(plans._connect()) as conn:
+            conn.executescript(
+                """
+                CREATE TABLE plan_sync_articles(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source_name TEXT NOT NULL,
+                    source_article_id TEXT NOT NULL,
+                    source_title TEXT NOT NULL,
+                    raw_plan_name TEXT NOT NULL DEFAULT '',
+                    resolved_plan_name TEXT NOT NULL DEFAULT '',
+                    plan_id INTEGER,
+                    update_id INTEGER,
+                    published_at INTEGER,
+                    status TEXT NOT NULL,
+                    error TEXT NOT NULL DEFAULT '',
+                    needs_review INTEGER NOT NULL DEFAULT 0,
+                    synced_at INTEGER NOT NULL
+                );
+                INSERT INTO plan_sync_articles(
+                    source_name, source_article_id, source_title,
+                    raw_plan_name, status, synced_at
+                ) VALUES ('hongxisaishi', '20', '组合文章', '甲，乙', 'pending_name', 1);
+                """
+            )
+            conn.commit()
+
+        with patch.object(
+            plans,
+            "_fetch_source_article_images",
+            return_value=["https://one", "https://two"],
+        ):
+            with self.assertRaises(plans.HTTPException) as raised:
+                plans.admin_save_plan_image_assignment(
+                    {
+                        "sourceArticleId": "20",
+                        "rawPlanName": "甲，乙",
+                        "targets": ["甲"],
+                    }
+                )
+        self.assertEqual(raised.exception.status_code, 409)
 
 
 if __name__ == "__main__":

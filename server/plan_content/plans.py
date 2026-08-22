@@ -7,6 +7,8 @@ import os
 import secrets
 import sqlite3
 import time
+import urllib.error
+import urllib.request
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -28,6 +30,8 @@ from fastapi import (
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+from plan_source_common import extract_image_urls
 
 
 CHINA_TZ = timezone(timedelta(hours=8))
@@ -64,6 +68,14 @@ PLAN_SOURCE_MAP_PATH = Path(
 )
 PLAN_ADMIN_TOKEN = os.environ.get("CAIMASTER_PLAN_ADMIN_TOKEN", "").strip()
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
+IGNORE_IMAGE_ASSIGNMENT = "__IGNORE__"
+PLAN_SOURCE_API_URL = os.environ.get(
+    "CAIMASTER_PLAN_SOURCE_API",
+    "https://api.tchongxi.com",
+).rstrip("/")
+PLAN_SOURCE_REQUEST_TIMEOUT = float(
+    os.environ.get("CAIMASTER_PLAN_SOURCE_TIMEOUT_SECONDS", "20")
+)
 Image.MAX_IMAGE_PIXELS = 60_000_000
 PLAN_SYNC_SERVICE_PATH = Path("/etc/systemd/system/caimaster-plan-source-sync.service")
 PLAN_SYNC_TIMER_PATH = Path("/etc/systemd/system/caimaster-plan-source-sync.timer")
@@ -209,6 +221,7 @@ def _normalize_source_name_rules(value: Any) -> dict[str, Any]:
         name
         for targets in image_assignments.values()
         for name in targets
+        if name != IGNORE_IMAGE_ASSIGNMENT
     )
     return {
         "allowAutoCreate": bool(value.get("allowAutoCreate", False)),
@@ -881,6 +894,190 @@ def admin_list_pending_plan_names(
         "offset": offset,
         "hasMore": has_more,
         "nextOffset": offset + len(visible) if has_more else None,
+    }
+
+
+def _fetch_source_article_images(source_article_id: str) -> list[str]:
+    if not source_article_id.isdigit():
+        raise HTTPException(status_code=400, detail="来源文章编号不正确")
+    url = f"{PLAN_SOURCE_API_URL}/addons/cms/api.archives/detail"
+    payload = json.dumps({"id": int(source_article_id)}).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "User-Agent": "CaimasterPlanAdmin/1.0",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+    )
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(
+                request,
+                timeout=PLAN_SOURCE_REQUEST_TIMEOUT,
+            ) as response:
+                raw = response.read(3 * 1024 * 1024 + 1)
+            if len(raw) > 3 * 1024 * 1024:
+                raise ValueError("source response too large")
+            body = json.loads(raw.decode("utf-8"))
+            if not isinstance(body, dict) or body.get("code") != 1:
+                raise ValueError("source rejected request")
+            archive = ((body.get("data") or {}).get("archivesInfo") or {})
+            image_urls = extract_image_urls(
+                archive.get("content"),
+                PLAN_SOURCE_API_URL,
+            )
+            if not image_urls:
+                fallback = str(archive.get("image") or "").strip().split("?", 1)[0]
+                if fallback.startswith("https://"):
+                    image_urls = [fallback]
+            if not image_urls:
+                raise HTTPException(status_code=404, detail="这篇文章没有可拆分图片")
+            return image_urls[:30]
+        except HTTPException:
+            raise
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep(0.4 * (attempt + 1))
+    raise HTTPException(
+        status_code=502,
+        detail=f"暂时无法读取来源图片：{last_error}",
+    )
+
+
+def _pending_article_for_split(source_article_id: str) -> sqlite3.Row:
+    with closing(_connect()) as conn:
+        if not _ensure_plan_sync_article_columns(conn):
+            raise HTTPException(status_code=404, detail="没有找到待处理文章")
+        row = conn.execute(
+            """
+            SELECT source_article_id, source_title, raw_plan_name, synced_at
+            FROM plan_sync_articles
+            WHERE source_name = 'hongxisaishi'
+              AND source_article_id = ?
+              AND status IN ('pending_name', 'name_configured')
+            LIMIT 1
+            """,
+            (source_article_id,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="没有找到待拆分文章")
+    if not str(row["raw_plan_name"] or "").strip():
+        raise HTTPException(status_code=409, detail="这篇文章尚未提取出名称")
+    return row
+
+
+@admin_router.get(
+    "/plan-sync/article-images",
+    dependencies=[Depends(_require_admin)],
+)
+def admin_get_pending_article_images(
+    source_article_id: str = Query(alias="sourceArticleId", max_length=40),
+) -> dict[str, Any]:
+    source_article_id = source_article_id.strip()
+    article = _pending_article_for_split(source_article_id)
+    image_urls = _fetch_source_article_images(source_article_id)
+    return {
+        "sourceArticleId": source_article_id,
+        "sourceTitle": article["source_title"],
+        "rawPlanName": article["raw_plan_name"],
+        "imageCount": len(image_urls),
+        "images": [
+            {"position": index + 1, "imageUrl": image_url}
+            for index, image_url in enumerate(image_urls)
+        ],
+    }
+
+
+@admin_router.post(
+    "/plan-sync/image-assignments",
+    dependencies=[Depends(_require_admin)],
+)
+def admin_save_plan_image_assignment(
+    body: dict[str, Any] = Body(default={}),
+) -> dict[str, Any]:
+    source_article_id = str(body.get("sourceArticleId") or "").strip()
+    raw_name = _clean_name(body.get("rawPlanName"))
+    raw_targets = body.get("targets")
+    if not raw_name:
+        raise HTTPException(status_code=400, detail="待拆分名称不能为空")
+    if not isinstance(raw_targets, list) or not raw_targets or len(raw_targets) > 30:
+        raise HTTPException(status_code=400, detail="请为每张图片选择计划")
+    article = _pending_article_for_split(source_article_id)
+    if _clean_name(article["raw_plan_name"]) != raw_name:
+        raise HTTPException(status_code=409, detail="文章名称已经变化，请重新打开")
+    image_urls = _fetch_source_article_images(source_article_id)
+    if len(raw_targets) != len(image_urls):
+        raise HTTPException(
+            status_code=409,
+            detail="来源图片数量已经变化，请重新检查后再保存",
+        )
+    targets = []
+    for value in raw_targets:
+        text = str(value or "").strip()
+        target = (
+            IGNORE_IMAGE_ASSIGNMENT
+            if text.upper() == IGNORE_IMAGE_ASSIGNMENT
+            else _clean_name(text)
+        )
+        if not target:
+            raise HTTPException(status_code=400, detail="每张图片都必须选择计划或忽略")
+        targets.append(target)
+    plan_names = {
+        target for target in targets if target != IGNORE_IMAGE_ASSIGNMENT
+    }
+    if not plan_names:
+        raise HTTPException(status_code=400, detail="不能忽略这篇文章的全部图片")
+
+    rules = _load_source_name_rules()
+    image_assignments = dict(rules["imageAssignments"])
+    image_assignments[raw_name] = targets
+    allowed_names = set(rules["allowedNames"]) | plan_names
+    ignored_names = set(rules["ignoredNames"])
+    ignored_names.discard(raw_name)
+    aliases = dict(rules["aliases"])
+    aliases.pop(raw_name, None)
+    updated_rules = _normalize_source_name_rules(
+        {
+            **rules,
+            "allowedNames": sorted(allowed_names),
+            "aliases": aliases,
+            "imageAssignments": image_assignments,
+            "ignoredNames": sorted(ignored_names),
+        }
+    )
+    _save_source_name_rules(updated_rules)
+
+    with closing(_connect()) as conn:
+        cursor = conn.execute(
+            """
+            UPDATE plan_sync_articles
+            SET status = 'name_configured',
+                resolved_plan_name = '',
+                error = 'image split configured; waiting for next sync',
+                needs_review = 0,
+                synced_at = ?
+            WHERE raw_plan_name = ?
+              AND status = 'pending_name'
+            """,
+            (_now_ts(), raw_name),
+        )
+        conn.commit()
+    return {
+        "ok": True,
+        "rawPlanName": raw_name,
+        "imageCount": len(targets),
+        "planNames": sorted(plan_names),
+        "updatedRows": cursor.rowcount,
     }
 
 

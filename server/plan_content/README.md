@@ -123,6 +123,9 @@ python3 verify_plan_release.py --base-url https://api.cclloo.com
 “已启用 / App 实际可见”计划数分开显示；待治理文章数不能直接当作缺失计划数。
 待确认内容通过 `/v1/admin/plan-sync/pending-names` 按名称聚合，后台一次确认会处理
 当前所有同名待确认文章，并在执行前显示影响篇数。
+一篇文章包含多个计划时，后台可读取该篇来源图片并由管理员逐张指定归属；保存后写入
+`imageAssignments`，当前同名待处理文章进入重跑队列，后续仅在来源名称和图片数量都一致
+时复用。数量变化会退回待确认。该流程不读取图片文字，也不使用 OCR。
 需要启用同步 timer 时执行：
 
 ```bash

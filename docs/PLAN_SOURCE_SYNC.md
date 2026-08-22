@@ -38,10 +38,11 @@
 
 - `allowedNames`：允许自动入库的标准计划名称。
 - `aliases`：来源标题名到标准计划名的映射。
-- `imageAssignments`：仅用于人工逐图确认后的、可审计的历史修复或一次性导入。
-  该字段虽然仍为兼容旧数据保留，但不得根据文章标题顺序、图片数量或每日位置
-  自动生成日常归属。配置项数量必须与来源文章图片数量完全一致；不一致或逐图
-  证据不足时继续保持待治理状态，不会导入或猜测。
+- `imageAssignments`：仅由管理员对一篇真实文章逐图确认后生成。规则按完整来源名称
+  保存图片位置与计划的对应关系；以后只有完整来源名称和图片数量都一致时才复用。
+  数量不一致、名称不一致或逐图证据不足时继续保持待治理状态，不会导入或猜测。
+  此流程不读取图片文字，也不使用 OCR。若来源方改变同数量图片的排列顺序，管理员
+  需要删除或修正规则；因此第一次保存前必须确认该来源名称的图片顺序长期稳定。
 - `ignoredNames`：确认不是计划内容的标题名。
 - `excludedTitleWords`：标题中包含这些词时直接忽略。
 - `allowAutoCreate`：为 `false` 时，未在规则中的名称会进入 `pending_name` 待治理状态，不会自动建计划。
@@ -109,6 +110,12 @@ journalctl -u caimaster-plan-source-sync.service -n 120 --no-pager
 会从重跑队列重新处理。确认不是计划内容时点“忽略”，记录会变成 `ignored` 并跳过后续同步。
 失败文章可以在管理页点“重试”或“全部重试”，记录会变成 `retry_queued`，下一次同步会重新处理。
 
+一篇文章包含多个计划时，点“一条有多个计划”，按图片顺序为每张图片填写计划名称，
+与计划无关的图片可以标记跳过。保存后，后台写入可审计的 `imageAssignments` 规则，并把
+当前所有同名待处理文章加入重跑队列。管理员只需设置一次；之后的同名、同图片数量文章
+自动复用。图片数量变化会安全退回待确认，不需要每天操作。该机制不使用 OCR，也不会根据
+图片内容自行猜测。由于无法仅凭数量发现“数量未变但顺序改变”，保存前必须确认来源排版稳定。
+
 也可以手动编辑规则文件：把标准名加入 `allowedNames`，或把来源别名加入 `aliases`，
 再重新运行同步服务。
 
@@ -124,6 +131,9 @@ curl -H "Authorization: Bearer $CAIMASTER_PLAN_ADMIN_TOKEN" \
 - `GET /v1/admin/plan-sync/health`
 - `GET /v1/admin/plan-sync/summary`
 - `GET /v1/admin/plan-sync/runs`
+- `GET /v1/admin/plan-sync/pending-names`
+- `GET /v1/admin/plan-sync/article-images`
+- `POST /v1/admin/plan-sync/image-assignments`
 - `POST /v1/admin/plan-sync/articles/retry`
 - `GET /v1/admin/plan-sync/name-rules`
 - `PUT /v1/admin/plan-sync/name-rules`
