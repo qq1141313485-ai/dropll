@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_client.dart';
 import 'betting_engine.dart';
 import 'models.dart';
+import 'saved_scheme_store.dart';
 
 enum _SelectionViewMode { mixed, score, totalGoals, halfFull }
 
@@ -2738,82 +2739,54 @@ class _SchemePageState extends State<_SchemePage> {
       };
 
   Future<void> _save(BettingResult value) async {
-    final preferences = await SharedPreferences.getInstance();
-    final saved =
-        preferences.getStringList('saved_football_schemes') ?? <String>[];
     final now = DateTime.now();
-    final cutoff = now.subtract(const Duration(days: 7));
-    saved.removeWhere((raw) {
-      try {
-        final decoded = jsonDecode(raw);
-        if (decoded is Map) {
-          final created = DateTime.tryParse(
-            decoded['createdAt']?.toString() ?? '',
-          );
-          return created == null || created.isBefore(cutoff);
-        }
-      } catch (_) {
-        final firstBreak = raw.indexOf('\n');
-        final created = DateTime.tryParse(
-          firstBreak > 0 ? raw.substring(0, firstBreak) : '',
-        );
-        return created == null || created.isBefore(cutoff);
-      }
-      return true;
+    final encoded = jsonEncode({
+      'version': 6,
+      'id': now.microsecondsSinceEpoch.toString(),
+      'createdAt': now.toIso8601String(),
+      'status': '已保存',
+      'settlement': const {'state': 'pending'},
+      'pass': _passLabel,
+      'amount': value.amount,
+      'notes': value.notes,
+      'physicalTickets': value.isSplit ? value.tickets.length : 0,
+      'isSplit': value.isSplit,
+      'minReturn': value.minReturn,
+      'maxReturn': value.maxReturn,
+      'text': _schemeText(value),
+      'multiple': int.tryParse(multipleController.text) ?? 1,
+      'budget': double.tryParse(budgetController.text),
+      'optimizationOnly': widget.optimizationOnly,
+      'optimization': widget.optimizationOnly
+          ? {
+              'mode': optimizeMode.name,
+              'budget': value.amount,
+              'principalProtected': value.principalProtected == true,
+            }
+          : null,
+      'passes': selectedMethods.map((item) => item.label).toList(),
+      'picks': widget.picks.map(_serializePick).toList(),
+      'combinations': [
+        for (final entry in value.returnsByCombination.entries)
+          {
+            'multiple': _multipleFor(value, entry.key),
+            'amount': _multipleFor(value, entry.key) * 2,
+            'return': entry.value,
+            'passSize': entry.key.passSize,
+            'description': _compactDescription(entry.key),
+            'picks': [
+              for (final item in entry.key.picks)
+                {
+                  'matchId': item.match.matchId,
+                  'play': (item.option.play ?? item.match.play).name,
+                  'label': item.option.label,
+                  'sp': item.option.sp,
+                },
+            ],
+          },
+      ],
     });
-    saved.insert(
-      0,
-      jsonEncode({
-        'version': 6,
-        'id': now.microsecondsSinceEpoch.toString(),
-        'createdAt': now.toIso8601String(),
-        'status': '已保存',
-        'settlement': const {'state': 'pending'},
-        'pass': _passLabel,
-        'amount': value.amount,
-        'notes': value.notes,
-        'physicalTickets': value.isSplit ? value.tickets.length : 0,
-        'isSplit': value.isSplit,
-        'minReturn': value.minReturn,
-        'maxReturn': value.maxReturn,
-        'text': _schemeText(value),
-        'multiple': int.tryParse(multipleController.text) ?? 1,
-        'budget': double.tryParse(budgetController.text),
-        'optimizationOnly': widget.optimizationOnly,
-        'optimization': widget.optimizationOnly
-            ? {
-                'mode': optimizeMode.name,
-                'budget': value.amount,
-                'principalProtected': value.principalProtected == true,
-              }
-            : null,
-        'passes': selectedMethods.map((item) => item.label).toList(),
-        'picks': widget.picks.map(_serializePick).toList(),
-        'combinations': [
-          for (final entry in value.returnsByCombination.entries)
-            {
-              'multiple': _multipleFor(value, entry.key),
-              'amount': _multipleFor(value, entry.key) * 2,
-              'return': entry.value,
-              'passSize': entry.key.passSize,
-              'description': _compactDescription(entry.key),
-              'picks': [
-                for (final item in entry.key.picks)
-                  {
-                    'matchId': item.match.matchId,
-                    'play': (item.option.play ?? item.match.play).name,
-                    'label': item.option.label,
-                    'sp': item.option.sp,
-                  },
-              ],
-            },
-        ],
-      }),
-    );
-    await preferences.setStringList(
-      'saved_football_schemes',
-      saved.take(200).toList(),
-    );
+    await const SavedSchemeStore().prepend(encoded, now: now);
     if (mounted) {
       ScaffoldMessenger.of(
         context,
@@ -4489,16 +4462,9 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
     if (reloading) return;
     reloading = true;
     try {
-      final preferences = await SharedPreferences.getInstance();
       if (!mounted) return;
-      final stored =
-          preferences.getStringList('saved_football_schemes') ?? const [];
-      final retained = stored
-          .where((raw) => _withinLastSevenDays(_decode(raw)))
-          .toList(growable: false);
-      if (retained.length != stored.length) {
-        await preferences.setStringList('saved_football_schemes', retained);
-      }
+      final retained = await const SavedSchemeStore().load();
+      if (!mounted) return;
       setState(() {
         rawItems = retained;
         loading = true;
@@ -4557,8 +4523,7 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
         false;
     if (!confirmed) return;
     final updated = [...rawItems]..removeAt(index);
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setStringList('saved_football_schemes', updated);
+    await const SavedSchemeStore().replace(updated);
     if (mounted) setState(() => rawItems = updated);
   }
 
@@ -5113,8 +5078,7 @@ class _SavedSchemesSheetState extends State<_SavedSchemesSheet>
         changed = true;
       }
       if (!changed) return;
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.setStringList('saved_football_schemes', updated);
+      await const SavedSchemeStore().replace(updated);
       if (mounted) setState(() => rawItems = updated);
     } finally {
       if (mounted) setState(() => settling = false);
