@@ -1,5 +1,9 @@
 # 计划内容服务
 
+本文只维护计划内容服务的代码结构、打包、安装和部署方式。业务规则、名称治理、
+授权边界和运行验收以 `docs/PLAN_SOURCE_SYNC.md`、
+`docs/CONTENT_RIGHTS_EVIDENCE.md` 为准。
+
 线上路径：
 
 - `plans.py` -> `/opt/caimaster-api/plans.py`

@@ -6,8 +6,10 @@
 
 - [x] 生产 API 已迁移为 HTTPS 域名，并移除 iOS 的任意 HTTP 加载例外。
 - [x] 客户端不携带 API Token；公开只读接口通过 HTTPS、Nginx 限流和只读数据库连接保护。
-- [x] 隐私政策内容已与服务器最长 30 天日志保留策略一致，并上线公开 URL：`https://api.cclloo.com/privacy`。
-- [x] Support 页面已上线：`https://api.cclloo.com/support`；提交前仍需在 App Store Connect 填入该 URL 和开发者联系信息。
+- [ ] 提交前重新打开 `https://api.cclloo.com/privacy`，确认线上内容使用“球镜”名称，
+  且仍与服务器最长 30 天日志保留策略一致。历史上线结果不能替代本次验收。
+- [ ] 提交前重新打开 `https://api.cclloo.com/support`，确认线上名称、联系信息和投诉
+  入口可用，并在 App Store Connect 填入该 URL。
 - [ ] 逐地区确认赛事数据、彩票相关计算与营销文案的合规边界；不提供出票、代购、投注或资金服务。
 - [x] 服务中心已移除交流群和门店导流，仅保留使用帮助、数据反馈与内容投诉/下架申请。
 - [ ] 按 [计划内容授权与权利证明](CONTENT_RIGHTS_EVIDENCE.md) 整理转载授权，
@@ -15,8 +17,9 @@
 - [ ] 连续验证实时比分、完场赛果和已保存方案结算，不允许出现错误比分、长期卡住或空白列表。
 - [ ] 完成 [连续 7 天数据稳定性验收](SEVEN_DAY_STABILITY_ACCEPTANCE.md)；
   已于 2026-07-29 开始记录。
-- [x] 计划内容服务已通过 `deploy_plan_content_remote.sh --patch-api-app` 部署。
-- [x] 计划内容服务部署检查通过：`verify_plan_release.py --base-url https://api.cclloo.com --require-data`。
+- [ ] 当前提交版本重新执行计划内容服务部署检查：
+  `verify_plan_release.py --base-url https://api.cclloo.com --require-data`。历史部署和通过
+  记录只证明当时状态，不代表提交当天仍然有效。
 
 ## 提交资料
 

@@ -9,6 +9,7 @@
 - Android 工程：`android/`
 - Web 工程：`web/`
 - API 契约：`API_CONTRACT.md`
+- 主交接文档：`docs/PROJECT_HANDOFF.md`
 - 数据字典：`docs/db.md`
 - 上架清单：`docs/RELEASE_CHECKLIST.md`
 - 隐私政策：`docs/PRIVACY_POLICY.md`

@@ -1,7 +1,12 @@
 # 计划图片自动同步
 
-数据源为已获得转载授权的公开站点接口。同步器只保存来源站已经提供的
-水印图片，不移除或遮挡来源水印。
+同步器只可处理已完成授权核验的公开站点内容，并保存来源站已经提供的水印图片，
+不移除或遮挡来源水印。当前授权证据是否完整以
+`CONTENT_RIGHTS_EVIDENCE.md` 为准；授权范围未确认前，不得把技术上可抓取描述为
+已获授权，也不得据此提交上架说明。
+
+本文负责同步规则、名称治理和运行验收；安装与打包命令以
+`server/plan_content/README.md` 为准，避免维护两套部署流程。
 
 ## 文件
 
@@ -33,9 +38,10 @@
 
 - `allowedNames`：允许自动入库的标准计划名称。
 - `aliases`：来源标题名到标准计划名的映射。
-- `imageAssignments`：多作者文章按图片顺序指定归属，例如
-  `"扫地僧，辉哥中赔": ["辉哥", "扫地僧"]`。配置项数量必须与来源文章图片
-  数量完全一致；不一致时文章继续保持待治理状态，不会导入或猜测。
+- `imageAssignments`：仅用于人工逐图确认后的、可审计的历史修复或一次性导入。
+  该字段虽然仍为兼容旧数据保留，但不得根据文章标题顺序、图片数量或每日位置
+  自动生成日常归属。配置项数量必须与来源文章图片数量完全一致；不一致或逐图
+  证据不足时继续保持待治理状态，不会导入或猜测。
 - `ignoredNames`：确认不是计划内容的标题名。
 - `excludedTitleWords`：标题中包含这些词时直接忽略。
 - `allowAutoCreate`：为 `false` 时，未在规则中的名称会进入 `pending_name` 待治理状态，不会自动建计划。
@@ -63,40 +69,10 @@ CAIMASTER_PLAN_SOURCE_MAP=/opt/caimaster-api/plan_source_map.json
 
 ## 部署与验证
 
-本机已配置 SSH 登录服务器时，推荐直接远程部署：
+打包、远程部署、手工安装、路由接入和密钥初始化的唯一操作说明位于
+`server/plan_content/README.md`。任何线上修改仍须先创建时间戳备份。
 
-```bash
-cd server/plan_content
-./deploy_plan_content_remote.sh \
-  --host user@server \
-  --sudo \
-  --patch-api-app \
-  --base-url https://api.cclloo.com \
-  --dry-run
-
-./deploy_plan_content_remote.sh \
-  --host user@server \
-  --sudo \
-  --patch-api-app \
-  --base-url https://api.cclloo.com \
-  --yes
-```
-
-脚本会本地打包、上传、远程校验、安装、重启 API 并运行总验收。正式已有计划图片后，
-追加 `--require-data`。真实部署必须加 `--yes`。
-
-也可以手工上传。线上文件改动前先创建带时间戳的备份，然后执行：
-
-```bash
-cd /path/to/uploaded/server/plan_content
-./install_plan_content.sh --skip-dry-run
-```
-
-如果主 API 入口是 `/opt/caimaster-api/app.py`，可以加 `--patch-api-app` 自动插入计划路由；
-上线前可先执行 `python3 patch_api_app.py --app /opt/caimaster-api/app.py --dry-run` 预览。
-
-安装脚本会执行 `python3 manage_api_env.py init`，自动生成管理员密钥并补齐默认变量。
-执行 `python3 manage_api_env.py show` 可查看掩码后的配置。然后执行：
+部署完成后在服务器执行总验收：
 
 ```bash
 cd /opt/caimaster-api
@@ -113,13 +89,8 @@ journalctl -u caimaster-plan-source-sync.service -n 120 --no-pager
 `app_plan_smoke.py` 会按 App 使用方式检查 `/v1/plans/recent`、`/v1/plans` 和
 `/v1/plans/{id}/updates` 的字段。正式上传计划图片后，对总验收脚本加 `--require-data` 可要求线上必须有可展示数据。
 
-确认 dry-run 和后台健康检查通过后，再启用同步：
-
-```bash
-cd /opt/caimaster-api
-./install_plan_content.sh --enable-timer
-systemctl status caimaster-plan-source-sync.timer --no-pager
-```
+同步 timer 的安装与启用命令同样以服务 README 为准。只有 dry-run、后台健康检查、
+公开接口 smoke 和内容授权范围均确认后，才可启用正式同步。
 
 ## 名称治理排查
 
