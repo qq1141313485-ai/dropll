@@ -819,6 +819,7 @@ def _empty_sync_governance() -> dict[str, Any]:
     return {
         "pendingArticles": 0,
         "pendingDistinctNames": 0,
+        "pendingUnidentifiedArticles": 0,
         "pendingLast24Hours": 0,
         "pendingLast7Days": 0,
         "pendingOlderThan7Days": 0,
@@ -848,6 +849,9 @@ def _sync_governance_summary(
               ELSE resolved_plan_name
             END
           ), ''))) AS distinct_name_count,
+          SUM(CASE WHEN TRIM(raw_plan_name) = ''
+                        AND TRIM(resolved_plan_name) = ''
+                   THEN 1 ELSE 0 END) AS unidentified_count,
           SUM(CASE WHEN synced_at >= ? THEN 1 ELSE 0 END) AS last_24_hours,
           SUM(CASE WHEN synced_at >= ? THEN 1 ELSE 0 END) AS last_7_days,
           SUM(CASE WHEN synced_at < ? THEN 1 ELSE 0 END) AS older_than_7_days,
@@ -909,6 +913,7 @@ def _sync_governance_summary(
     return {
         "pendingArticles": int(pending["article_count"] or 0),
         "pendingDistinctNames": int(pending["distinct_name_count"] or 0),
+        "pendingUnidentifiedArticles": int(pending["unidentified_count"] or 0),
         "pendingLast24Hours": int(pending["last_24_hours"] or 0),
         "pendingLast7Days": int(pending["last_7_days"] or 0),
         "pendingOlderThan7Days": int(pending["older_than_7_days"] or 0),

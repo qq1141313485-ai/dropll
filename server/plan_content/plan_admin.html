@@ -240,6 +240,7 @@
       const governance = body.governance || {};
       $("syncGovernance").innerHTML = [
         `待治理名称 ${governance.pendingDistinctNames || 0} 种 / ${governance.pendingArticles || 0} 篇`,
+        `未提取名称 ${governance.pendingUnidentifiedArticles || 0} 篇`,
         `近 24 小时新增 ${governance.pendingLast24Hours || 0} 篇`,
         `7 天以上积压 ${governance.pendingOlderThan7Days || 0} 篇`,
         `失败 ${governance.failedArticles || 0} 篇`,

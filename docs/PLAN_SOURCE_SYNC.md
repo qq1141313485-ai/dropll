@@ -97,7 +97,7 @@ journalctl -u caimaster-plan-source-sync.service -n 120 --no-pager
 管理页的“待治理名称”来自 `plan_sync_articles.status = 'pending_name'`。
 “自动同步状态”同时展示治理口径，避免把文章数误认为计划数：
 
-- 待治理的文章总数和去重名称数；
+- 待治理的文章总数、去重名称数和未能提取名称的文章数；
 - 最近 24 小时新增、最近 7 天新增及超过 7 天的积压；
 - 最早待治理时间和高频待治理名称；
 - 失败、待重试文章数；

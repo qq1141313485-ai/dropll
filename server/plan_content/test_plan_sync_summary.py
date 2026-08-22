@@ -53,6 +53,7 @@ class PlanSyncSummaryTest(unittest.TestCase):
                 ("3", "凤凰", "name_configured", now - 2 * 24 * 60 * 60),
                 ("4", "失败项", "failed", now - 60),
                 ("5", "重试项", "retry_queued", now - 60),
+                ("6", "", "pending_name", now - 60),
             )
             conn.executemany(
                 """
@@ -84,10 +85,11 @@ class PlanSyncSummaryTest(unittest.TestCase):
 
             result = plans._sync_governance_summary(conn, now=now)
 
-        self.assertEqual(result["pendingArticles"], 3)
+        self.assertEqual(result["pendingArticles"], 4)
         self.assertEqual(result["pendingDistinctNames"], 2)
-        self.assertEqual(result["pendingLast24Hours"], 1)
-        self.assertEqual(result["pendingLast7Days"], 2)
+        self.assertEqual(result["pendingUnidentifiedArticles"], 1)
+        self.assertEqual(result["pendingLast24Hours"], 2)
+        self.assertEqual(result["pendingLast7Days"], 3)
         self.assertEqual(result["pendingOlderThan7Days"], 1)
         self.assertEqual(result["failedArticles"], 1)
         self.assertEqual(result["retryQueued"], 1)
