@@ -206,12 +206,20 @@ fi
 rm -rf $(shell_quote "$PACKAGE_DIR")
 tar -xzf $(shell_quote "$PACKAGE_FILE")
 cd $(shell_quote "$PACKAGE_DIR")
-$(shell_quote "$PYTHON_BIN") -m unittest test_plan_aliases.py
-$(shell_quote "$PYTHON_BIN") -m unittest test_plan_activity.py
-$(shell_quote "$PYTHON_BIN") -m unittest test_plan_articles.py
-$(shell_quote "$PYTHON_BIN") -m unittest test_plan_article_mirror.py
-$(shell_quote "$PYTHON_BIN") -m unittest test_plan_sync_summary.py
-$(shell_quote "$PYTHON_BIN") -m unittest test_plan_image_assignments.py
+TEST_DEPS_DIR="\$(mktemp -d)"
+cleanup_test_deps() {
+  rm -rf "\$TEST_DEPS_DIR"
+}
+trap cleanup_test_deps EXIT
+$(shell_quote "$PYTHON_BIN") -m pip install --disable-pip-version-check --quiet \
+  --target "\$TEST_DEPS_DIR" -r requirements-test.txt
+PYTHONPATH="\$TEST_DEPS_DIR\${PYTHONPATH:+:\$PYTHONPATH}" $(shell_quote "$PYTHON_BIN") -m unittest \
+  test_plan_aliases.py \
+  test_plan_activity.py \
+  test_plan_articles.py \
+  test_plan_article_mirror.py \
+  test_plan_sync_summary.py \
+  test_plan_image_assignments.py
 REMOTE
 )"
 

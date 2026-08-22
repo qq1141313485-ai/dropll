@@ -63,7 +63,8 @@ cd server/plan_content
 ```
 
 脚本会本地打包、校验 checksum、上传到服务器、远程安装、重启
-`caimaster-api.service`，最后运行 `verify_plan_release.py`。正式已有计划图片后，
+`caimaster-api.service`，最后运行 `verify_plan_release.py`。远程测试依赖会按
+`requirements-test.txt` 安装到一次性临时目录，不会写入生产虚拟环境。正式已有计划图片后，
 追加 `--require-data`。真实部署必须加 `--yes`；如果当前 SSH 用户就是 root，可不加 `--sudo`。
 
 把 `dist/caimaster-plan-content-*.tar.gz` 和 `.sha256` 上传到服务器，校验后解包：

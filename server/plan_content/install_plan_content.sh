@@ -146,6 +146,9 @@ if [[ -d "$SYSTEMD_DIR" && -w "$SYSTEMD_DIR" ]]; then
     backup_file "${SYSTEMD_DIR}/${unit}"
     install -m 0644 "${SOURCE_DIR}/${unit}" "${SYSTEMD_DIR}/${unit}"
   done
+  if [[ "$SYSTEMD_DIR" == "/etc/systemd/system" ]] && command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload
+  fi
 else
   echo "Skipping systemd unit install; ${SYSTEMD_DIR} is not writable"
 fi
@@ -207,7 +210,6 @@ if [[ "$SKIP_DRY_RUN" != "1" ]]; then
 fi
 
 if [[ "$ENABLE_TIMER" == "1" ]]; then
-  systemctl daemon-reload
   systemctl enable --now caimaster-plan-source-sync.timer
   systemctl start caimaster-plan-source-sync.service
   systemctl status caimaster-plan-source-sync.timer --no-pager

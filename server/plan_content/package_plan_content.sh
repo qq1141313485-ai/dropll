@@ -29,6 +29,7 @@ FILES=(
   plan_source_sync.py
   plans.py
   requirements.txt
+  requirements-test.txt
   test_app_plan_smoke.py
   test_deploy_check.py
   test_manage_api_env.py
