@@ -773,6 +773,7 @@ def admin_list_plan_sync_articles(
 
 @admin_router.get("/plan-sync/summary", dependencies=[Depends(_require_admin)])
 def admin_plan_sync_summary() -> dict[str, Any]:
+    now = _now_ts()
     with closing(_connect()) as conn:
         _ensure_plan_sync_run_table(conn)
         if not _ensure_plan_sync_article_columns(conn):
@@ -782,6 +783,7 @@ def admin_plan_sync_summary() -> dict[str, Any]:
                 "lastSyncedAt": None,
                 "rulesPath": str(PLAN_SOURCE_MAP_PATH),
                 "latestRun": None,
+                "governance": _empty_sync_governance(),
             }
         rows = conn.execute(
             """
@@ -797,6 +799,7 @@ def admin_plan_sync_summary() -> dict[str, Any]:
             LIMIT 1
             """
         ).fetchone()
+        governance = _sync_governance_summary(conn, now=now)
     counts = {row["status"]: int(row["count"]) for row in rows}
     last_synced_at = max(
         (int(row["last_synced_at"] or 0) for row in rows),
@@ -808,6 +811,122 @@ def admin_plan_sync_summary() -> dict[str, Any]:
         "lastSyncedAt": _iso_time(last_synced_at) if last_synced_at else None,
         "rulesPath": str(PLAN_SOURCE_MAP_PATH),
         "latestRun": _serialize_sync_run(latest_run) if latest_run is not None else None,
+        "governance": governance,
+    }
+
+
+def _empty_sync_governance() -> dict[str, Any]:
+    return {
+        "pendingArticles": 0,
+        "pendingDistinctNames": 0,
+        "pendingLast24Hours": 0,
+        "pendingLast7Days": 0,
+        "pendingOlderThan7Days": 0,
+        "oldestPendingAt": None,
+        "failedArticles": 0,
+        "retryQueued": 0,
+        "activePlans": 0,
+        "visiblePlans": 0,
+        "hiddenActivePlans": 0,
+        "topPendingNames": [],
+    }
+
+
+def _sync_governance_summary(
+    conn: sqlite3.Connection,
+    *,
+    now: int,
+) -> dict[str, Any]:
+    pending_statuses = ("pending_name", "name_configured")
+    pending = conn.execute(
+        """
+        SELECT
+          COUNT(*) AS article_count,
+          COUNT(DISTINCT LOWER(NULLIF(TRIM(
+            CASE
+              WHEN raw_plan_name != '' THEN raw_plan_name
+              ELSE resolved_plan_name
+            END
+          ), ''))) AS distinct_name_count,
+          SUM(CASE WHEN synced_at >= ? THEN 1 ELSE 0 END) AS last_24_hours,
+          SUM(CASE WHEN synced_at >= ? THEN 1 ELSE 0 END) AS last_7_days,
+          SUM(CASE WHEN synced_at < ? THEN 1 ELSE 0 END) AS older_than_7_days,
+          MIN(synced_at) AS oldest_synced_at
+        FROM plan_sync_articles
+        WHERE status IN (?, ?)
+        """,
+        (
+            now - 24 * 60 * 60,
+            now - 7 * 24 * 60 * 60,
+            now - 7 * 24 * 60 * 60,
+            *pending_statuses,
+        ),
+    ).fetchone()
+    top_names = conn.execute(
+        """
+        SELECT
+          CASE
+            WHEN TRIM(raw_plan_name) != '' THEN TRIM(raw_plan_name)
+            WHEN TRIM(resolved_plan_name) != '' THEN TRIM(resolved_plan_name)
+            ELSE '未识别名称'
+          END AS name,
+          COUNT(*) AS article_count,
+          MIN(synced_at) AS oldest_synced_at,
+          MAX(synced_at) AS newest_synced_at
+        FROM plan_sync_articles
+        WHERE status IN (?, ?)
+        GROUP BY name COLLATE NOCASE
+        ORDER BY article_count DESC, oldest_synced_at, name COLLATE NOCASE
+        LIMIT 8
+        """,
+        pending_statuses,
+    ).fetchall()
+    failed_articles = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM plan_sync_articles WHERE status = 'failed'"
+        ).fetchone()[0]
+    )
+    retry_queued = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM plan_sync_articles WHERE status = 'retry_queued'"
+        ).fetchone()[0]
+    )
+    active_plans = int(
+        conn.execute("SELECT COUNT(*) FROM plans WHERE is_active = 1").fetchone()[0]
+    )
+    visible_plans = int(
+        conn.execute(
+            """
+            SELECT COUNT(DISTINCT p.id)
+            FROM plans p
+            JOIN plan_updates u ON u.plan_id = p.id AND u.is_active = 1
+            JOIN plan_images i ON i.update_id = u.id AND i.is_active = 1
+            WHERE p.is_active = 1
+            """
+        ).fetchone()[0]
+    )
+    oldest_pending = int(pending["oldest_synced_at"] or 0)
+    return {
+        "pendingArticles": int(pending["article_count"] or 0),
+        "pendingDistinctNames": int(pending["distinct_name_count"] or 0),
+        "pendingLast24Hours": int(pending["last_24_hours"] or 0),
+        "pendingLast7Days": int(pending["last_7_days"] or 0),
+        "pendingOlderThan7Days": int(pending["older_than_7_days"] or 0),
+        "oldestPendingAt": _iso_time(oldest_pending) if oldest_pending else None,
+        "failedArticles": failed_articles,
+        "retryQueued": retry_queued,
+        "activePlans": active_plans,
+        "visiblePlans": visible_plans,
+        "hiddenActivePlans": max(0, active_plans - visible_plans),
+        "topPendingNames": [
+            {
+                "name": row["name"],
+                "articleCount": int(row["article_count"]),
+                "oldestAt": _iso_time(int(row["oldest_synced_at"])),
+                "newestAt": _iso_time(int(row["newest_synced_at"])),
+            }
+            for row in top_names
+        ],
     }
 
 

@@ -67,6 +67,8 @@
         <h2>自动同步状态</h2>
         <div id="syncSummary" class="summary"></div>
         <div id="syncSummaryMeta" class="muted" style="margin-top:8px"></div>
+        <div id="syncGovernance" class="summary" style="margin-top:10px"></div>
+        <div id="syncGovernanceMeta" class="muted" style="margin-top:8px"></div>
         <div id="syncRuns" style="margin-top:12px"></div>
       </section>
 
@@ -235,6 +237,21 @@
       $("syncSummaryMeta").textContent = body.lastSyncedAt
         ? `最后同步：${body.lastSyncedAt} · 规则文件：${body.rulesPath}`
         : `尚无同步记录 · 规则文件：${body.rulesPath}`;
+      const governance = body.governance || {};
+      $("syncGovernance").innerHTML = [
+        `待治理名称 ${governance.pendingDistinctNames || 0} 种 / ${governance.pendingArticles || 0} 篇`,
+        `近 24 小时新增 ${governance.pendingLast24Hours || 0} 篇`,
+        `7 天以上积压 ${governance.pendingOlderThan7Days || 0} 篇`,
+        `失败 ${governance.failedArticles || 0} 篇`,
+        `App 可见 ${governance.visiblePlans || 0} / 启用 ${governance.activePlans || 0}`
+      ].map((text) => `<span class="pill">${escapeHtml(text)}</span>`).join("");
+      const topPendingNames = governance.topPendingNames || [];
+      const topPendingText = topPendingNames.length
+        ? `高频待治理：${topPendingNames.map((item) => `${item.name}(${item.articleCount})`).join("、")}`
+        : "暂无待治理名称";
+      $("syncGovernanceMeta").textContent = governance.oldestPendingAt
+        ? `最早积压：${governance.oldestPendingAt} · ${topPendingText}`
+        : topPendingText;
       const runs = runsBody.items || [];
       $("syncRuns").innerHTML = runs.length ? runs.map((run) => {
         const counts = run.counts || {};

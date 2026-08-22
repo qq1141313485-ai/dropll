@@ -37,6 +37,7 @@ FILES=(
   test_plan_image_classifier.py
   test_patch_api_app.py
   test_plan_source_sync.py
+  test_plan_sync_summary.py
   test_verify_plan_release.py
   verify_plan_release.py
 )

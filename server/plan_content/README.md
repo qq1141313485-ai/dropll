@@ -119,6 +119,8 @@ python3 verify_plan_release.py --base-url https://api.cclloo.com
 单项排查时仍可分别执行 `deploy_check.py --json`、
 `CAIMASTER_PLAN_SOURCE_DRY_RUN=1 python3 plan_source_sync.py` 和
 `python3 app_plan_smoke.py --base-url https://api.cclloo.com`。
+管理后台的同步概览会把待治理文章数、去重名称数、积压年龄、失败数，以及
+“已启用 / App 实际可见”计划数分开显示；待治理文章数不能直接当作缺失计划数。
 需要启用同步 timer 时执行：
 
 ```bash
@@ -134,7 +136,7 @@ python3 verify_plan_release.py --base-url https://api.cclloo.com --require-data
 本目录脚本测试：
 
 ```bash
-python3 -m unittest test_plan_source_sync.py test_app_plan_smoke.py test_deploy_check.py test_manage_api_env.py test_patch_api_app.py test_verify_plan_release.py
+python3 -m unittest test_plan_source_sync.py test_plan_sync_summary.py test_app_plan_smoke.py test_deploy_check.py test_manage_api_env.py test_patch_api_app.py test_verify_plan_release.py
 ```
 
 本地模拟安装演练：
