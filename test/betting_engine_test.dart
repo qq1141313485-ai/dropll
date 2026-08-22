@@ -21,6 +21,41 @@ MatchPick pick(
       ],
     );
 
+MatchPick playPick(
+  String id,
+  List<({FootballPlay play, double sp})> selections,
+) =>
+    MatchPick(
+      matchId: id,
+      number: id,
+      home: '主$id',
+      away: '客$id',
+      play: selections.first.play,
+      options: [
+        for (var i = 0; i < selections.length; i++)
+          BetOption(
+            label: '$i',
+            sp: selections[i].sp,
+            play: selections[i].play,
+          ),
+      ],
+    );
+
+MatchPick screenshotPick(
+  String id,
+  String handicap,
+  List<BetOption> options,
+) =>
+    MatchPick(
+      matchId: id,
+      number: id,
+      home: '主$id',
+      away: '客$id',
+      play: options.first.play ?? FootballPlay.had,
+      handicap: handicap,
+      options: options,
+    );
+
 void main() {
   const engine = BettingEngine();
 
@@ -90,6 +125,24 @@ void main() {
     );
     expect(result.notes, 6);
     expect(result.amount, 12);
+  });
+
+  test('混合玩法单场不因其他比赛的玩法分支重复', () {
+    final result = engine.calculate(
+      picks: [
+        playPick('001', [
+          (play: FootballPlay.had, sp: 2),
+          (play: FootballPlay.hhad, sp: 3),
+        ]),
+        playPick('002', [
+          (play: FootballPlay.had, sp: 4),
+          (play: FootballPlay.hhad, sp: 5),
+        ]),
+      ],
+      pass: PassMethod.singleFor(2),
+    );
+    expect(result.notes, 4);
+    expect(result.amount, 8);
   });
 
   test('单场可以和串关同时选择', () {
@@ -200,6 +253,90 @@ void main() {
       result.atomicBets.map((bet) => bet.picks.first.option.play).toSet(),
       {FootballPlay.had, FootballPlay.hhad},
     );
+  });
+
+  test('市场混合玩法分支复现4串1、5串1和5串26', () {
+    final picks = [
+      pick('5001', [1.34]),
+      pick('5002', [1.5]),
+      pick('5003', [6]),
+      playPick('5004', [
+        (play: FootballPlay.had, sp: 3.15),
+        (play: FootballPlay.had, sp: 2.45),
+        (play: FootballPlay.hhad, sp: 4.45),
+      ]),
+      playPick('5005', [
+        (play: FootballPlay.had, sp: 3.95),
+        (play: FootballPlay.hhad, sp: 3.70),
+      ]),
+    ];
+    final fiveTwentySix = PassMethod.compound.firstWhere(
+      (method) => method.label == '5串26',
+    );
+    final fourOne = engine.calculate(
+      picks: picks,
+      pass: PassMethod.free(5, 4),
+    );
+    final fiveOne = engine.calculate(
+      picks: picks,
+      pass: PassMethod.free(5, 5),
+    );
+    final fiveTwentySixResult = engine.calculate(
+      picks: picks,
+      pass: fiveTwentySix,
+    );
+
+    expect(fourOne.notes, 28);
+    expect(fourOne.amount, 56);
+    expect(fiveOne.notes, 6);
+    expect(fiveOne.amount, 12);
+    expect(fiveTwentySixResult.notes, 134);
+    expect(fiveTwentySixResult.amount, 268);
+  });
+
+  test('红色平台截图复现5串26的玩法分支注数和最高奖金', () {
+    final base = [
+      screenshotPick('5003', '+2', [
+        const BetOption(label: '平', sp: 6, play: FootballPlay.had),
+      ]),
+      screenshotPick('5004', '-1', [
+        const BetOption(label: '平', sp: 3.15, play: FootballPlay.had),
+      ]),
+      screenshotPick('5005', '-1', [
+        const BetOption(label: '平', sp: 3.95, play: FootballPlay.had),
+      ]),
+      screenshotPick('5006', '-1', [
+        const BetOption(label: '平', sp: 4.55, play: FootballPlay.had),
+        const BetOption(label: '平', sp: 3.58, play: FootballPlay.hhad),
+      ]),
+      screenshotPick('5007', '-1', [
+        const BetOption(label: '平', sp: 3.05, play: FootballPlay.had),
+      ]),
+    ];
+    final withExtraOption = [
+      ...base.sublist(0, 3),
+      screenshotPick('5006', '-1', [
+        const BetOption(label: '平', sp: 4.55, play: FootballPlay.had),
+        const BetOption(label: '负', sp: 5.40, play: FootballPlay.had),
+        const BetOption(label: '平', sp: 3.58, play: FootballPlay.hhad),
+      ]),
+      base.last,
+    ];
+    final pass = PassMethod.compound.firstWhere(
+      (method) => method.label == '5串26',
+    );
+    final result = engine.calculate(picks: base, pass: pass);
+    final extraResult = engine.calculate(
+      picks: withExtraOption,
+      pass: pass,
+    );
+
+    expect(result.notes, 52);
+    expect(result.amount, 104);
+    expect(result.maxReturn, closeTo(7551.49, 0.01));
+    expect(extraResult.notes, 67);
+    expect(extraResult.amount, 134);
+    expect(extraResult.maxReturn, closeTo(8539.85, 0.01));
   });
 
   test('混合玩法同场可同时命中时最高奖金会累计', () {

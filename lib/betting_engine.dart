@@ -406,7 +406,10 @@ class BettingEngine {
     bool splitTickets = false,
   }) {
     _validate(picks, pass, multiple);
-    final atomic = _expand(picks, pass);
+    final atomic = [
+      for (final branch in _branchesFor(picks, pass))
+        ..._expand(picks, pass, branch: branch),
+    ];
     return BettingResult(
         atomic,
         [
@@ -429,7 +432,9 @@ class BettingEngine {
     final atomic = <AtomicBet>[];
     for (final pass in passes) {
       _validate(picks, pass, multiple);
-      atomic.addAll(_expand(picks, pass));
+      for (final branch in _branchesFor(picks, pass)) {
+        atomic.addAll(_expand(picks, pass, branch: branch));
+      }
     }
     return BettingResult(
         atomic,
@@ -465,7 +470,10 @@ class BettingEngine {
     OptimizeMode mode = OptimizeMode.balanced,
   }) {
     _validate(picks, pass, 1);
-    final atomic = _expand(picks, pass);
+    final atomic = [
+      for (final branch in _branchesFor(picks, pass))
+        ..._expand(picks, pass, branch: branch),
+    ];
     final units = (budget / 2).floor();
     if (units < atomic.length) {
       throw ArgumentError('预算不足，至少需要 ${atomic.length * 2} 元覆盖全部组合');
@@ -483,7 +491,9 @@ class BettingEngine {
     final atomic = <AtomicBet>[];
     for (final pass in passes) {
       _validate(picks, pass, 1);
-      atomic.addAll(_expand(picks, pass));
+      for (final branch in _branchesFor(picks, pass)) {
+        atomic.addAll(_expand(picks, pass, branch: branch));
+      }
     }
     final units = (budget / 2).floor();
     if (units < atomic.length) {
@@ -619,14 +629,18 @@ class BettingEngine {
     return tickets;
   }
 
-  List<AtomicBet> _expand(List<MatchPick> picks, PassMethod pass) {
+  List<AtomicBet> _expand(
+    List<MatchPick> picks,
+    PassMethod pass, {
+    required Map<String, FootballPlay> branch,
+  }) {
     final bankers = picks.where((item) => item.banker).toList();
     final drags = picks.where((item) => !item.banker).toList();
     final result = <AtomicBet>[];
     for (final size in pass.subPassSizes) {
       if (size == 1) {
         for (final match in picks) {
-          for (final option in match.options) {
+          for (final option in _branchOptions(match, branch)) {
             result.add(
               AtomicBet(
                 passSize: 1,
@@ -641,7 +655,7 @@ class BettingEngine {
       for (final subset in _combinations(drags, need)) {
         final matches = [...bankers, ...subset];
         for (final options in _cartesian(
-          matches.map((item) => item.options).toList(),
+          matches.map((item) => _branchOptions(item, branch)).toList(),
         )) {
           result.add(
             AtomicBet(
@@ -657,6 +671,43 @@ class BettingEngine {
     }
     return result;
   }
+
+  List<BetOption> _branchOptions(
+    MatchPick match,
+    Map<String, FootballPlay> branch,
+  ) {
+    final play = branch[match.matchId];
+    return play == null
+        ? match.options
+        : match.options
+            .where((option) => (option.play ?? match.play) == play)
+            .toList(growable: false);
+  }
+
+  List<Map<String, FootballPlay>> _playBranches(List<MatchPick> picks) {
+    final branches = <Map<String, FootballPlay>>[<String, FootballPlay>{}];
+    for (final match in picks) {
+      final plays = <FootballPlay>{
+        for (final option in match.options) option.play ?? match.play,
+      }.toList();
+      final next = <Map<String, FootballPlay>>[];
+      for (final branch in branches) {
+        for (final play in plays) {
+          next.add({...branch, match.matchId: play});
+        }
+      }
+      branches
+        ..clear()
+        ..addAll(next);
+    }
+    return branches;
+  }
+
+  List<Map<String, FootballPlay>> _branchesFor(
+    List<MatchPick> picks,
+    PassMethod pass,
+  ) =>
+      pass.isSingle ? [<String, FootballPlay>{}] : _playBranches(picks);
 }
 
 List<List<T>> _combinations<T>(List<T> source, int count) {
