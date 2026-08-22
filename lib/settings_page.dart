@@ -126,20 +126,35 @@ class _SettingsPageState extends State<SettingsPage> {
           '${now.day.toString().padLeft(2, '0')}-'
           '${now.hour.toString().padLeft(2, '0')}'
           '${now.minute.toString().padLeft(2, '0')}';
-      await SharePlus.instance.share(
-        ShareParams(
-          subject: '球镜本机数据备份',
-          text: '球镜本机数据备份，请妥善保存。',
-          files: [
-            XFile.fromData(
-              Uint8List.fromList(utf8.encode(contents)),
-              mimeType: 'application/json',
-              name: '球镜本机数据备份-$date.json',
-            ),
-          ],
-        ),
+      final fileName = '球镜本机数据备份-$date.json';
+      final backupFile = XFile.fromData(
+        Uint8List.fromList(utf8.encode(contents)),
+        mimeType: 'application/json',
+        name: fileName,
       );
-    } catch (_) {
+      if (kIsWeb) {
+        const typeGroup = XTypeGroup(
+          label: '球镜备份',
+          extensions: ['json'],
+          mimeTypes: ['application/json'],
+        );
+        final location = await getSaveLocation(
+          suggestedName: fileName,
+          acceptedTypeGroups: const [typeGroup],
+        );
+        if (location == null) return;
+        await backupFile.saveTo(location.path);
+      } else {
+        await SharePlus.instance.share(
+          ShareParams(
+            subject: '球镜本机数据备份',
+            text: '球镜本机数据备份，请妥善保存。',
+            files: [backupFile],
+          ),
+        );
+      }
+    } catch (error) {
+      debugPrint('本机数据备份失败: $error');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('备份未完成，请稍后重试')),
