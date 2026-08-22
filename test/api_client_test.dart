@@ -72,6 +72,22 @@ void main() {
     expect(requests.last.url.queryParameters.containsKey('activity'), isFalse);
   });
 
+  test('plan name search is trimmed and searches across all activity',
+      () async {
+    late http.Request captured;
+    final client = CaiApiClient(
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response('{"items": []}', 200);
+      }),
+    );
+
+    await client.fetchPlans(query: '  单刀  ', activity: 'recent');
+
+    expect(captured.url.queryParameters['q'], '单刀');
+    expect(captured.url.queryParameters.containsKey('activity'), isFalse);
+  });
+
   test('network failures do not expose implementation exceptions', () async {
     var attempts = 0;
     final client = CaiApiClient(

@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from contextlib import closing
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -42,7 +43,7 @@ class PlanActivityTest(unittest.TestCase):
         now = datetime.now(plans.CHINA_TZ)
         recent = int(now.timestamp())
         history = int((now - timedelta(days=8)).timestamp())
-        with plans._connect() as conn:
+        with closing(plans._connect()) as conn:
             conn.executescript(
                 """
                 INSERT INTO plans(id, slug, name, uploader_name, is_active, created_at, updated_at)
@@ -82,10 +83,10 @@ class PlanActivityTest(unittest.TestCase):
         self.db_patch.stop()
         self.temp_dir.cleanup()
 
-    def _list(self, activity: str, ids: str = "") -> list[str]:
+    def _list(self, activity: str, ids: str = "", q: str = "") -> list[str]:
         body = plans.list_plans(
             _request(),
-            q="",
+            q=q,
             ids=ids,
             activity=activity,
             limit=20,
@@ -105,6 +106,14 @@ class PlanActivityTest(unittest.TestCase):
         with self.assertRaises(HTTPException) as raised:
             self._list("unknown")
         self.assertEqual(raised.exception.status_code, 400)
+
+    def test_name_search_matches_plan_name_substring(self) -> None:
+        self.assertEqual(self._list("all", q="近期"), ["1"])
+        self.assertEqual(self._list("all", q="不存在"), [])
+
+    def test_recent_endpoint_keeps_summary_grouping(self) -> None:
+        body = plans.recent_plans(_request(), limit=6)
+        self.assertEqual([item["id"] for item in body["items"]], ["1", "2"])
 
 
 if __name__ == "__main__":

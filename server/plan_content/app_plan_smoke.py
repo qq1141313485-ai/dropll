@@ -160,6 +160,46 @@ def run(base_url: str, *, require_data: bool = False) -> tuple[bool, list[Check]
         ok = False
 
     try:
+        keyword = str(first_plan.get("name") or "").strip()
+        matched_items = _items(
+            _request_json(
+                base_url,
+                "/v1/plans",
+                {
+                    "q": keyword,
+                    "activity": "all",
+                    "limit": "20",
+                    "offset": "0",
+                },
+            )
+        )
+        if not matched_items:
+            raise SmokeError(f"known name returned no items: {keyword}")
+        if any(
+            keyword not in str(item.get("name") or "")
+            for item in matched_items
+        ):
+            raise SmokeError("name query returned unrelated items")
+        missing_items = _items(
+            _request_json(
+                base_url,
+                "/v1/plans",
+                {
+                    "q": "__NO_SUCH_PLAN_987654__",
+                    "activity": "all",
+                    "limit": "20",
+                    "offset": "0",
+                },
+            )
+        )
+        if missing_items:
+            raise SmokeError("missing-name query returned items")
+        checks.append(Check("ok", "plan name search", f"matched {keyword}"))
+    except SmokeError as exc:
+        checks.append(Check("error", "plan name search", str(exc)))
+        ok = False
+
+    try:
         updates_body = _request_json(
             base_url,
             f"/v1/plans/{urllib.parse.quote(plan_id)}/updates",

@@ -296,10 +296,12 @@ class CaiApiClient {
     int limit = 20,
     int offset = 0,
   }) {
+    final keyword = query.trim();
     return _getJson('/v1/plans', queryParameters: {
-      if (query.trim().isNotEmpty) 'q': query.trim(),
+      if (keyword.isNotEmpty) 'q': keyword,
       if (ids.isNotEmpty) 'ids': ids.join(','),
-      if (ids.isEmpty && activity != 'all') 'activity': activity,
+      if (ids.isEmpty && keyword.isEmpty && activity != 'all')
+        'activity': activity,
       'limit': '$limit',
       'offset': '$offset',
     });

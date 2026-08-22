@@ -53,6 +53,8 @@ class AppPlanSmokeTest(unittest.TestCase):
             if path == "/v1/plans/recent":
                 return {"items": [_summary()]}
             if path == "/v1/plans":
+                if query and query.get("q") == "__NO_SUCH_PLAN_987654__":
+                    return {"items": []}
                 return {"items": [_summary()]}
             if path == "/v1/plans/12/updates":
                 return _updates_body()
@@ -65,7 +67,10 @@ class AppPlanSmokeTest(unittest.TestCase):
             )
 
         self.assertTrue(ok)
-        self.assertEqual([check.level for check in checks], ["ok", "ok", "ok"])
+        self.assertEqual(
+            [check.level for check in checks],
+            ["ok", "ok", "ok", "ok"],
+        )
 
     def test_empty_recent_is_warning_without_required_data(self) -> None:
         with patch.object(
@@ -87,6 +92,8 @@ class AppPlanSmokeTest(unittest.TestCase):
             if path == "/v1/plans/recent":
                 return {"items": [_summary()]}
             if path == "/v1/plans":
+                if query and query.get("q") == "__NO_SUCH_PLAN_987654__":
+                    return {"items": []}
                 return {"items": [_summary()]}
             if path == "/v1/plans/12/updates":
                 return body
@@ -101,6 +108,26 @@ class AppPlanSmokeTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(checks[-1].level, "error")
         self.assertIn("missing fields", checks[-1].detail)
+
+    def test_ignored_name_query_fails_search_check(self) -> None:
+        def fake_request(base_url, path, query=None):
+            if path == "/v1/plans/recent":
+                return {"items": [_summary()]}
+            if path == "/v1/plans":
+                return {"items": [_summary()]}
+            if path == "/v1/plans/12/updates":
+                return _updates_body()
+            raise AssertionError(path)
+
+        with patch.object(app_plan_smoke, "_request_json", side_effect=fake_request):
+            ok, checks = app_plan_smoke.run("https://api.cclloo.com")
+
+        self.assertFalse(ok)
+        search_check = next(
+            check for check in checks if check.name == "plan name search"
+        )
+        self.assertEqual(search_check.level, "error")
+        self.assertIn("missing-name query returned items", search_check.detail)
 
 
 if __name__ == "__main__":

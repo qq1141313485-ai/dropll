@@ -453,7 +453,7 @@ class _AllPlansPageState extends State<AllPlansPage> {
               ),
             ),
           ),
-          if (!widget.favoriteOnly)
+          if (!widget.favoriteOnly && _keyword.trim().isEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
               child: SizedBox(
@@ -505,11 +505,13 @@ class _AllPlansPageState extends State<AllPlansPage> {
                                 : _PlanEmptyState(
                                     hasError: _remoteStatusMessage != null,
                                     onRetry: () => _loadPage(reset: true),
-                                    noContentText: widget.favoriteOnly
-                                        ? '还没有收藏计划'
-                                        : _activity == 'history'
-                                            ? '没有找到历史计划'
-                                            : '没有找到近期计划',
+                                    noContentText: _keyword.trim().isNotEmpty
+                                        ? '没有找到相关计划'
+                                        : widget.favoriteOnly
+                                            ? '还没有收藏计划'
+                                            : _activity == 'history'
+                                                ? '没有找到历史计划'
+                                                : '没有找到近期计划',
                                   ),
                           ),
                         ),

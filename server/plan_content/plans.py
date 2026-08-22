@@ -513,7 +513,6 @@ def _plan_summary_query(*, include_inactive: bool = False) -> str:
         LEFT JOIN plan_images i
           ON i.update_id = u.id {image_active_clause}
         {active_clause}
-        GROUP BY p.id, u.id
     """
 
 
@@ -565,7 +564,10 @@ def list_plans(
                 else " AND u.published_at < ?"
             )
             params.append(cutoff_ts)
-        query += " ORDER BY u.published_at DESC, p.id DESC LIMIT ? OFFSET ?"
+        query += (
+            " GROUP BY p.id, u.id"
+            " ORDER BY u.published_at DESC, p.id DESC LIMIT ? OFFSET ?"
+        )
         params.extend([limit + 1, offset])
         rows = conn.execute(query, params).fetchall()
         has_more = len(rows) > limit
@@ -588,7 +590,10 @@ def recent_plans(
     limit: int = Query(default=6, ge=1, le=20),
 ) -> dict[str, Any]:
     query = _plan_summary_query()
-    query += " ORDER BY u.published_at DESC, p.id DESC LIMIT ?"
+    query += (
+        " GROUP BY p.id, u.id"
+        " ORDER BY u.published_at DESC, p.id DESC LIMIT ?"
+    )
     with closing(_connect()) as conn:
         rows = conn.execute(query, (limit,)).fetchall()
         items = [_serialize_plan_summary(request, conn, row) for row in rows]
