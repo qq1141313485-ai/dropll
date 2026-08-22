@@ -76,6 +76,9 @@ PLAN_SOURCE_API_URL = os.environ.get(
 PLAN_SOURCE_REQUEST_TIMEOUT = float(
     os.environ.get("CAIMASTER_PLAN_SOURCE_TIMEOUT_SECONDS", "20")
 )
+PLAN_ARTICLES_PUBLIC_ENABLED = (
+    os.environ.get("CAIMASTER_PLAN_ARTICLES_PUBLIC_ENABLED", "0") == "1"
+)
 Image.MAX_IMAGE_PIXELS = 60_000_000
 PLAN_SYNC_SERVICE_PATH = Path("/etc/systemd/system/caimaster-plan-source-sync.service")
 PLAN_SYNC_TIMER_PATH = Path("/etc/systemd/system/caimaster-plan-source-sync.timer")
@@ -381,6 +384,50 @@ def _init_store() -> None:
                 ON plan_images(update_id, is_active, position, id);
             CREATE INDEX IF NOT EXISTS idx_plan_aliases_canonical
                 ON plan_aliases(canonical_plan_id, alias_plan_id);
+            CREATE TABLE IF NOT EXISTS plan_articles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_name TEXT NOT NULL,
+                source_article_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                published_at INTEGER NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                UNIQUE(source_name, source_article_id)
+            );
+            CREATE TABLE IF NOT EXISTS plan_article_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                article_id INTEGER NOT NULL,
+                content_sha256 TEXT NOT NULL,
+                title TEXT NOT NULL,
+                published_at INTEGER NOT NULL,
+                captured_at INTEGER NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY(article_id) REFERENCES plan_articles(id),
+                UNIQUE(article_id, content_sha256)
+            );
+            CREATE TABLE IF NOT EXISTS plan_article_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                version_id INTEGER NOT NULL,
+                filename TEXT NOT NULL UNIQUE,
+                thumbnail_filename TEXT NOT NULL UNIQUE,
+                source_url TEXT NOT NULL,
+                content_sha256 TEXT NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
+                width INTEGER NOT NULL,
+                height INTEGER NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(version_id) REFERENCES plan_article_versions(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_plan_articles_published
+                ON plan_articles(is_active, published_at DESC, id DESC);
+            CREATE INDEX IF NOT EXISTS idx_plan_article_versions_latest
+                ON plan_article_versions(
+                    article_id, is_active, captured_at DESC, id DESC
+                );
+            CREATE INDEX IF NOT EXISTS idx_plan_article_images_position
+                ON plan_article_images(version_id, is_active, position, id);
             """
         )
         conn.commit()
@@ -693,6 +740,231 @@ def plan_updates(
     }
 
 
+def _article_summary_query() -> str:
+    return """
+        WITH ranked_versions AS (
+            SELECT v.*,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY v.article_id
+                       ORDER BY v.captured_at DESC, v.id DESC
+                   ) AS row_number
+            FROM plan_article_versions v
+            WHERE v.is_active = 1
+              AND EXISTS (
+                  SELECT 1 FROM plan_article_images image
+                  WHERE image.version_id = v.id AND image.is_active = 1
+              )
+        ), latest_versions AS (
+            SELECT * FROM ranked_versions WHERE row_number = 1
+        )
+        SELECT article.*,
+               version.id AS latest_version_id,
+               version.captured_at,
+               COUNT(image.id) AS image_count
+        FROM plan_articles article
+        JOIN latest_versions version ON version.article_id = article.id
+        JOIN plan_article_images image
+          ON image.version_id = version.id AND image.is_active = 1
+        WHERE article.is_active = 1
+    """
+
+
+def _serialize_article_summary(
+    request: Request,
+    conn: sqlite3.Connection,
+    row: sqlite3.Row,
+) -> dict[str, Any]:
+    thumbnail = conn.execute(
+        """
+        SELECT thumbnail_filename FROM plan_article_images
+        WHERE version_id = ? AND is_active = 1
+        ORDER BY position, id LIMIT 1
+        """,
+        (row["latest_version_id"],),
+    ).fetchone()
+    captured_at = int(row["captured_at"])
+    captured = datetime.fromtimestamp(captured_at, CHINA_TZ)
+    now = datetime.now(CHINA_TZ)
+    return {
+        "id": str(row["id"]),
+        "contentType": "article",
+        "sourceName": row["source_name"],
+        "sourceArticleId": row["source_article_id"],
+        "name": row["title"],
+        "uploaderName": "原文内容",
+        "publishedAt": _iso_time(int(row["published_at"])),
+        "latestVersionId": str(row["latest_version_id"]),
+        "latestUpdatedAt": _iso_time(captured_at),
+        "updatedToday": (
+            now.year == captured.year
+            and now.month == captured.month
+            and now.day == captured.day
+        ),
+        "latestImageCount": int(row["image_count"]),
+        "latestThumbnailUrl": (
+            _media_url(request, thumbnail["thumbnail_filename"])
+            if thumbnail is not None
+            else None
+        ),
+    }
+
+
+@public_router.get("/plan-articles")
+def list_plan_articles(
+    request: Request,
+    q: str = Query(default="", max_length=100),
+    ids: str = Query(default="", max_length=500),
+    activity: str = Query(default="all", max_length=12),
+    limit: int = Query(default=20, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    keyword = _clean_name(q, maximum=100)
+    activity = activity.strip().lower()
+    if activity not in {"all", "recent", "history"}:
+        raise HTTPException(status_code=400, detail="原文活跃范围不正确")
+    article_ids = list(
+        dict.fromkeys(
+            int(value.strip())
+            for value in ids.split(",")
+            if value.strip().isdigit()
+        )
+    )[:50]
+    query = _article_summary_query()
+    params: list[Any] = []
+    if article_ids:
+        placeholders = ",".join("?" for _ in article_ids)
+        query += f" AND article.id IN ({placeholders})"
+        params.extend(article_ids)
+    if keyword:
+        query += " AND article.title LIKE ?"
+        params.append(f"%{keyword}%")
+    if not article_ids and activity != "all":
+        cutoff = datetime.now(CHINA_TZ) - timedelta(days=6)
+        cutoff_ts = int(
+            cutoff.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        )
+        query += (
+            " AND article.published_at >= ?"
+            if activity == "recent"
+            else " AND article.published_at < ?"
+        )
+        params.append(cutoff_ts)
+    query += (
+        " GROUP BY article.id, version.id"
+        " ORDER BY article.published_at DESC, article.id DESC"
+        " LIMIT ? OFFSET ?"
+    )
+    params.extend([limit + 1, offset])
+    with closing(_connect()) as conn:
+        rows = conn.execute(query, params).fetchall()
+        has_more = len(rows) > limit
+        visible = rows[:limit]
+        items = [
+            _serialize_article_summary(request, conn, row) for row in visible
+        ]
+    return {
+        "enabled": PLAN_ARTICLES_PUBLIC_ENABLED,
+        "items": items,
+        "count": len(items),
+        "offset": offset,
+        "nextOffset": offset + len(items) if has_more else None,
+        "hasMore": has_more,
+    }
+
+
+@public_router.get("/plan-articles/recent")
+def recent_plan_articles(
+    request: Request,
+    limit: int = Query(default=6, ge=1, le=20),
+) -> dict[str, Any]:
+    query = _article_summary_query()
+    query += (
+        " GROUP BY article.id, version.id"
+        " ORDER BY article.published_at DESC, article.id DESC LIMIT ?"
+    )
+    with closing(_connect()) as conn:
+        rows = conn.execute(query, (limit,)).fetchall()
+        items = [
+            _serialize_article_summary(request, conn, row) for row in rows
+        ]
+    return {
+        "enabled": PLAN_ARTICLES_PUBLIC_ENABLED,
+        "items": items,
+        "count": len(items),
+    }
+
+
+@public_router.get("/plan-articles/{article_id}/versions")
+def plan_article_versions(
+    request: Request,
+    article_id: int,
+    limit: int = Query(default=10, ge=1, le=30),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    with closing(_connect()) as conn:
+        article = conn.execute(
+            """
+            SELECT * FROM plan_articles
+            WHERE id = ? AND is_active = 1
+            """,
+            (article_id,),
+        ).fetchone()
+        if article is None:
+            raise HTTPException(status_code=404, detail="原文内容不存在或已下架")
+        rows = conn.execute(
+            """
+            SELECT version.* FROM plan_article_versions version
+            WHERE version.article_id = ? AND version.is_active = 1
+              AND EXISTS (
+                  SELECT 1 FROM plan_article_images image
+                  WHERE image.version_id = version.id AND image.is_active = 1
+              )
+            ORDER BY version.captured_at DESC, version.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (article_id, limit + 1, offset),
+        ).fetchall()
+        has_more = len(rows) > limit
+        visible = rows[:limit]
+        items = []
+        for version in visible:
+            images = conn.execute(
+                """
+                SELECT * FROM plan_article_images
+                WHERE version_id = ? AND is_active = 1
+                ORDER BY position, id
+                """,
+                (version["id"],),
+            ).fetchall()
+            items.append(
+                {
+                    "id": str(version["id"]),
+                    "title": version["title"],
+                    "publishedAt": _iso_time(version["captured_at"]),
+                    "sourcePublishedAt": _iso_time(version["published_at"]),
+                    "images": [
+                        _serialize_image(request, image) for image in images
+                    ],
+                }
+            )
+    return {
+        "article": {
+            "id": str(article["id"]),
+            "contentType": "article",
+            "sourceName": article["source_name"],
+            "sourceArticleId": article["source_article_id"],
+            "name": article["title"],
+            "uploaderName": "原文内容",
+            "publishedAt": _iso_time(article["published_at"]),
+        },
+        "items": items,
+        "count": len(items),
+        "offset": offset,
+        "nextOffset": offset + len(items) if has_more else None,
+        "hasMore": has_more,
+    }
+
+
 @admin_router.get("/plans", dependencies=[Depends(_require_admin)])
 def admin_list_plans(request: Request) -> dict[str, Any]:
     with closing(_connect()) as conn:
@@ -740,6 +1012,7 @@ def admin_list_plan_sync_articles(
         "duplicate",
         "failed",
         "ignored",
+        "mirrored",
         "name_configured",
         "pending_name",
         "retry_queued",
@@ -1139,6 +1412,9 @@ def _empty_sync_governance() -> dict[str, Any]:
         "activePlans": 0,
         "visiblePlans": 0,
         "hiddenActivePlans": 0,
+        "mirroredArticles": 0,
+        "mirroredVersions": 0,
+        "mirrorBacklog": 0,
         "topPendingNames": [],
     }
 
@@ -1219,6 +1495,41 @@ def _sync_governance_summary(
             """
         ).fetchone()[0]
     )
+    article_tables = {
+        str(row["name"])
+        for row in conn.execute(
+            """
+            SELECT name FROM sqlite_master
+            WHERE type = 'table'
+              AND name IN ('plan_articles', 'plan_article_versions')
+            """
+        )
+    }
+    if article_tables == {"plan_articles", "plan_article_versions"}:
+        mirrored_articles = int(
+            conn.execute("SELECT COUNT(*) FROM plan_articles").fetchone()[0]
+        )
+        mirrored_versions = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM plan_article_versions"
+            ).fetchone()[0]
+        )
+        mirror_backlog = int(
+            conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM plan_sync_articles sync
+                LEFT JOIN plan_articles article
+                  ON article.source_name = sync.source_name
+                 AND article.source_article_id = sync.source_article_id
+                WHERE sync.status != 'ignored' AND article.id IS NULL
+                """
+            ).fetchone()[0]
+        )
+    else:
+        mirrored_articles = 0
+        mirrored_versions = 0
+        mirror_backlog = 0
     oldest_pending = int(pending["oldest_synced_at"] or 0)
     return {
         "pendingArticles": int(pending["article_count"] or 0),
@@ -1233,6 +1544,9 @@ def _sync_governance_summary(
         "activePlans": active_plans,
         "visiblePlans": visible_plans,
         "hiddenActivePlans": max(0, active_plans - visible_plans),
+        "mirroredArticles": mirrored_articles,
+        "mirroredVersions": mirrored_versions,
+        "mirrorBacklog": mirror_backlog,
         "topPendingNames": [
             {
                 "name": row["name"],

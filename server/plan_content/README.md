@@ -129,6 +129,15 @@ python3 verify_plan_release.py --base-url https://api.cclloo.com
 计划选择框使用页面内的可点击下拉面板，支持按关键词搜索已有计划，最多展示 8 个匹配项；
 每个已有计划可直接选择，输入不存在的完整名称时可在面板内点“＋新建”。确认规则后由
 同步流程创建新计划，不需要从完整计划列表中翻找或预先手工新建。
+
+新一代整篇同步模式由 `CAIMASTER_PLAN_SOURCE_MIRROR_ARTICLES=1` 控制。启用后，每篇
+符合计划文章格式的来源文章按原始图片顺序保存为一个独立合集；标题或图片内容变化时新增
+一个完整版本，不覆盖旧版本。公开读取接口为 `/v1/plan-articles`、
+`/v1/plan-articles/recent` 和 `/v1/plan-articles/{id}/versions`。首次生产启用前必须先在
+备份数据库上完成历史迁移与数量核对；每轮默认只回填 10 篇，可通过
+`CAIMASTER_PLAN_SOURCE_MIRROR_BACKFILL_LIMIT` 调整。迁移验收完成后再设置
+`CAIMASTER_PLAN_ARTICLES_PUBLIC_ENABLED=1` 让 App 切换到原文合集；两个开关默认关闭，
+不能仅因代码部署就直接开启。
 需要启用同步 timer 时执行：
 
 ```bash

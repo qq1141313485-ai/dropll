@@ -73,6 +73,13 @@ REQUEST_TIMEOUT = float(
     os.environ.get("CAIMASTER_PLAN_SOURCE_TIMEOUT_SECONDS", "20")
 )
 DRY_RUN = os.environ.get("CAIMASTER_PLAN_SOURCE_DRY_RUN", "0") == "1"
+MIRROR_ARTICLES = (
+    os.environ.get("CAIMASTER_PLAN_SOURCE_MIRROR_ARTICLES", "0") == "1"
+)
+MIRROR_BACKFILL_LIMIT = max(
+    1,
+    int(os.environ.get("CAIMASTER_PLAN_SOURCE_MIRROR_BACKFILL_LIMIT", "10")),
+)
 USER_AGENT = "CaimasterPlanSync/1.0 (+authorized-content-syndication)"
 logging.basicConfig(
     level=os.environ.get("CAIMASTER_PLAN_SOURCE_LOG_LEVEL", "INFO"),
@@ -321,6 +328,34 @@ def _fetch_queued_articles() -> dict[str, dict[str, Any]]:
     }
 
 
+def _fetch_mirror_backlog() -> dict[str, dict[str, Any]]:
+    with closing(_connect()) as conn:
+        rows = conn.execute(
+            """
+            SELECT sync.source_article_id, sync.source_title,
+                   sync.published_at
+            FROM plan_sync_articles sync
+            LEFT JOIN plan_articles article
+              ON article.source_name = sync.source_name
+             AND article.source_article_id = sync.source_article_id
+            WHERE sync.source_name = ?
+              AND sync.status != 'ignored'
+              AND article.id IS NULL
+            ORDER BY sync.published_at DESC, sync.id DESC
+            LIMIT ?
+            """,
+            (SOURCE_NAME, MIRROR_BACKFILL_LIMIT),
+        ).fetchall()
+    return {
+        str(row["source_article_id"]): {
+            "id": row["source_article_id"],
+            "title": row["source_title"],
+            "publishtime": int(row["published_at"] or 0),
+        }
+        for row in rows
+    }
+
+
 def _fetch_articles(*, use_sync_store: bool = True) -> list[dict[str, Any]]:
     cutoff = datetime.now(CHINA_TZ) - timedelta(days=LOOKBACK_DAYS - 1)
     cutoff = cutoff.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -328,20 +363,28 @@ def _fetch_articles(*, use_sync_store: bool = True) -> list[dict[str, Any]]:
     collected: dict[str, dict[str, Any]] = {}
     if use_sync_store:
         with closing(_connect()) as conn:
+            statuses = (
+                ("ignored",)
+                if MIRROR_ARTICLES
+                else ("imported", "duplicate", "ignored", "pending_name")
+            )
+            placeholders = ",".join("?" for _ in statuses)
             imported_ids = {
                 row[0]
                 for row in conn.execute(
-                    """
+                    f"""
                     SELECT source_article_id FROM plan_sync_articles
                     WHERE source_name = ?
-                      AND status IN (
-                          'imported', 'duplicate', 'ignored', 'pending_name'
-                      )
+                      AND status IN ({placeholders})
                     """,
-                    (SOURCE_NAME,),
+                    (SOURCE_NAME, *statuses),
                 )
             }
-        collected = _fetch_queued_articles()
+        collected = (
+            _fetch_mirror_backlog()
+            if MIRROR_ARTICLES
+            else _fetch_queued_articles()
+        )
     queued_count = len(collected)
     old_streak = 0
     encountered_imported = False
@@ -406,8 +449,12 @@ def _record_article(
                 source_title = excluded.source_title,
                 raw_plan_name = excluded.raw_plan_name,
                 resolved_plan_name = excluded.resolved_plan_name,
-                plan_id = excluded.plan_id,
-                update_id = excluded.update_id,
+                plan_id = COALESCE(
+                    excluded.plan_id, plan_sync_articles.plan_id
+                ),
+                update_id = COALESCE(
+                    excluded.update_id, plan_sync_articles.update_id
+                ),
                 published_at = excluded.published_at,
                 status = excluded.status,
                 error = excluded.error,
@@ -821,6 +868,173 @@ def _sync_article(article: dict[str, Any], rules: PlanNameRules) -> str:
     return "imported"
 
 
+def _sync_article_mirror(
+    article: dict[str, Any],
+    rules: PlanNameRules,
+) -> str:
+    """Save one source article as one ordered, versioned collection."""
+    article_id = str(article.get("id") or "").strip()
+    if not article_id:
+        raise SourceError("article has no source id")
+    source_title = " ".join(str(article.get("title") or "").strip().split())
+    parsed = parse_plan_title_info(source_title, _permissive_rules(rules))
+    archive = _article_archive(article)
+    image_urls = _article_image_urls(article, archive)[:30]
+    if not image_urls:
+        raise SourceError("article has no downloadable images")
+
+    prepared = []
+    version_fingerprint = hashlib.sha256()
+    version_fingerprint.update(source_title.encode("utf-8"))
+    for position, source_url in enumerate(image_urls):
+        contents = _request(source_url)
+        content_sha256 = hashlib.sha256(contents).hexdigest()
+        version_fingerprint.update(b"\0")
+        version_fingerprint.update(source_url.encode("utf-8"))
+        version_fingerprint.update(b"\0")
+        version_fingerprint.update(content_sha256.encode("ascii"))
+        original, thumbnail, width, height = _prepare_image(contents)
+        prepared.append(
+            (
+                position,
+                source_url,
+                content_sha256,
+                original,
+                thumbnail,
+                width,
+                height,
+            )
+        )
+    content_sha256 = version_fingerprint.hexdigest()
+    published_at = int(
+        archive.get("publishtime")
+        or article.get("publishtime")
+        or article.get("createtime")
+        or parsed.published_date.timestamp()
+    )
+    now = int(time.time())
+
+    with closing(_connect()) as conn:
+        existing = conn.execute(
+            """
+            SELECT article.id FROM plan_articles article
+            JOIN plan_article_versions version
+              ON version.article_id = article.id
+            WHERE article.source_name = ?
+              AND article.source_article_id = ?
+              AND version.content_sha256 = ?
+            LIMIT 1
+            """,
+            (SOURCE_NAME, article_id, content_sha256),
+        ).fetchone()
+    if existing is not None:
+        _record_article(
+            article,
+            status="mirrored",
+            raw_plan_name=parsed.raw_name,
+        )
+        return "duplicate"
+
+    written: list[Path] = []
+    with closing(_connect()) as conn:
+        try:
+            conn.execute(
+                """
+                INSERT INTO plan_articles(
+                    source_name, source_article_id, title, published_at,
+                    is_active, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, 1, ?, ?)
+                ON CONFLICT(source_name, source_article_id) DO UPDATE SET
+                    title = excluded.title,
+                    published_at = excluded.published_at,
+                    is_active = 1,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    SOURCE_NAME,
+                    article_id,
+                    source_title[:200],
+                    published_at,
+                    now,
+                    now,
+                ),
+            )
+            article_row = conn.execute(
+                """
+                SELECT id FROM plan_articles
+                WHERE source_name = ? AND source_article_id = ?
+                """,
+                (SOURCE_NAME, article_id),
+            ).fetchone()
+            if article_row is None:
+                raise RuntimeError("mirrored article was not created")
+            cursor = conn.execute(
+                """
+                INSERT INTO plan_article_versions(
+                    article_id, content_sha256, title, published_at,
+                    captured_at, is_active
+                ) VALUES (?, ?, ?, ?, ?, 1)
+                """,
+                (
+                    int(article_row["id"]),
+                    content_sha256,
+                    source_title[:200],
+                    published_at,
+                    now,
+                ),
+            )
+            version_id = int(cursor.lastrowid)
+            for (
+                position,
+                source_url,
+                image_sha256,
+                original,
+                thumbnail,
+                width,
+                height,
+            ) in prepared:
+                stem = uuid4().hex
+                filename = f"{stem}.jpg"
+                thumbnail_filename = f"{stem}_thumb.jpg"
+                original_path = PLAN_MEDIA_DIR / filename
+                thumbnail_path = PLAN_MEDIA_DIR / thumbnail_filename
+                original_path.write_bytes(original)
+                thumbnail_path.write_bytes(thumbnail)
+                written.extend((original_path, thumbnail_path))
+                conn.execute(
+                    """
+                    INSERT INTO plan_article_images(
+                        version_id, filename, thumbnail_filename, source_url,
+                        content_sha256, position, width, height, is_active,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                    """,
+                    (
+                        version_id,
+                        filename,
+                        thumbnail_filename,
+                        source_url,
+                        image_sha256,
+                        position,
+                        width,
+                        height,
+                        now,
+                    ),
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            for path in written:
+                path.unlink(missing_ok=True)
+            raise
+    _record_article(
+        article,
+        status="mirrored",
+        raw_plan_name=parsed.raw_name,
+    )
+    return "imported"
+
+
 def _status_for_source_error(message: str) -> str:
     if message.startswith(
         (
@@ -875,14 +1089,18 @@ def _run_dry_run() -> int:
     for article in articles:
         article_id = str(article.get("id") or "")
         try:
-            parsed = parse_plan_title_info(article.get("title"), rules)
+            parsed = parse_plan_title_info(
+                article.get("title"),
+                _permissive_rules(rules) if MIRROR_ARTICLES else rules,
+            )
             archive = _article_archive(article)
             image_urls = _article_image_urls(article, archive)
             if not image_urls:
                 raise SourceError("article has no downloadable images")
-            image_plan_names = _image_plan_names(
-                parsed,
-                image_urls[:30],
+            image_plan_names = (
+                ["原文合集"] * len(image_urls[:30])
+                if MIRROR_ARTICLES
+                else _image_plan_names(parsed, image_urls[:30])
             )
             counts["valid"] += 1
             logger.info(
@@ -938,7 +1156,11 @@ def run() -> int:
             for article in articles:
                 article_id = str(article.get("id") or "")
                 try:
-                    outcome = _sync_article(article, rules)
+                    outcome = (
+                        _sync_article_mirror(article, rules)
+                        if MIRROR_ARTICLES
+                        else _sync_article(article, rules)
+                    )
                     counts[outcome] += 1
                 except SourceError as exc:
                     message = str(exc)

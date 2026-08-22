@@ -27,6 +27,8 @@ class ManageApiEnvTest(unittest.TestCase):
             self.assertNotIn(token, output.getvalue())
             self.assertIn("...", output.getvalue())
             self.assertIn("CAIMASTER_PLAN_SOURCE_ENABLED=0", text)
+            self.assertIn("CAIMASTER_PLAN_SOURCE_MIRROR_ARTICLES=0", text)
+            self.assertIn("CAIMASTER_PLAN_ARTICLES_PUBLIC_ENABLED=0", text)
             self.assertEqual(
                 stat.S_IMODE(os.stat(env_path).st_mode),
                 stat.S_IRUSR | stat.S_IWUSR,

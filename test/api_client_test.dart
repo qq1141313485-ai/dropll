@@ -88,6 +88,26 @@ void main() {
     expect(captured.url.queryParameters.containsKey('activity'), isFalse);
   });
 
+  test('original article requests use their dedicated collection routes',
+      () async {
+    final requests = <http.Request>[];
+    final client = CaiApiClient(
+      client: MockClient((request) async {
+        requests.add(request);
+        return http.Response('{"items": []}', 200);
+      }),
+    );
+
+    await client.fetchPlanArticles(query: '  原文  ', activity: 'recent');
+    await client.fetchPlanArticleVersions('9', offset: 10);
+
+    expect(requests.first.url.path, '/v1/plan-articles');
+    expect(requests.first.url.queryParameters['q'], '原文');
+    expect(requests.first.url.queryParameters.containsKey('activity'), isFalse);
+    expect(requests.last.url.path, '/v1/plan-articles/9/versions');
+    expect(requests.last.url.queryParameters['offset'], '10');
+  });
+
   test('network failures do not expose implementation exceptions', () async {
     var attempts = 0;
     final client = CaiApiClient(

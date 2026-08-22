@@ -47,7 +47,51 @@ def _updates_body() -> dict:
     }
 
 
+def _article_summary() -> dict:
+    return {
+        "id": "9",
+        "contentType": "article",
+        "sourceName": "authorized-source",
+        "sourceArticleId": "395790",
+        "name": "20260823 原文合集",
+        "latestVersionId": "21",
+        "latestUpdatedAt": "2026-08-23T10:20+08:00",
+        "updatedToday": True,
+        "latestImageCount": 1,
+        "latestThumbnailUrl": "https://api.cclloo.com/media/plans/article_t.jpg",
+    }
+
+
 class AppPlanSmokeTest(unittest.TestCase):
+    def test_enabled_article_api_is_checked_with_versions(self) -> None:
+        def fake_request(base_url, path, query=None):
+            if path == "/v1/plans/recent":
+                return {"items": [_summary()]}
+            if path == "/v1/plans":
+                if query and query.get("q") == "__NO_SUCH_PLAN_987654__":
+                    return {"items": []}
+                return {"items": [_summary()]}
+            if path == "/v1/plans/12/updates":
+                return _updates_body()
+            if path == "/v1/plan-articles/recent":
+                return {"enabled": True, "items": [_article_summary()]}
+            if path == "/v1/plan-articles/9/versions":
+                return _updates_body()
+            raise AssertionError(path)
+
+        with (
+            patch.object(app_plan_smoke, "ARTICLE_API_ENABLED", True),
+            patch.object(app_plan_smoke, "_request_json", side_effect=fake_request),
+        ):
+            ok, checks = app_plan_smoke.run(
+                "https://api.cclloo.com",
+                require_data=True,
+            )
+
+        self.assertTrue(ok)
+        self.assertEqual(checks[-2].name, "recent plan articles")
+        self.assertEqual(checks[-1].name, "plan article versions")
+
     def test_smoke_passes_with_valid_plan_payloads(self) -> None:
         def fake_request(base_url, path, query=None):
             if path == "/v1/plans/recent":

@@ -65,6 +65,29 @@ void main() {
     expect(update.images.single.imageUrl, endsWith('/example.jpg'));
   });
 
+  test('article summary is namespaced and marked as an original collection',
+      () {
+    final source = PlanSource.fromArticleSummaryJson({
+      'id': 9,
+      'contentType': 'article',
+      'sourceName': 'authorized-source',
+      'sourceArticleId': '395790',
+      'name': '20260823 原文合集',
+      'latestVersionId': 21,
+      'latestUpdatedAt': '2026-08-23T10:20+08:00',
+      'latestImageCount': 4,
+      'latestThumbnailUrl':
+          'https://api.cclloo.com/media/plans/article_thumb.jpg',
+    });
+
+    expect(source.id, 'article:9');
+    expect(source.remoteId, '9');
+    expect(source.isArticle, isTrue);
+    expect(source.sourceArticleId, '395790');
+    expect(source.latestUpdate.id, '21');
+    expect(source.latestUpdate.displayImageCount, 4);
+  });
+
   test('remote plan summary without thumbnail is treated as not displayable',
       () {
     final source = PlanSource.fromSummaryJson({

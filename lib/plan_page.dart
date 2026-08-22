@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
+import 'plan_content_favorite_store.dart';
 
 const _favoriteKey = 'plan_favorite_source_ids_v1';
 
@@ -23,6 +24,7 @@ class PlanCenterPage extends StatefulWidget {
 class _PlanCenterPageState extends State<PlanCenterPage> {
   final CaiApiClient _client = CaiApiClient();
   Set<String> _favoriteIds = <String>{};
+  List<PlanContentFavorite> _contentFavorites = const [];
   List<PlanSource> _sources = const [];
   bool _loading = true;
   bool _refreshing = false;
@@ -47,22 +49,55 @@ class _PlanCenterPageState extends State<PlanCenterPage> {
       setState(() => _loading = true);
     }
     var favoriteIds = _favoriteIds;
+    var contentFavorites = _contentFavorites;
     var sources = _sources;
     String? remoteStatusMessage;
     try {
       final prefs = await SharedPreferences.getInstance();
       favoriteIds =
           (prefs.getStringList(_favoriteKey) ?? const <String>[]).toSet();
-      final recentBody = await _client.fetchRecentPlans(limit: 6);
-      sources = _planSourcesFromBody(recentBody);
+      contentFavorites = await const PlanContentFavoriteStore().load();
+      try {
+        final articleBody = await _client.fetchRecentPlanArticles(limit: 6);
+        sources = _planArticleSourcesFromBody(articleBody);
+      } catch (_) {
+        sources = const [];
+      }
+      if (sources.isEmpty) {
+        final recentBody = await _client.fetchRecentPlans(limit: 6);
+        sources = _planSourcesFromBody(recentBody);
+      }
       if (sources.isNotEmpty && favoriteIds.isNotEmpty) {
-        final favoriteBody = await _client.fetchPlans(
-          ids: favoriteIds.toList(growable: false),
-          limit: 50,
-        );
-        final favorites = _planSourcesFromBody(favoriteBody);
+        final articleFavoriteIds = favoriteIds
+            .where((id) => id.startsWith('article:'))
+            .map((id) => id.replaceFirst('article:', ''))
+            .toList(growable: false);
+        final legacyFavoriteIds = favoriteIds
+            .where((id) => !id.startsWith('article:'))
+            .toList(growable: false);
+        final favorites = <PlanSource>[];
+        if (articleFavoriteIds.isNotEmpty) {
+          try {
+            final articleFavoriteBody = await _client.fetchPlanArticles(
+              ids: articleFavoriteIds,
+              limit: 50,
+            );
+            favorites.addAll(
+              _planArticleSourcesFromBody(articleFavoriteBody),
+            );
+          } catch (_) {
+            // Keep other local favorites available during a staged API rollout.
+          }
+        }
+        if (legacyFavoriteIds.isNotEmpty) {
+          final favoriteBody = await _client.fetchPlans(
+            ids: legacyFavoriteIds,
+            limit: 50,
+          );
+          favorites.addAll(_planSourcesFromBody(favoriteBody));
+        }
         var migratedFavorites = false;
-        for (final source in favorites) {
+        for (final source in favorites.where((source) => !source.isArticle)) {
           final legacyFavorites = source.aliasIds.intersection(favoriteIds);
           if (legacyFavorites.isEmpty) continue;
           favoriteIds
@@ -90,6 +125,7 @@ class _PlanCenterPageState extends State<PlanCenterPage> {
     if (!mounted) return;
     setState(() {
       _favoriteIds = favoriteIds;
+      _contentFavorites = contentFavorites;
       _sources = sources;
       _loading = false;
       _remoteStatusMessage = remoteStatusMessage;
@@ -100,8 +136,12 @@ class _PlanCenterPageState extends State<PlanCenterPage> {
     final prefs = await SharedPreferences.getInstance();
     final favoriteIds =
         (prefs.getStringList(_favoriteKey) ?? const <String>[]).toSet();
+    final contentFavorites = await const PlanContentFavoriteStore().load();
     if (!mounted) return;
-    setState(() => _favoriteIds = favoriteIds);
+    setState(() {
+      _favoriteIds = favoriteIds;
+      _contentFavorites = contentFavorites;
+    });
   }
 
   @override
@@ -117,6 +157,8 @@ class _PlanCenterPageState extends State<PlanCenterPage> {
         return b.latestUpdate.updatedAt.compareTo(a.latestUpdate.updatedAt);
       });
     final visibleFavorites = favorites.take(2).toList(growable: false);
+    final visibleContentFavorites =
+        _contentFavorites.take(2).toList(growable: false);
     final recentUpdates = sources
         .map((source) => _PlanUpdateEntry(source, source.latestUpdate))
         .toList(growable: false)
@@ -164,7 +206,7 @@ class _PlanCenterPageState extends State<PlanCenterPage> {
                 hasScrollBody: false,
                 child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
               )
-            else if (sources.isEmpty)
+            else if (sources.isEmpty && _contentFavorites.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: _PlanEmptyState(
@@ -175,28 +217,35 @@ class _PlanCenterPageState extends State<PlanCenterPage> {
             else ...[
               SliverToBoxAdapter(
                 child: _SectionHeader(
-                  title:
-                      favorites.isEmpty ? '我的收藏' : '我的收藏  ${favorites.length}个',
-                  actionText: favorites.isEmpty ? '' : '管理收藏',
-                  onAction: favorites.isEmpty ? null : _openFavorites,
+                  title: _contentFavorites.isEmpty
+                      ? '我的收藏'
+                      : '我的收藏  ${_contentFavorites.length}个',
+                  actionText: _contentFavorites.isEmpty ? '' : '管理收藏',
+                  onAction:
+                      _contentFavorites.isEmpty ? null : _openContentFavorites,
                 ),
               ),
               SliverToBoxAdapter(
-                child: favorites.isEmpty
+                child: _contentFavorites.isEmpty
                     ? _EmptyFavorites(onTap: _openAllPlans)
                     : Container(
                         color: Colors.white,
                         child: Column(
                           children: [
                             for (var index = 0;
-                                index < visibleFavorites.length;
+                                index < visibleContentFavorites.length;
                                 index++) ...[
-                              _FavoriteStatusRow(
-                                source: visibleFavorites[index],
-                                onTap: () =>
-                                    _openDetail(visibleFavorites[index]),
+                              _ContentFavoriteRow(
+                                favorite: visibleContentFavorites[index],
+                                hasNewVersion: _hasNewArticleVersion(
+                                  visibleContentFavorites[index],
+                                  sources,
+                                ),
+                                onTap: () => _openContentFavorite(
+                                  visibleContentFavorites[index],
+                                ),
                               ),
-                              if (index != visibleFavorites.length - 1)
+                              if (index != visibleContentFavorites.length - 1)
                                 const Divider(
                                   height: 1,
                                   indent: 18,
@@ -204,38 +253,79 @@ class _PlanCenterPageState extends State<PlanCenterPage> {
                                   color: Color(0xffe8ebea),
                                 ),
                             ],
-                            if (favorites.length > visibleFavorites.length)
+                            if (_contentFavorites.length >
+                                visibleContentFavorites.length)
                               _MoreFavoritesRow(
-                                count:
-                                    favorites.length - visibleFavorites.length,
-                                onTap: _openFavorites,
+                                count: _contentFavorites.length -
+                                    visibleContentFavorites.length,
+                                onTap: _openContentFavorites,
                               ),
                           ],
                         ),
                       ),
               ),
-              SliverToBoxAdapter(
-                child: _SectionHeader(
-                  title: '最近更新',
-                  actionText: '全部计划',
-                  onAction: _openAllPlans,
+              if (favorites.isNotEmpty) ...[
+                SliverToBoxAdapter(
+                  child: _SectionHeader(
+                    title: '关注的计划  ${favorites.length}个',
+                    actionText: '管理关注',
+                    onAction: _openFollowedPlans,
+                  ),
                 ),
-              ),
-              SliverList.separated(
-                itemCount: visibleRecent.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 6),
-                itemBuilder: (context, index) {
-                  final entry = visibleRecent[index];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: _TodayUpdateCard(
-                      source: entry.source,
-                      update: entry.update,
-                      onTap: () => _openDetail(entry.source),
+                SliverToBoxAdapter(
+                  child: Container(
+                    color: Colors.white,
+                    child: Column(
+                      children: [
+                        for (var index = 0;
+                            index < visibleFavorites.length;
+                            index++) ...[
+                          _FavoriteStatusRow(
+                            source: visibleFavorites[index],
+                            onTap: () => _openDetail(visibleFavorites[index]),
+                          ),
+                          if (index != visibleFavorites.length - 1)
+                            const Divider(
+                              height: 1,
+                              indent: 18,
+                              endIndent: 18,
+                              color: Color(0xffe8ebea),
+                            ),
+                        ],
+                        if (favorites.length > visibleFavorites.length)
+                          _MoreFavoritesRow(
+                            count: favorites.length - visibleFavorites.length,
+                            onTap: _openFollowedPlans,
+                          ),
+                      ],
                     ),
-                  );
-                },
-              ),
+                  ),
+                ),
+              ],
+              if (sources.isNotEmpty) ...[
+                SliverToBoxAdapter(
+                  child: _SectionHeader(
+                    title: '最近更新',
+                    actionText: '全部计划',
+                    onAction: _openAllPlans,
+                  ),
+                ),
+                SliverList.separated(
+                  itemCount: visibleRecent.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 6),
+                  itemBuilder: (context, index) {
+                    final entry = visibleRecent[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: _TodayUpdateCard(
+                        source: entry.source,
+                        update: entry.update,
+                        onTap: () => _openDetail(entry.source),
+                      ),
+                    );
+                  },
+                ),
+              ],
               const SliverToBoxAdapter(
                 child: SizedBox(height: 22),
               ),
@@ -264,7 +354,25 @@ class _PlanCenterPageState extends State<PlanCenterPage> {
     await _reloadFavorites();
   }
 
-  Future<void> _openFavorites() async {
+  Future<void> _openContentFavorites() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const PlanContentFavoritesPage(),
+      ),
+    );
+    await _reloadFavorites();
+  }
+
+  Future<void> _openContentFavorite(PlanContentFavorite favorite) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _PlanContentFavoriteDetailPage(favorite: favorite),
+      ),
+    );
+    await _reloadFavorites();
+  }
+
+  Future<void> _openFollowedPlans() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const AllPlansPage(favoriteOnly: true),
@@ -354,14 +462,65 @@ class _AllPlansPageState extends State<AllPlansPage> {
           return;
         }
       }
-      final body = await _client.fetchPlans(
-        ids: ids,
-        query: query,
-        activity: widget.favoriteOnly ? 'all' : _activity,
-        limit: _pageSize,
-        offset: offset,
-      );
-      final incoming = _planSourcesFromBody(body);
+      late Map<String, dynamic> body;
+      late List<PlanSource> incoming;
+      if (widget.favoriteOnly) {
+        final articleIds = ids
+            .where((id) => id.startsWith('article:'))
+            .map((id) => id.replaceFirst('article:', ''))
+            .toList(growable: false);
+        final legacyIds = ids
+            .where((id) => !id.startsWith('article:'))
+            .toList(growable: false);
+        incoming = [];
+        if (articleIds.isNotEmpty) {
+          try {
+            final articleBody = await _client.fetchPlanArticles(
+              ids: articleIds,
+              query: query,
+              limit: 50,
+            );
+            incoming.addAll(_planArticleSourcesFromBody(articleBody));
+          } catch (_) {
+            // The new endpoint can be absent during a staged server rollout.
+          }
+        }
+        if (legacyIds.isNotEmpty) {
+          final legacyBody = await _client.fetchPlans(
+            ids: legacyIds,
+            query: query,
+            limit: 50,
+          );
+          incoming.addAll(_planSourcesFromBody(legacyBody));
+        }
+        incoming.sort(
+          (a, b) =>
+              b.latestUpdate.updatedAt.compareTo(a.latestUpdate.updatedAt),
+        );
+        body = {'hasMore': false, 'nextOffset': null};
+      } else {
+        try {
+          body = await _client.fetchPlanArticles(
+            query: query,
+            activity: _activity,
+            limit: _pageSize,
+            offset: offset,
+          );
+          incoming = _planArticleSourcesFromBody(body);
+        } catch (_) {
+          body = const <String, dynamic>{};
+          incoming = const [];
+        }
+        if (incoming.isEmpty) {
+          body = await _client.fetchPlans(
+            query: query,
+            activity: _activity,
+            limit: _pageSize,
+            offset: offset,
+          );
+          incoming = _planSourcesFromBody(body);
+        }
+      }
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _sources = reset ? incoming : [..._sources, ...incoming];
@@ -410,7 +569,7 @@ class _AllPlansPageState extends State<AllPlansPage> {
     return Scaffold(
       backgroundColor: const Color(0xfff6f7f8),
       appBar: AppBar(
-        title: Text(widget.favoriteOnly ? '我的收藏' : '全部计划'),
+        title: Text(widget.favoriteOnly ? '关注的计划' : '全部计划'),
       ),
       body: Column(
         children: [
@@ -508,7 +667,7 @@ class _AllPlansPageState extends State<AllPlansPage> {
                                     noContentText: _keyword.trim().isNotEmpty
                                         ? '没有找到相关计划'
                                         : widget.favoriteOnly
-                                            ? '还没有收藏计划'
+                                            ? '还没有关注计划'
                                             : _activity == 'history'
                                                 ? '没有找到历史计划'
                                                 : '没有找到近期计划',
@@ -589,7 +748,7 @@ class PlanDetailPage extends StatefulWidget {
 
 class _PlanDetailPageState extends State<PlanDetailPage> {
   final CaiApiClient _client = CaiApiClient();
-  bool _favorite = false;
+  bool _following = false;
   bool _recentOnly = false;
   bool _loading = false;
   bool _hasMore = false;
@@ -616,21 +775,21 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
     final prefs = await SharedPreferences.getInstance();
     final ids = prefs.getStringList(_favoriteKey) ?? const <String>[];
     if (!mounted) return;
-    setState(() => _favorite = ids.contains(widget.source.id));
+    setState(() => _following = ids.contains(widget.source.id));
   }
 
   Future<void> _toggleFavorite() async {
     final prefs = await SharedPreferences.getInstance();
     final ids = prefs.getStringList(_favoriteKey) ?? <String>[];
     final nextIds = ids.toSet();
-    if (_favorite) {
+    if (_following) {
       nextIds.remove(widget.source.id);
     } else {
       nextIds.add(widget.source.id);
     }
     await prefs.setStringList(_favoriteKey, nextIds.toList()..sort());
     if (!mounted) return;
-    setState(() => _favorite = !_favorite);
+    setState(() => _following = !_following);
   }
 
   Future<void> _loadUpdates({bool reset = false}) async {
@@ -643,12 +802,18 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
     });
     final offset = reset ? 0 : _nextOffset;
     try {
-      final body = await _client.fetchPlanUpdates(
-        widget.source.id,
-        days: _recentOnly ? 7 : null,
-        limit: 10,
-        offset: offset,
-      );
+      final body = widget.source.isArticle
+          ? await _client.fetchPlanArticleVersions(
+              widget.source.remoteId,
+              limit: 10,
+              offset: offset,
+            )
+          : await _client.fetchPlanUpdates(
+              widget.source.remoteId,
+              days: _recentOnly ? 7 : null,
+              limit: 10,
+              offset: offset,
+            );
       final items = body['items'] as List<dynamic>? ?? const [];
       final incoming = items
           .whereType<Map<String, dynamic>>()
@@ -681,6 +846,13 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
         .subtract(const Duration(days: 6));
     final filteredUpdates = source.isRemote
         ? _remoteUpdates
+            .where(
+              (update) =>
+                  !_recentOnly ||
+                  !source.isArticle ||
+                  !update.updatedAt.isBefore(cutoff),
+            )
+            .toList(growable: false)
         : source.activeUpdates
             .where(
               (update) => !_recentOnly || !update.updatedAt.isBefore(cutoff),
@@ -695,11 +867,13 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
         title: Text(source.name),
         actions: [
           IconButton(
-            tooltip: _favorite ? '取消收藏' : '收藏',
+            tooltip: _following ? '取消关注更新' : '关注更新',
             onPressed: _toggleFavorite,
             icon: Icon(
-              _favorite ? Icons.star_rounded : Icons.star_border_rounded,
-              color: _favorite ? const Color(0xfff2a400) : null,
+              _following
+                  ? Icons.notifications_rounded
+                  : Icons.notifications_none_rounded,
+              color: _following ? const Color(0xff079669) : null,
             ),
           ),
         ],
@@ -766,6 +940,7 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
                 update: updates[index],
                 onImageTap: (imageIndex) =>
                     _openImageViewer(updates[index], imageIndex),
+                onFavoriteTap: () => _openFavoriteComposer(updates[index]),
               ),
               const SizedBox(height: 14),
             ],
@@ -802,6 +977,26 @@ class _PlanDetailPageState extends State<PlanDetailPage> {
           initialIndex: imageIndex,
         ),
       ),
+    );
+  }
+
+  Future<void> _openFavoriteComposer(
+    PlanUpdate update, {
+    int? initialImageIndex,
+  }) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _PlanFavoriteComposerSheet(
+        source: widget.source,
+        update: update,
+        initialImageIndex: initialImageIndex,
+      ),
+    );
+    if (!mounted || saved != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已收藏，原文后续调整不会改变这次收藏')),
     );
   }
 }
@@ -846,12 +1041,14 @@ class PlanImageViewerPage extends StatefulWidget {
     required this.source,
     required this.update,
     required this.initialIndex,
+    this.allowFavorite = true,
     super.key,
   });
 
   final PlanSource source;
   final PlanUpdate update;
   final int initialIndex;
+  final bool allowFavorite;
 
   @override
   State<PlanImageViewerPage> createState() => _PlanImageViewerPageState();
@@ -891,6 +1088,12 @@ class _PlanImageViewerPageState extends State<PlanImageViewerPage> {
         foregroundColor: Colors.white,
         title: Text('${widget.source.name} 计划图片'),
         actions: [
+          if (widget.allowFavorite)
+            IconButton(
+              tooltip: '收藏这张',
+              onPressed: _favoriteCurrentImage,
+              icon: const Icon(Icons.bookmark_add_outlined),
+            ),
           IconButton(
             tooltip: '保存图片',
             onPressed: _saving ? null : _saveImage,
@@ -1033,6 +1236,674 @@ class _PlanImageViewerPageState extends State<PlanImageViewerPage> {
       if (mounted) setState(() => _saving = false);
     }
   }
+
+  Future<void> _favoriteCurrentImage() async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _PlanFavoriteComposerSheet(
+        source: widget.source,
+        update: widget.update,
+        initialImageIndex: _currentIndex,
+      ),
+    );
+    if (!mounted || saved != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已收藏这张图片')),
+    );
+  }
+}
+
+class _PlanFavoriteComposerSheet extends StatefulWidget {
+  const _PlanFavoriteComposerSheet({
+    required this.source,
+    required this.update,
+    this.initialImageIndex,
+  });
+
+  final PlanSource source;
+  final PlanUpdate update;
+  final int? initialImageIndex;
+
+  @override
+  State<_PlanFavoriteComposerSheet> createState() =>
+      _PlanFavoriteComposerSheetState();
+}
+
+class _PlanFavoriteComposerSheetState
+    extends State<_PlanFavoriteComposerSheet> {
+  late final TextEditingController _nameController;
+  late final Set<int> _selectedIndexes;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController();
+    final initialIndex = widget.initialImageIndex;
+    _selectedIndexes = {
+      if (initialIndex != null &&
+          initialIndex >= 0 &&
+          initialIndex < widget.update.images.length)
+        initialIndex,
+      if (initialIndex == null && widget.update.images.length == 1) 0,
+    };
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(18, 12, 18, 18 + bottomInset),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xffd5d9d7),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '收藏为独立方案',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              '选择真正属于同一个方案的图片。收藏后保持当前内容，不受原文重新排序影响。',
+              style: TextStyle(
+                color: Color(0xff737a80),
+                fontSize: 13,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _nameController,
+              maxLength: 30,
+              decoration: const InputDecoration(
+                labelText: '方案名称（可不填）',
+                hintText: '例如：客厅电视墙方案',
+                counterText: '',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    '选择图片',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+                  ),
+                ),
+                Text(
+                  '已选 ${_selectedIndexes.length} 张',
+                  style: const TextStyle(
+                    color: Color(0xff079669),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: widget.update.images.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                childAspectRatio: 0.72,
+              ),
+              itemBuilder: (context, index) {
+                final selected = _selectedIndexes.contains(index);
+                return InkWell(
+                  onTap: () => setState(() {
+                    if (selected) {
+                      _selectedIndexes.remove(index);
+                    } else {
+                      _selectedIndexes.add(index);
+                    }
+                  }),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: _PlanImageCard(
+                          image: widget.update.images[index],
+                          update: widget.update,
+                          compact: true,
+                        ),
+                      ),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: selected
+                                ? const Color(0xff079669)
+                                : const Color(0xffdfe4e1),
+                            width: selected ? 3 : 1,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: Icon(
+                          selected
+                              ? Icons.check_circle_rounded
+                              : Icons.circle_outlined,
+                          color:
+                              selected ? const Color(0xff079669) : Colors.white,
+                          shadows: const [
+                            Shadow(color: Colors.black45, blurRadius: 3),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed:
+                    _selectedIndexes.isEmpty || _saving ? null : _saveFavorite,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.bookmark_add_rounded),
+                label: Text(_saving ? '正在收藏' : '确认收藏'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveFavorite() async {
+    final indexes = _selectedIndexes.toList()..sort();
+    if (indexes.isEmpty) return;
+    setState(() => _saving = true);
+    final now = DateTime.now();
+    final selectedImages = [
+      for (final index in indexes) widget.update.images[index],
+    ];
+    final identity = [
+      widget.source.id,
+      widget.update.id,
+      ...selectedImages.map((image) => image.imageUrl ?? image.title),
+    ].join('|');
+    final typedName = _nameController.text.trim();
+    final favorite = PlanContentFavorite(
+      id: _stablePlanFavoriteId(identity),
+      name: typedName.isEmpty ? '未命名方案' : typedName,
+      sourceId: widget.source.id,
+      sourceName: widget.source.name,
+      updateId: widget.update.id,
+      updateTitle: widget.update.title,
+      sourceUpdatedAt: widget.update.updatedAt,
+      savedAt: now,
+      images: selectedImages
+          .map(
+            (image) => PlanContentFavoriteImage(
+              imageUrl: image.imageUrl ?? '',
+              thumbnailUrl: image.thumbnailUrl ?? image.imageUrl ?? '',
+              width: image.width,
+              height: image.height,
+            ),
+          )
+          .where((image) => image.imageUrl.isNotEmpty)
+          .toList(growable: false),
+    );
+    if (favorite.images.isEmpty) {
+      if (mounted) setState(() => _saving = false);
+      return;
+    }
+    await const PlanContentFavoriteStore().save(favorite);
+    if (!mounted) return;
+    Navigator.of(context).pop(true);
+  }
+}
+
+class PlanContentFavoritesPage extends StatefulWidget {
+  const PlanContentFavoritesPage({super.key});
+
+  @override
+  State<PlanContentFavoritesPage> createState() =>
+      _PlanContentFavoritesPageState();
+}
+
+class _PlanContentFavoritesPageState extends State<PlanContentFavoritesPage> {
+  final CaiApiClient _client = CaiApiClient();
+  List<PlanContentFavorite> _favorites = const [];
+  Set<String> _newerFavoriteIds = const {};
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _client.close();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final favorites = await const PlanContentFavoriteStore().load();
+    if (!mounted) return;
+    setState(() {
+      _favorites = favorites;
+      _loading = false;
+    });
+    await _checkForNewVersions(favorites);
+  }
+
+  Future<void> _checkForNewVersions(
+    List<PlanContentFavorite> favorites,
+  ) async {
+    final articleIds = favorites
+        .where((favorite) => favorite.sourceId.startsWith('article:'))
+        .map((favorite) => favorite.sourceId.replaceFirst('article:', ''))
+        .toSet()
+        .toList(growable: false);
+    if (articleIds.isEmpty) return;
+    try {
+      final body = await _client.fetchPlanArticles(
+        ids: articleIds,
+        limit: 50,
+      );
+      final sources = _planArticleSourcesFromBody(body);
+      final newerFavoriteIds = {
+        for (final favorite in favorites)
+          if (_hasNewArticleVersion(favorite, sources)) favorite.id,
+      };
+      if (!mounted) return;
+      setState(() => _newerFavoriteIds = newerFavoriteIds);
+    } catch (_) {
+      // A version check failure must not hide locally saved content.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xfff6f7f8),
+      appBar: AppBar(title: const Text('我的收藏')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _favorites.isEmpty
+              ? const Center(
+                  child: Text(
+                    '还没有收藏内容',
+                    style: TextStyle(color: Color(0xff858b91)),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+                  itemCount: _favorites.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final favorite = _favorites[index];
+                    return _ContentFavoriteCard(
+                      favorite: favorite,
+                      hasNewVersion: _newerFavoriteIds.contains(favorite.id),
+                      onTap: () => _openFavorite(favorite),
+                      onDelete: () => _deleteFavorite(favorite),
+                    );
+                  },
+                ),
+    );
+  }
+
+  Future<void> _openFavorite(PlanContentFavorite favorite) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _PlanContentFavoriteDetailPage(favorite: favorite),
+      ),
+    );
+  }
+
+  Future<void> _deleteFavorite(PlanContentFavorite favorite) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除收藏？'),
+        content: Text('将删除“${favorite.name}”，不会影响原文内容。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await const PlanContentFavoriteStore().remove(favorite.id);
+    await _load();
+  }
+}
+
+class _PlanContentFavoriteDetailPage extends StatelessWidget {
+  const _PlanContentFavoriteDetailPage({required this.favorite});
+
+  final PlanContentFavorite favorite;
+
+  @override
+  Widget build(BuildContext context) {
+    final update = PlanUpdate(
+      id: favorite.updateId,
+      title: favorite.updateTitle,
+      updatedAt: favorite.sourceUpdatedAt,
+      images: favorite.images
+          .map(
+            (image) => PlanImage.remote(
+              title: favorite.name,
+              imageUrl: image.imageUrl,
+              thumbnailUrl: image.thumbnailUrl,
+              width: image.width,
+              height: image.height,
+            ),
+          )
+          .toList(growable: false),
+    );
+    final source = PlanSource(
+      id: favorite.sourceId,
+      name: favorite.name,
+      uploaderName: favorite.sourceName,
+      brandColor: const Color(0xff079669),
+      updates: [update],
+    );
+    return Scaffold(
+      backgroundColor: const Color(0xfff6f7f8),
+      appBar: AppBar(title: Text(favorite.name)),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xffe4e8e5)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${favorite.images.length} 张图片 · 来源：${favorite.sourceName}',
+                  style: const TextStyle(
+                    color: Color(0xff51575c),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  '收藏于 ${_formatDateTime(favorite.savedAt)} · 已保存当时版本',
+                  style: const TextStyle(
+                    color: Color(0xff858b91),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: update.images.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 0.78,
+            ),
+            itemBuilder: (context, index) => InkWell(
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => PlanImageViewerPage(
+                    source: source,
+                    update: update,
+                    initialIndex: index,
+                    allowFavorite: false,
+                  ),
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: _PlanImageCard(
+                  image: update.images[index],
+                  update: update,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContentFavoriteRow extends StatelessWidget {
+  const _ContentFavoriteRow({
+    required this.favorite,
+    required this.hasNewVersion,
+    required this.onTap,
+  });
+
+  final PlanContentFavorite favorite;
+  final bool hasNewVersion;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        height: 62,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+          child: Row(
+            children: [
+              _ContentFavoriteThumbnail(favorite: favorite),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      favorite.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      hasNewVersion
+                          ? '有新版 · 收藏仍保留当前版本'
+                          : '${favorite.images.length}张 · ${favorite.sourceName}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: hasNewVersion
+                            ? const Color(0xff079669)
+                            : const Color(0xff858b91),
+                        fontSize: 11,
+                        fontWeight:
+                            hasNewVersion ? FontWeight.w800 : FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: Color(0xffa5aaa8),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ContentFavoriteCard extends StatelessWidget {
+  const _ContentFavoriteCard({
+    required this.favorite,
+    required this.hasNewVersion,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  final PlanContentFavorite favorite;
+  final bool hasNewVersion;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              _ContentFavoriteThumbnail(favorite: favorite, size: 68),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      favorite.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${favorite.images.length}张图片 · ${favorite.sourceName}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xff737a80),
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      hasNewVersion ? '原文有新版 · 收藏未改变' : '已保存当时版本',
+                      style: const TextStyle(
+                        color: Color(0xff079669),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: '删除收藏',
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline_rounded),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ContentFavoriteThumbnail extends StatelessWidget {
+  const _ContentFavoriteThumbnail({required this.favorite, this.size = 48});
+
+  final PlanContentFavorite favorite;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = favorite.images.first;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: _RetryingNetworkImage(
+          url: image.thumbnailUrl.isEmpty ? image.imageUrl : image.thumbnailUrl,
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.medium,
+        ),
+      ),
+    );
+  }
+}
+
+String _stablePlanFavoriteId(String value) {
+  var hash = 0x811c9dc5;
+  for (final unit in value.codeUnits) {
+    hash ^= unit;
+    hash = (hash * 0x01000193) & 0xffffffff;
+  }
+  return 'favorite-${hash.toRadixString(16)}';
+}
+
+bool _hasNewArticleVersion(
+  PlanContentFavorite favorite,
+  Iterable<PlanSource> sources,
+) {
+  if (!favorite.sourceId.startsWith('article:')) return false;
+  for (final source in sources) {
+    if (source.id != favorite.sourceId || !source.isArticle) continue;
+    return source.latestUpdate.id.isNotEmpty &&
+        source.latestUpdate.id != favorite.updateId;
+  }
+  return false;
 }
 
 class _EmptyFavorites extends StatelessWidget {
@@ -1496,7 +2367,9 @@ class _PlanIdentityCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  '由 ${source.uploaderName} 上传 · 计划图片资料库',
+                  source.isArticle
+                      ? '原文合集 · 图片按来源顺序展示'
+                      : '由 ${source.uploaderName} 上传 · 计划图片资料库',
                   style: const TextStyle(
                     fontSize: 13,
                     color: Color(0xff737a80),
@@ -1537,11 +2410,13 @@ class _PlanUpdateBlock extends StatelessWidget {
     required this.source,
     required this.update,
     required this.onImageTap,
+    required this.onFavoriteTap,
   });
 
   final PlanSource source;
   final PlanUpdate update;
   final ValueChanged<int> onImageTap;
+  final VoidCallback onFavoriteTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1582,6 +2457,21 @@ class _PlanUpdateBlock extends StatelessWidget {
             style: const TextStyle(
               fontSize: 12,
               color: Color(0xff899097),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: onFavoriteTap,
+              icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+              label: Text(
+                update.images.length == 1 ? '收藏这张' : '选择图片收藏',
+              ),
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -2099,6 +2989,21 @@ List<PlanSource> _planSourcesFromBody(Map<String, dynamic> body) {
       .toList(growable: false);
 }
 
+List<PlanSource> _planArticleSourcesFromBody(Map<String, dynamic> body) {
+  if (body['enabled'] != true) return const [];
+  final items = body['items'] as List<dynamic>? ?? const [];
+  return items
+      .whereType<Map<String, dynamic>>()
+      .map(PlanSource.fromArticleSummaryJson)
+      .where(
+        (source) =>
+            source.id.isNotEmpty &&
+            source.activeUpdates.isNotEmpty &&
+            source.latestUpdate.images.isNotEmpty,
+      )
+      .toList(growable: false);
+}
+
 class PlanSource {
   const PlanSource({
     required this.id,
@@ -2110,6 +3015,9 @@ class PlanSource {
     this.isRemote = false,
     this.updatedToday,
     this.aliasIds = const <String>{},
+    this.isArticle = false,
+    this.sourceName = '',
+    this.sourceArticleId = '',
   });
 
   factory PlanSource.fromSummaryJson(Map<String, dynamic> json) {
@@ -2147,6 +3055,40 @@ class PlanSource {
     );
   }
 
+  factory PlanSource.fromArticleSummaryJson(Map<String, dynamic> json) {
+    final rawId = '${json['id'] ?? ''}';
+    final updatedAt = _parsePlanDate(json['latestUpdatedAt']);
+    final thumbnailUrl = ((json['latestThumbnailUrl'] as String?) ?? '').trim();
+    return PlanSource(
+      id: rawId.isEmpty ? '' : 'article:$rawId',
+      name: '${json['name'] ?? '未命名原文'}',
+      uploaderName: '原文合集',
+      brandColor: const Color(0xff079669),
+      isRemote: true,
+      isArticle: true,
+      sourceName: '${json['sourceName'] ?? ''}',
+      sourceArticleId: '${json['sourceArticleId'] ?? ''}',
+      updatedToday: json['updatedToday'] as bool?,
+      updates: thumbnailUrl.isEmpty
+          ? const []
+          : [
+              PlanUpdate(
+                id: '${json['latestVersionId'] ?? ''}',
+                title: '${json['name'] ?? '原文内容'}',
+                updatedAt: updatedAt,
+                imageCount: (json['latestImageCount'] as num?)?.toInt(),
+                images: [
+                  PlanImage.remote(
+                    title: '${json['name'] ?? '原文图片'}',
+                    imageUrl: thumbnailUrl,
+                    thumbnailUrl: thumbnailUrl,
+                  ),
+                ],
+              ),
+            ],
+    );
+  }
+
   final String id;
   final String name;
   final String uploaderName;
@@ -2156,6 +3098,11 @@ class PlanSource {
   final bool isRemote;
   final bool? updatedToday;
   final Set<String> aliasIds;
+  final bool isArticle;
+  final String sourceName;
+  final String sourceArticleId;
+
+  String get remoteId => isArticle ? id.replaceFirst('article:', '') : id;
 
   List<PlanUpdate> get activeUpdates =>
       updates.where((update) => update.isActive).toList(growable: false)

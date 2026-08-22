@@ -326,5 +326,43 @@ class CaiApiClient {
     });
   }
 
+  Future<Map<String, dynamic>> fetchPlanArticles({
+    String query = '',
+    List<String> ids = const [],
+    String activity = 'all',
+    int limit = 20,
+    int offset = 0,
+  }) {
+    final keyword = query.trim();
+    return _getJson('/v1/plan-articles', queryParameters: {
+      if (keyword.isNotEmpty) 'q': keyword,
+      if (ids.isNotEmpty) 'ids': ids.join(','),
+      if (ids.isEmpty && keyword.isEmpty && activity != 'all')
+        'activity': activity,
+      'limit': '$limit',
+      'offset': '$offset',
+    });
+  }
+
+  Future<Map<String, dynamic>> fetchRecentPlanArticles({int limit = 6}) {
+    return _getJson('/v1/plan-articles/recent', queryParameters: {
+      'limit': '$limit',
+    });
+  }
+
+  Future<Map<String, dynamic>> fetchPlanArticleVersions(
+    String articleId, {
+    int limit = 10,
+    int offset = 0,
+  }) {
+    return _getJson(
+      '/v1/plan-articles/$articleId/versions',
+      queryParameters: {
+        'limit': '$limit',
+        'offset': '$offset',
+      },
+    );
+  }
+
   void close() => _client.close();
 }

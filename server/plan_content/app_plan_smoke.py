@@ -17,6 +17,9 @@ DEFAULT_BASE_URL = os.environ.get(
     os.environ.get("API_BASE_URL", "https://api.cclloo.com"),
 ).rstrip("/")
 REQUEST_TIMEOUT = float(os.environ.get("CAIMASTER_PLAN_SMOKE_TIMEOUT", "12"))
+ARTICLE_API_ENABLED = (
+    os.environ.get("CAIMASTER_PLAN_ARTICLES_PUBLIC_ENABLED", "0") == "1"
+)
 
 
 @dataclass
@@ -125,6 +128,29 @@ def _validate_update(item: dict[str, Any]) -> None:
             raise SmokeError("plan image dimensions must be positive")
 
 
+def _validate_article_summary(item: dict[str, Any]) -> None:
+    _require_fields(
+        item,
+        (
+            "id",
+            "contentType",
+            "sourceName",
+            "sourceArticleId",
+            "name",
+            "latestVersionId",
+            "latestUpdatedAt",
+            "latestImageCount",
+            "latestThumbnailUrl",
+        ),
+        "article summary",
+    )
+    if item.get("contentType") != "article":
+        raise SmokeError("article summary contentType is invalid")
+    if int(item.get("latestImageCount") or 0) <= 0:
+        raise SmokeError("article summary latestImageCount must be positive")
+    _check_url(item.get("latestThumbnailUrl"), "latestThumbnailUrl")
+
+
 def run(base_url: str, *, require_data: bool = False) -> tuple[bool, list[Check]]:
     checks: list[Check] = []
     ok = True
@@ -215,6 +241,46 @@ def run(base_url: str, *, require_data: bool = False) -> tuple[bool, list[Check]
     except SmokeError as exc:
         checks.append(Check("error", "plan updates", str(exc)))
         ok = False
+
+    if ARTICLE_API_ENABLED:
+        try:
+            article_body = _request_json(
+                base_url,
+                "/v1/plan-articles/recent",
+                {"limit": "6"},
+            )
+            if article_body.get("enabled") is not True:
+                raise SmokeError("article API is not publicly enabled")
+            article_items = _items(article_body)
+            if require_data and not article_items:
+                raise SmokeError("no article items")
+            for item in article_items:
+                _validate_article_summary(item)
+            checks.append(
+                Check("ok", "recent plan articles", f"{len(article_items)} items")
+            )
+            if article_items:
+                article_id = str(article_items[0]["id"])
+                versions_body = _request_json(
+                    base_url,
+                    f"/v1/plan-articles/{urllib.parse.quote(article_id)}/versions",
+                    {"limit": "10", "offset": "0"},
+                )
+                version_items = _items(versions_body)
+                if not version_items:
+                    raise SmokeError("no article versions")
+                for item in version_items:
+                    _validate_update(item)
+                checks.append(
+                    Check(
+                        "ok",
+                        "plan article versions",
+                        f"article={article_id} versions={len(version_items)}",
+                    )
+                )
+        except SmokeError as exc:
+            checks.append(Check("error", "plan articles", str(exc)))
+            ok = False
 
     return ok, checks
 

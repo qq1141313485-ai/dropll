@@ -66,6 +66,32 @@ def _check_environment(checks: list[Check]) -> None:
         checks.append(Check("ok", "CAIMASTER_PLAN_SOURCE_ENABLED", "enabled"))
     else:
         checks.append(Check("warn", "CAIMASTER_PLAN_SOURCE_ENABLED", "not enabled"))
+    mirror_enabled = (
+        os.environ.get("CAIMASTER_PLAN_SOURCE_MIRROR_ARTICLES") == "1"
+    )
+    public_enabled = (
+        os.environ.get("CAIMASTER_PLAN_ARTICLES_PUBLIC_ENABLED") == "1"
+    )
+    checks.append(
+        Check(
+            "ok" if mirror_enabled else "warn",
+            "article mirror",
+            "enabled" if mirror_enabled else "not enabled",
+        )
+    )
+    checks.append(
+        Check(
+            "error" if public_enabled and not mirror_enabled else "ok",
+            "article public API",
+            (
+                "enabled without article mirror"
+                if public_enabled and not mirror_enabled
+                else "enabled"
+                if public_enabled
+                else "not enabled"
+            ),
+        )
+    )
 
 
 def _check_source_rules(checks: list[Check]) -> None:

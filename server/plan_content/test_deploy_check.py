@@ -55,6 +55,25 @@ def _create_db(path: Path) -> None:
 
 
 class DeployCheckTest(unittest.TestCase):
+    def test_public_article_api_requires_mirror_mode(self) -> None:
+        checks: list[deploy_check.Check] = []
+        with patch.dict(
+            os.environ,
+            {
+                "CAIMASTER_PLAN_ADMIN_TOKEN": "configured-token-value",
+                "CAIMASTER_PLAN_SOURCE_ENABLED": "1",
+                "CAIMASTER_PLAN_SOURCE_MIRROR_ARTICLES": "0",
+                "CAIMASTER_PLAN_ARTICLES_PUBLIC_ENABLED": "1",
+            },
+            clear=True,
+        ):
+            deploy_check._check_environment(checks)
+
+        public_check = next(
+            check for check in checks if check.name == "article public API"
+        )
+        self.assertEqual(public_check.level, "error")
+
     def test_placeholder_admin_token_is_error(self) -> None:
         checks: list[deploy_check.Check] = []
         with patch.dict(
