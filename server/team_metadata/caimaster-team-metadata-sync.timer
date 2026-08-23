@@ -1,0 +1,12 @@
+[Unit]
+Description=Sync CaiMaster verified team badges every six hours
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=6h
+RandomizedDelaySec=5min
+Persistent=true
+Unit=caimaster-team-metadata-sync.service
+
+[Install]
+WantedBy=timers.target

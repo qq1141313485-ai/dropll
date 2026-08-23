@@ -1,0 +1,11 @@
+[Unit]
+Description=CaiMaster verified team badge sync
+After=network-online.target caimaster-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/caimaster-api/team_metadata
+ExecStart=/opt/caimaster-api/.venv/bin/python3.11 /opt/caimaster-api/team_metadata/sync_team_metadata.py --aliases /opt/caimaster-api/team_metadata/team_aliases.json --output-dir /opt/caimaster-api/team_metadata/cache --api-key 123 --delay 0.5
