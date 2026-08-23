@@ -167,6 +167,8 @@ Mac 历史工程、旧 APK、旧构建目录仅可用于排查，禁止反向覆
 
 2026-08-23 iPhone 真机状态补充核实：虽然命令行再次执行 `flutter build ios --release` 仍因钥匙串 `errSecInternalComponent` 失败，但 Xcode 图形界面已完成签名安装。通过 `xcrun devicectl device info apps` 读取设备确认：Bundle ID `com.caimaster.jingqiujing`，名称“球镜”，版本 `1.0.1`，构建 `5`，开发签名安装成功。命令行失败不能再表述为“未安装”；TestFlight 上传和完整真机回归仍未完成。
 
+2026-08-23 用户完成 `1.0.1+5` iPhone 冒烟验收：计划页今日内容展示、设置页版本号、检查 App 更新、首页/比赛详情、图片加载及完全退出后重新启动均确认无问题。该结果证明开发签名真机基本流程可用；弱网/断网、长时间后台恢复、完整结算边界和 TestFlight 构建上传仍未完成。
+
 当前计划内容服务生产包来源 commit 为 `0c42455`，本地文件为 `dist/caimaster-plan-content-20260823-013055.tar.gz`，大小 79,534 字节，SHA-256 为 `cacca464068a641ce1df7bb5418b6c6dafba8b5288fa352c3057530a4eaa6325`。部署前 SQLite 在线备份为 `/opt/caimaster-api/backups/plans-before-article-mirror-20260823-011657.db`，SHA-256 为 `d868e94def22882677d98e9432d57ec6774bd3584b17f37843c5d9a82b2e7d9d`。更早的 `010843`、`012528` 包仅为本轮候选，不得再次使用。
 
 ## 6. 版本控制与构建纪律
