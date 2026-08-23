@@ -29,7 +29,7 @@ class _SettingsPageState extends State<SettingsPage> {
     'https://api.cclloo.com/privacy',
   );
   static final _versionUri = Uri.parse(
-    'https://cclloo.com/app/version.json',
+    'https://cclloo.com/web/version.json',
   );
   LocalDataSummary _data = const LocalDataSummary.empty();
   bool _loadingData = true;
