@@ -14,7 +14,7 @@
 | App 简介 | 提供足球赛程、比分、赛果、球队资料、赔率资料与本机资料整理功能。 |
 | Android 应用包名 | `com.caimaster.jingqiujing` |
 | iOS Bundle ID | `com.caimaster.jingqiujing` |
-| 当前版本 | `1.0.0`，构建号 `4` |
+| 当前版本 | `1.0.1`，构建号 `5` |
 | 官网 / Web 访问地址 | `https://cclloo.com/app/` |
 | 隐私政策 | `https://api.cclloo.com/privacy` |
 | 服务与投诉支持页 | `https://api.cclloo.com/support` |
