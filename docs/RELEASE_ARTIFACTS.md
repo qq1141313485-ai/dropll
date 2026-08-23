@@ -13,6 +13,8 @@
 | 2026-08-22 | 不适用 | 计划内容服务部署包 | 搜索修复已部署到生产 API 并通过复验 | `6d8821a` | 生产部署 |
 | 2026-08-22 | `1.0.0+4` | iOS 无签名 Release App | 最新代码编译成功；签名构建受钥匙串权限阻塞 | `c31b384` | 编译验证 |
 | 2026-08-22 | `1.0.0+4` | iPhone 15 开发签名 Release | 签名验证、安装和启动成功；名称搜索专项通过 | `c31b384` | 真机专项测试 |
+| 2026-08-23 | `1.0.1+5` | Android Release APK | 构建成功并上传公开下载目录；文件 `jingqiujing-1.0.1.apk`，SHA-256 `860f79f44f1c85ccfc979d4ad07af01ecfbdf1105a80ae630f35ff20c6e68f53` | `4c73fff` | 线上下载 |
+| 2026-08-23 | `1.0.1+5` | Flutter Web Release | 发布到 `https://cclloo.com/app/`，`version.json` 返回构建 5；本地 Web 包归档 SHA-256 `e69190a4a286f6f3f4933b9679224cf8c5492ee7bf77fb9e56d914bee4835f` | `4c73fff` | 线上发布 |
 
 2026-08-22 Web 验证使用 Flutter 3.44.4，产物位于本机忽略目录 `build/web/`；`flutter_bootstrap.js` SHA-256 为 `291DCB4473B0367873D480198B09B62FBD197577ADEC1AD3C1CD51B25668893B`。已检查模板占位符替换、JavaScript 语法、`/app/` 基路径和本地 CanvasKit 配置；未做线上浏览器或真机网络验收。
 
