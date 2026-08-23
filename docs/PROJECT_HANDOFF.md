@@ -165,6 +165,8 @@ Mac 历史工程、旧 APK、旧构建目录仅可用于排查，禁止反向覆
 
 2026-08-23 `1.0.1+5` 已完成线上发布：Web Release 已切换到 `https://cclloo.com/app/`，线上 `version.json` 返回 `1.0.1` / 构建 `5`；Android Release APK 已上传到 `https://cclloo.com/downloads/jingqiujing-1.0.1.apk`，HTTP 200，大小 73,339,195 字节，SHA-256 为 `860f79f44f1c85ccfc979d4ad07af01ecfbdf1105a80ae630f35ff20c6e68f53`。发布前线上 `/app/` 和下载目录均做了时间戳备份；由于 `/app` 原为实体目录，首次上传后发现仍指向旧目录，已完成明确目录切换并复验。临时服务器公钥已撤销。生产计划接口复验仍返回今日文章且 `enabled:false`；新客户端已不再丢弃这类有效条目，需用户刷新/重新安装后观察实际展示。
 
+2026-08-23 iPhone 真机状态补充核实：虽然命令行再次执行 `flutter build ios --release` 仍因钥匙串 `errSecInternalComponent` 失败，但 Xcode 图形界面已完成签名安装。通过 `xcrun devicectl device info apps` 读取设备确认：Bundle ID `com.caimaster.jingqiujing`，名称“球镜”，版本 `1.0.1`，构建 `5`，开发签名安装成功。命令行失败不能再表述为“未安装”；TestFlight 上传和完整真机回归仍未完成。
+
 当前计划内容服务生产包来源 commit 为 `0c42455`，本地文件为 `dist/caimaster-plan-content-20260823-013055.tar.gz`，大小 79,534 字节，SHA-256 为 `cacca464068a641ce1df7bb5418b6c6dafba8b5288fa352c3057530a4eaa6325`。部署前 SQLite 在线备份为 `/opt/caimaster-api/backups/plans-before-article-mirror-20260823-011657.db`，SHA-256 为 `d868e94def22882677d98e9432d57ec6774bd3584b17f37843c5d9a82b2e7d9d`。更早的 `010843`、`012528` 包仅为本轮候选，不得再次使用。
 
 ## 6. 版本控制与构建纪律
