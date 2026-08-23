@@ -1,11 +1,9 @@
 import 'dart:convert';
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'local_data_store.dart';
@@ -30,9 +28,12 @@ class _SettingsPageState extends State<SettingsPage> {
   static final _privacyUri = Uri.parse(
     'https://api.cclloo.com/privacy',
   );
+  static final _versionUri = Uri.parse(
+    'https://cclloo.com/app/version.json',
+  );
   LocalDataSummary _data = const LocalDataSummary.empty();
   bool _loadingData = true;
-  bool _backupBusy = false;
+  bool _checkingUpdate = false;
   String _versionLabel = '正在读取';
 
   @override
@@ -83,6 +84,77 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => _versionLabel = label ?? '暂时无法读取');
   }
 
+  Future<void> _checkForUpdate() async {
+    if (_checkingUpdate) return;
+    setState(() => _checkingUpdate = true);
+    try {
+      final package = await PackageInfo.fromPlatform();
+      final response = await http.get(
+        kIsWeb ? Uri.base.resolve('version.json') : _versionUri,
+      );
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode != 200 || decoded is! Map) {
+        throw const FormatException('版本服务暂时不可用');
+      }
+      final remoteVersion = '${decoded['version'] ?? ''}'.trim();
+      final remoteBuild = int.tryParse('${decoded['build_number'] ?? ''}') ?? 0;
+      final currentBuild = int.tryParse(package.buildNumber) ?? 0;
+      final hasUpdate = _compareVersions(remoteVersion, package.version) > 0 ||
+          (remoteVersion == package.version && remoteBuild > currentBuild);
+      if (!mounted) return;
+      if (!hasUpdate) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('当前已是最新版本')),
+        );
+        return;
+      }
+      final downloadUrl = '${decoded['download_url'] ?? ''}'.trim();
+      final notes = '${decoded['release_notes'] ?? ''}'.trim();
+      final shouldOpen = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('发现新版本 $remoteVersion'),
+          content: Text(
+            notes.isEmpty ? '有新的 App 版本可以使用。' : notes,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('稍后'),
+            ),
+            FilledButton(
+              onPressed: downloadUrl.isEmpty
+                  ? null
+                  : () => Navigator.of(context).pop(true),
+              child: const Text('去更新'),
+            ),
+          ],
+        ),
+      );
+      if (mounted && shouldOpen == true && downloadUrl.isNotEmpty) {
+        await _open(context, Uri.tryParse(downloadUrl) ?? _versionUri);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂时无法检查更新，请稍后重试')),
+      );
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
+    }
+  }
+
+  static int _compareVersions(String a, String b) {
+    final left = a.split('.').map((item) => int.tryParse(item) ?? 0).toList();
+    final right = b.split('.').map((item) => int.tryParse(item) ?? 0).toList();
+    for (var index = 0; index < 3; index++) {
+      final comparison = (left.length > index ? left[index] : 0)
+          .compareTo(right.length > index ? right[index] : 0);
+      if (comparison != 0) return comparison;
+    }
+    return 0;
+  }
+
   Future<void> _confirmClear({
     required LocalDataKind kind,
     required String title,
@@ -113,119 +185,6 @@ class _SettingsPageState extends State<SettingsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$title已清空')),
     );
-  }
-
-  Future<void> _exportBackup() async {
-    if (_backupBusy) return;
-    setState(() => _backupBusy = true);
-    try {
-      final now = DateTime.now();
-      final contents = await _dataStore.createBackupJson(exportedAt: now);
-      final date = '${now.year.toString().padLeft(4, '0')}'
-          '${now.month.toString().padLeft(2, '0')}'
-          '${now.day.toString().padLeft(2, '0')}-'
-          '${now.hour.toString().padLeft(2, '0')}'
-          '${now.minute.toString().padLeft(2, '0')}';
-      final fileName = '球镜本机数据备份-$date.json';
-      final backupFile = XFile.fromData(
-        Uint8List.fromList(utf8.encode(contents)),
-        mimeType: 'application/json',
-        name: fileName,
-      );
-      if (kIsWeb) {
-        const typeGroup = XTypeGroup(
-          label: '球镜备份',
-          extensions: ['json'],
-          mimeTypes: ['application/json'],
-        );
-        final location = await getSaveLocation(
-          suggestedName: fileName,
-          acceptedTypeGroups: const [typeGroup],
-        );
-        if (location == null) return;
-        await backupFile.saveTo(location.path);
-      } else {
-        await SharePlus.instance.share(
-          ShareParams(
-            subject: '球镜本机数据备份',
-            text: '球镜本机数据备份，请妥善保存。',
-            files: [backupFile],
-          ),
-        );
-      }
-    } catch (error) {
-      debugPrint('本机数据备份失败: $error');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('备份未完成，请稍后重试')),
-      );
-    } finally {
-      if (mounted) setState(() => _backupBusy = false);
-    }
-  }
-
-  Future<void> _restoreBackup() async {
-    if (_backupBusy) return;
-    setState(() => _backupBusy = true);
-    try {
-      const typeGroup = XTypeGroup(
-        label: '球镜备份',
-        extensions: ['json'],
-        mimeTypes: ['application/json'],
-      );
-      final file = await openFile(acceptedTypeGroups: const [typeGroup]);
-      if (file == null) return;
-      final backup = _dataStore.decodeBackup(
-        utf8.decode(await file.readAsBytes()),
-      );
-      if (!mounted) return;
-      final summary = backup.summary;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('恢复这份备份？'),
-          content: Text(
-            '备份中有：\n'
-            '内容收藏 ${summary.contentFavorites} 个\n'
-            '关注更新 ${summary.followedPlans} 个\n'
-            '保存方案 ${summary.savedSchemes} 个\n\n'
-            '恢复会保留本机现有内容，只补充缺少的数据。',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('合并恢复'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true) return;
-      final result = await _dataStore.mergeBackup(backup);
-      await _loadData();
-      if (!mounted) return;
-      final message = result.totalAdded == 0
-          ? '恢复完成，没有需要补充的新内容'
-          : '恢复完成，新增 ${result.totalAdded} 项本机数据';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
-    } on FormatException catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('无法读取这份备份，请检查文件后重试')),
-      );
-    } finally {
-      if (mounted) setState(() => _backupBusy = false);
-    }
   }
 
   Future<void> _open(BuildContext context, Uri uri) async {
@@ -299,7 +258,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Padding(
               padding: EdgeInsets.all(14),
               child: Text(
-                '以下内容只保存在本机。卸载 App、清除浏览器数据或更换设备前，建议先备份。清理图片缓存不会删除这些内容。',
+                '以下内容只保存在本机。卸载 App、清除浏览器数据或更换设备后可能丢失。清理图片缓存不会删除这些内容。',
                 style: TextStyle(color: _green, fontSize: 13, height: 1.5),
               ),
             ),
@@ -347,19 +306,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     message: '将删除最近7天保存的 ${_data.savedSchemes} 个方案。',
                   ),
         ),
-        const _SectionLabel('备份与恢复'),
-        _SettingTile(
-          icon: Icons.backup_outlined,
-          title: '备份本机数据',
-          subtitle: _backupBusy ? '正在处理，请稍候' : '导出收藏、关注和保存方案',
-          onTap: _backupBusy ? null : _exportBackup,
-        ),
-        _SettingTile(
-          icon: Icons.settings_backup_restore_rounded,
-          title: '从备份恢复',
-          subtitle: _backupBusy ? '正在处理，请稍候' : '合并恢复，不覆盖现有内容',
-          onTap: _backupBusy ? null : _restoreBackup,
-        ),
         const _SectionLabel('数据与使用说明'),
         _SettingTile(
           icon: Icons.query_stats_outlined,
@@ -388,6 +334,12 @@ class _SettingsPageState extends State<SettingsPage> {
           icon: Icons.info_outline,
           title: '版本',
           subtitle: _versionLabel,
+        ),
+        _SettingTile(
+          icon: Icons.system_update_outlined,
+          title: '检查 App 更新',
+          subtitle: _checkingUpdate ? '正在检查，请稍候' : '检查是否有新的安装包',
+          onTap: _checkingUpdate ? null : _checkForUpdate,
         ),
         const Padding(
           padding: EdgeInsets.fromLTRB(20, 24, 20, 0),

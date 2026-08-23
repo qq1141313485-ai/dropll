@@ -2998,7 +2998,6 @@ List<PlanSource> _planSourcesFromBody(Map<String, dynamic> body) {
 }
 
 List<PlanSource> _planArticleSourcesFromBody(Map<String, dynamic> body) {
-  if (body['enabled'] != true) return const [];
   final items = body['items'] as List<dynamic>? ?? const [];
   return items
       .whereType<Map<String, dynamic>>()

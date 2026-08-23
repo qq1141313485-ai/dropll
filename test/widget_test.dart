@@ -50,10 +50,8 @@ void main() {
     expect(find.text('内容收藏'), findsOneWidget);
     expect(find.text('关注更新'), findsOneWidget);
     expect(find.text('保存方案'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('备份本机数据'), 220);
-    expect(find.text('备份本机数据'), findsOneWidget);
-    expect(find.text('从备份恢复'), findsOneWidget);
-    expect(find.text('合并恢复，不覆盖现有内容'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('检查 App 更新'), 220);
+    expect(find.text('检查 App 更新'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('服务中心'), 260);
     expect(find.text('数据说明'), findsOneWidget);
     expect(find.text('隐私政策'), findsOneWidget);
