@@ -14,7 +14,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   gal: ^2.3.3
   http: ^1.5.0
+  open_filex: ^4.7.0
   package_info_plus: ^9.0.1
+  path_provider: ^2.1.5
   share_plus: ^11.0.0
   shared_preferences: ^2.5.3
   url_launcher: ^6.3.2

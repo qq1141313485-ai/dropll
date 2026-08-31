@@ -1,9 +1,12 @@
+import 'dart:io';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'local_data_store.dart';
@@ -132,7 +135,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       );
       if (mounted && shouldOpen == true && downloadUrl.isNotEmpty) {
-        await _open(context, Uri.tryParse(downloadUrl) ?? _versionUri);
+        await _downloadAndInstall(context, Uri.tryParse(downloadUrl));
       }
     } catch (_) {
       if (!mounted) return;
@@ -141,6 +144,34 @@ class _SettingsPageState extends State<SettingsPage> {
       );
     } finally {
       if (mounted) setState(() => _checkingUpdate = false);
+    }
+  }
+
+  Future<void> _downloadAndInstall(BuildContext context, Uri? pageUri) async {
+    if (pageUri == null) return;
+    final apkUri = Uri.parse(
+      'https://cclloo.com/downloads/jingqiujing-1.0.1.apk',
+    );
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      await _open(context, pageUri);
+      return;
+    }
+    try {
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/qiu-jing-update.apk');
+      final response = await http.Client().send(http.Request('GET', apkUri));
+      if (response.statusCode != 200) throw const HttpException('下载失败');
+      final sink = file.openWrite();
+      await response.stream.pipe(sink);
+      final result = await OpenFilex.open(
+        file.path,
+        type: 'application/vnd.android.package-archive',
+      );
+      if (result.type != ResultType.done && context.mounted) {
+        await _open(context, pageUri);
+      }
+    } catch (_) {
+      if (context.mounted) await _open(context, pageUri);
     }
   }
 
