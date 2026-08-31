@@ -51,9 +51,8 @@ void main() {
       'status': 'LIVE',
       'matchState': 'live',
       'score': '1:0',
-      'titanLastUpdated': DateTime.now()
-          .subtract(const Duration(minutes: 3))
-          .toIso8601String(),
+      'titanLastUpdated':
+          DateTime.now().subtract(const Duration(minutes: 3)).toIso8601String(),
       'odds': const {},
     });
 
@@ -72,9 +71,8 @@ void main() {
       'status': 'LIVE',
       'matchState': 'live',
       'score': '1:0',
-      'fetchedAt': DateTime.now()
-          .subtract(const Duration(minutes: 3))
-          .toIso8601String(),
+      'fetchedAt':
+          DateTime.now().subtract(const Duration(minutes: 3)).toIso8601String(),
       'odds': const {},
     });
 
@@ -97,5 +95,42 @@ void main() {
 
     expect(item.status, MatchStatus.live);
     expect(item.matchState, MatchState.live);
+  });
+
+  test('structured stoppage time is displayed precisely', () {
+    final item = MatchItem.fromJson({
+      'id': 'stoppage',
+      'number': 'D206',
+      'businessDate': '2026-07-24',
+      'league': 'League',
+      'home': 'Home',
+      'away': 'Away',
+      'kickoff': '2026-07-25 18:00:00',
+      'status': 'LIVE',
+      'matchState': 'live',
+      'liveMinute': 90,
+      'addedMinute': 3,
+      'odds': const {},
+    });
+
+    expect(item.liveMinuteDisplay, "90+3'");
+  });
+
+  test('plain stoppage marker stays concise when precision is unavailable', () {
+    final item = MatchItem.fromJson({
+      'id': 'stoppage-unknown',
+      'number': 'D207',
+      'businessDate': '2026-07-24',
+      'league': 'League',
+      'home': 'Home',
+      'away': 'Away',
+      'kickoff': '2026-07-25 18:00:00',
+      'status': 'LIVE',
+      'matchState': 'live',
+      'liveStatusText': '90+',
+      'odds': const {},
+    });
+
+    expect(item.liveMinuteDisplay, "90+'");
   });
 }

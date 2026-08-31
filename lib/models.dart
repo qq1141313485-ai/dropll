@@ -22,6 +22,8 @@ class MatchItem {
     this.finalScore,
     this.halfTimeScore,
     this.liveStatusText,
+    this.liveMinute,
+    this.addedMinute,
     this.titanLastUpdated,
     this.fetchedAt,
     this.extraTimeScore,
@@ -57,6 +59,10 @@ class MatchItem {
   final String? finalScore;
   final String? halfTimeScore;
   final String? liveStatusText;
+
+  /// Structured live clock values supplied by the score provider.
+  final int? liveMinute;
+  final int? addedMinute;
   final DateTime? titanLastUpdated;
   final DateTime? fetchedAt;
   final String? extraTimeScore;
@@ -68,6 +74,27 @@ class MatchItem {
   final Map<String, double> crs;
   final Map<String, double> hafu;
   final Map<String, dynamic> pools;
+
+  String? get liveMinuteDisplay {
+    final minute = liveMinute;
+    if (minute != null && minute >= 0) {
+      final added = addedMinute;
+      if (added != null && added > 0 && minute >= 90) {
+        return "$minute+$added'";
+      }
+      return "$minute'";
+    }
+    final raw = liveStatusText?.trim() ?? '';
+    final stoppageOnly = RegExp(r'^(\d{1,3})\s*\+\s*$').firstMatch(raw);
+    if (stoppageOnly != null) {
+      return "${stoppageOnly.group(1)}+'";
+    }
+    final minuteText =
+        RegExp(r'^\d{1,3}\s*\+\s*\d{1,2}$').firstMatch(raw)?.group(0);
+    if (minuteText != null) return "${minuteText.replaceAll(' ', '')}'";
+    final plain = RegExp(r'^\d{1,3}$').firstMatch(raw)?.group(0);
+    return plain == null ? null : "$plain'";
+  }
 
   bool get hasOfficialKickoffTime {
     final raw = kickoffRaw.trim();
@@ -185,6 +212,13 @@ class MatchItem {
         DateTime.tryParse(json['kickoff']?.toString() ?? '') ?? DateTime.now();
     final isFinished = rawStatus == 'FINISHED';
     final liveStatusText = json['liveStatusText']?.toString().trim() ?? '';
+    int? parseInt(dynamic value) => value is num
+        ? value.toInt()
+        : int.tryParse(value?.toString().trim() ?? '');
+    final liveMinute = parseInt(json['liveMinute']);
+    final addedMinute = parseInt(
+      json['addedMinute'] ?? json['stoppageMinute'] ?? json['stoppageTime'],
+    );
     final hasLiveScore = score != null && score.isNotEmpty;
     final officialFinalScore = parseScore(officialResults['sectionsNo999']);
     final officialResultList = officialResults['matchResultList'];
@@ -215,7 +249,10 @@ class MatchItem {
       kickoffRaw: json['kickoff']?.toString() ?? '',
       status: shouldTreatAsFinished
           ? MatchStatus.finished
-          : (explicitlyLive || hasLiveScore || liveStatusText.isNotEmpty
+          : (explicitlyLive ||
+                  hasLiveScore ||
+                  liveStatusText.isNotEmpty ||
+                  liveMinute != null
               ? MatchStatus.live
               : MatchStatus.pending),
       matchState: shouldTreatAsFinished
@@ -236,9 +273,10 @@ class MatchItem {
               'postponed' => MatchState.postponed,
               'cancelled' || 'canceled' => MatchState.cancelled,
               'suspended' => MatchState.suspended,
-              _ => hasLiveScore || liveStatusText.isNotEmpty
-                  ? MatchState.live
-                  : MatchState.unknown,
+              _ =>
+                hasLiveScore || liveStatusText.isNotEmpty || liveMinute != null
+                    ? MatchState.live
+                    : MatchState.unknown,
             },
       matchStateText: matchStateText,
       bettingStatus: switch (rawBettingStatus) {
@@ -258,6 +296,8 @@ class MatchItem {
       finalScore: finalScore ?? officialFinalScore,
       halfTimeScore: json['halfTimeScore']?.toString(),
       liveStatusText: liveStatusText.isEmpty ? null : liveStatusText,
+      liveMinute: liveMinute,
+      addedMinute: addedMinute,
       titanLastUpdated: DateTime.tryParse(
         json['titanLastUpdated']?.toString() ?? '',
       ),

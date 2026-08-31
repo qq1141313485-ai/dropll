@@ -2508,6 +2508,7 @@ class _SchemePageState extends State<_SchemePage> {
   String? error;
   bool showCombinations = false;
   bool isSharing = false;
+  bool _savedCurrentScheme = false;
 
   @override
   void initState() {
@@ -2561,7 +2562,8 @@ class _SchemePageState extends State<_SchemePage> {
     )?.toDouble();
   }
 
-  bool get _isSavedScheme => widget.savedSettlement != null;
+  bool get _isSavedScheme =>
+      widget.savedSettlement != null || _savedCurrentScheme;
 
   bool get _isSettled =>
       _settlementState == 'won' || _settlementState == 'lost';
@@ -2624,6 +2626,7 @@ class _SchemePageState extends State<_SchemePage> {
       setState(() {
         result = next;
         error = null;
+        if (widget.savedSettlement == null) _savedCurrentScheme = false;
       });
     } catch (exception) {
       setState(() {
@@ -2788,9 +2791,13 @@ class _SchemePageState extends State<_SchemePage> {
     });
     await const SavedSchemeStore().prepend(encoded, now: now);
     if (mounted) {
+      setState(() => _savedCurrentScheme = true);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('方案已保存到本机')));
+      ).showSnackBar(const SnackBar(
+        content: Text('方案已保存到本机'),
+        duration: Duration(milliseconds: 1600),
+      ));
     }
   }
 
@@ -4305,16 +4312,16 @@ class _SchemePageState extends State<_SchemePage> {
                   label: Text(isSharing ? '生成中' : '分享方案'),
                 ),
               ),
-              if (!_isSavedScheme) ...[
-                const SizedBox(width: 6),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: value == null ? null : () => _save(value),
-                    style: FilledButton.styleFrom(backgroundColor: _green),
-                    child: const Text('保存方案'),
-                  ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: FilledButton(
+                  onPressed: value == null || _isSavedScheme
+                      ? null
+                      : () => _save(value),
+                  style: FilledButton.styleFrom(backgroundColor: _green),
+                  child: Text(_isSavedScheme ? '已保存' : '保存方案'),
                 ),
-              ],
+              ),
             ],
           ),
         ),
@@ -4349,7 +4356,7 @@ class _SchemePageState extends State<_SchemePage> {
                     );
                   },
             style: FilledButton.styleFrom(backgroundColor: _green),
-            child: const Text('保存优化方案'),
+            child: Text(_isSavedScheme ? '已保存' : '保存优化方案'),
           ),
         ),
       );

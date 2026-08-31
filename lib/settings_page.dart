@@ -258,7 +258,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Padding(
               padding: EdgeInsets.all(14),
               child: Text(
-                '以下内容只保存在本机。卸载 App、清除浏览器数据或更换设备后可能丢失。清理图片缓存不会删除这些内容。',
+                '以下内容只保存在本机。卸载 App、清除浏览器数据或更换设备后可能丢失。',
                 style: TextStyle(color: _green, fontSize: 13, height: 1.5),
               ),
             ),
@@ -280,8 +280,8 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         _LocalDataTile(
           icon: Icons.notifications_none_rounded,
-          title: '关注更新',
-          subtitle: '用于在应用内查看原文是否有新版',
+          title: '关注计划',
+          subtitle: '在计划页查看是否有新版本',
           count: _data.followedPlans,
           loading: _loadingData,
           onClear: _data.followedPlans == 0
@@ -335,12 +335,13 @@ class _SettingsPageState extends State<SettingsPage> {
           title: '版本',
           subtitle: _versionLabel,
         ),
-        _SettingTile(
-          icon: Icons.system_update_outlined,
-          title: '检查 App 更新',
-          subtitle: _checkingUpdate ? '正在检查，请稍候' : '检查是否有新的安装包',
-          onTap: _checkingUpdate ? null : _checkForUpdate,
-        ),
+        if (kIsWeb || defaultTargetPlatform == TargetPlatform.android)
+          _SettingTile(
+            icon: Icons.system_update_outlined,
+            title: '检查 App 更新',
+            subtitle: _checkingUpdate ? '正在检查，请稍候' : '检查是否有新的安装包',
+            onTap: _checkingUpdate ? null : _checkForUpdate,
+          ),
         const Padding(
           padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
           child: Text(

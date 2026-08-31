@@ -3,6 +3,7 @@ Description=Run Caimaster plan source sync every five minutes
 
 [Timer]
 OnBootSec=2min
+OnActiveSec=2min
 OnUnitActiveSec=5min
 RandomizedDelaySec=20
 Persistent=true

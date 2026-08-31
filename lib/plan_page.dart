@@ -1,17 +1,18 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
 import 'local_data_store.dart';
 import 'plan_content_favorite_store.dart';
+import 'web_image_download.dart';
 
 class PlanCenterPage extends StatefulWidget {
   const PlanCenterPage({super.key});
@@ -1127,22 +1128,48 @@ class _PlanImageViewerPageState extends State<PlanImageViewerPage> {
               onPageChanged: (index) => setState(() => _currentIndex = index),
               itemBuilder: (context, index) {
                 final image = widget.update.images[index];
-                return Center(
-                  child: InteractiveViewer(
-                    minScale: 0.8,
-                    maxScale: 4,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 86),
-                      child: RepaintBoundary(
-                        key: _imageKeys[index],
-                        child: _PlanImageCard(
-                          image: image,
-                          update: widget.update,
-                          large: true,
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    final sourceWidth = (image.width ?? 0).toDouble();
+                    final sourceHeight = (image.height ?? 0).toDouble();
+                    final aspectRatio = sourceWidth > 0 && sourceHeight > 0
+                        ? sourceWidth / sourceHeight
+                        : 0.62;
+                    final viewportRatio =
+                        constraints.maxWidth / constraints.maxHeight;
+                    final fittedWidth = aspectRatio >= viewportRatio
+                        ? constraints.maxWidth
+                        : constraints.maxHeight * aspectRatio;
+                    final fittedHeight = aspectRatio >= viewportRatio
+                        ? constraints.maxWidth / aspectRatio
+                        : constraints.maxHeight;
+                    return InteractiveViewer(
+                      key: ValueKey(
+                        'plan-image-viewer-${image.imageUrl ?? index}',
+                      ),
+                      constrained: false,
+                      clipBehavior: Clip.none,
+                      boundaryMargin: EdgeInsets.symmetric(
+                        horizontal: constraints.maxWidth,
+                        vertical: constraints.maxHeight,
+                      ),
+                      alignment: Alignment.center,
+                      minScale: 1,
+                      maxScale: 6,
+                      child: SizedBox(
+                        width: fittedWidth,
+                        height: fittedHeight,
+                        child: RepaintBoundary(
+                          key: _imageKeys[index],
+                          child: _PlanImageCard(
+                            image: image,
+                            update: widget.update,
+                            large: true,
+                          ),
                         ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 );
               },
             ),
@@ -1182,6 +1209,21 @@ class _PlanImageViewerPageState extends State<PlanImageViewerPage> {
   Future<void> _saveImage() async {
     setState(() => _saving = true);
     try {
+      final safeName = '${widget.source.name}_${_currentImage.title}'
+          .replaceAll(RegExp(r'[\\/:*?"<>|\s]+'), '_');
+      final remoteFileName = '$safeName.jpg';
+      if (kIsWeb && _currentImage.isRemote) {
+        if (!downloadImageUrl(_currentImage.imageUrl!,
+            fileName: remoteFileName)) {
+          throw StateError('浏览器下载不可用');
+        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('图片已开始下载'),
+          duration: Duration(milliseconds: 1600),
+        ));
+        return;
+      }
       late final Uint8List bytes;
       var extension = 'png';
       var mimeType = 'image/png';
@@ -1212,33 +1254,38 @@ class _PlanImageViewerPageState extends State<PlanImageViewerPage> {
         }
         bytes = renderedBytes;
       }
-      final safeName = '${widget.source.name}_${_currentImage.title}'
-          .replaceAll(RegExp(r'[\\/:*?"<>|\s]+'), '_');
       final fileName = '$safeName.$extension';
-      final result = await SharePlus.instance.share(
-        ShareParams(
-          files: [
-            XFile.fromData(
-              bytes,
-              mimeType: mimeType,
-              name: fileName,
-            ),
-          ],
-          fileNameOverrides: [fileName],
-          subject: '${widget.source.name}计划图片',
-          text: '${widget.source.name}计划图片',
-        ),
-      );
-      if (result.status == ShareResultStatus.unavailable) {
-        throw StateError('系统保存服务不可用');
+      if (kIsWeb) {
+        final started = downloadImageBytes(
+          bytes,
+          mimeType: mimeType,
+          fileName: fileName,
+        );
+        if (!started) {
+          throw StateError('浏览器下载不可用');
+        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('图片已开始下载'),
+          duration: Duration(milliseconds: 1600),
+        ));
+        return;
       }
-      if (!mounted || result.status != ShareResultStatus.success) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('图片操作已完成')));
+      final granted = await Gal.requestAccess();
+      if (!granted) throw StateError('照片权限未授予');
+      await Gal.putImageBytes(bytes, name: fileName);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('图片已保存到照片'),
+        duration: Duration(milliseconds: 1600),
+      ));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('图片保存失败，请稍后再试')),
+        const SnackBar(
+          content: Text('图片保存失败，请检查照片权限后重试'),
+          duration: Duration(milliseconds: 2400),
+        ),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -1258,7 +1305,10 @@ class _PlanImageViewerPageState extends State<PlanImageViewerPage> {
     );
     if (!mounted || saved != true) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已收藏这张图片')),
+      const SnackBar(
+        content: Text('已收藏这张图片'),
+        duration: Duration(milliseconds: 1600),
+      ),
     );
   }
 }

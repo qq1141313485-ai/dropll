@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -7,10 +10,17 @@ import 'selection_page.dart';
 import 'settings_page.dart';
 import 'widgets/home/home_page_container.dart';
 
-void main() => runApp(const CaiToolApp());
+void main() => runApp(
+      CaiToolApp(
+        forceStartupSplash:
+            !kIsWeb && defaultTargetPlatform == TargetPlatform.android,
+      ),
+    );
 
 class CaiToolApp extends StatelessWidget {
-  const CaiToolApp({super.key});
+  const CaiToolApp({this.forceStartupSplash, super.key});
+
+  final bool? forceStartupSplash;
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +71,97 @@ class CaiToolApp extends StatelessWidget {
           surfaceTintColor: Colors.transparent,
         ),
       ),
-      home: const AppShell(),
+      home: _AppEntry(
+        showStartupSplash: forceStartupSplash ?? false,
+      ),
+    );
+  }
+}
+
+class _AppEntry extends StatefulWidget {
+  const _AppEntry({required this.showStartupSplash});
+
+  final bool showStartupSplash;
+
+  @override
+  State<_AppEntry> createState() => _AppEntryState();
+}
+
+class _AppEntryState extends State<_AppEntry> {
+  Timer? _timer;
+  late bool _showSplash;
+
+  @override
+  void initState() {
+    super.initState();
+    _showSplash = widget.showStartupSplash;
+    if (_showSplash) {
+      _timer = Timer(const Duration(milliseconds: 650), () {
+        if (mounted) setState(() => _showSplash = false);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      child: _showSplash
+          ? const _LaunchBranding(key: ValueKey('launch-branding'))
+          : const AppShell(key: ValueKey('app-shell')),
+    );
+  }
+}
+
+class _LaunchBranding extends StatelessWidget {
+  const _LaunchBranding({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xfff7f9f8),
+      body: Center(
+        child: Transform.translate(
+          offset: const Offset(0, -23),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(
+                'assets/branding/app_icon_master_1024.png',
+                width: 112,
+                height: 112,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                '球镜',
+                style: TextStyle(
+                  color: Color(0xff17231e),
+                  fontSize: 24,
+                  fontWeight: FontWeight.w600,
+                  height: 1.2,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '看比分 · 查赔率 · 找计划',
+                style: TextStyle(
+                  color: Color(0xff748179),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w400,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

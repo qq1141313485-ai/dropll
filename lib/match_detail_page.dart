@@ -61,6 +61,10 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
   void initState() {
     super.initState();
     _tab = widget.match.matchState == MatchState.finished ? 3 : 0;
+    // The match list already owns enough real data to render the fixed header.
+    // Show it immediately instead of blocking the whole route on the slower
+    // odds, analysis, badge and standings requests.
+    _lastData = _DetailData(match: widget.match);
     _future = _loadAndSchedule();
   }
 
@@ -226,6 +230,12 @@ class _MatchDetailV2PageState extends State<MatchDetailV2Page> {
                   labels: detailTabs,
                   onChanged: _selectTab,
                 ),
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  const LinearProgressIndicator(
+                    minHeight: 2,
+                    color: _green,
+                    backgroundColor: _greenSoft,
+                  ),
                 Expanded(
                   child: RefreshIndicator(
                     onRefresh: _reload,
@@ -5605,7 +5615,8 @@ String _mdhm(DateTime time) =>
 String _statusText(MatchItem match) {
   return switch (match.matchState) {
     MatchState.notStarted => '未开始',
-    MatchState.live => _liveStatusText(match.liveStatusText),
+    MatchState.live =>
+      match.liveMinuteDisplay ?? _liveStatusText(match.liveStatusText),
     MatchState.halftime => '中场',
     MatchState.finished => '已结束',
     MatchState.postponed => '延期',

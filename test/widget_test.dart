@@ -5,6 +5,7 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,8 +31,24 @@ void main() {
     expect(find.text('完场'), findsOneWidget);
   });
 
-  testWidgets('Plan tab does not present demo data as live content',
-      (WidgetTester tester) async {
+  testWidgets('Android startup branding matches the iOS launch content', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const CaiToolApp(forceStartupSplash: true));
+    expect(find.text('球镜'), findsOneWidget);
+    expect(find.text('看比分 · 查赔率 · 找计划'), findsOneWidget);
+    expect(
+      find.image(const AssetImage('assets/branding/app_icon_master_1024.png')),
+      findsOneWidget,
+    );
+
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(find.text('即时'), findsOneWidget);
+  });
+
+  testWidgets('Plan tab does not present demo data as live content', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(const CaiToolApp());
     await tester.pump();
     await tester.tap(find.text('计划'));
@@ -40,15 +57,16 @@ void main() {
     expect(find.textContaining('当前显示演示数据'), findsNothing);
   });
 
-  testWidgets('Settings navigation matches the destination page',
-      (WidgetTester tester) async {
+  testWidgets('Settings navigation matches the destination page', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(const CaiToolApp());
     await tester.pump();
     await tester.tap(find.text('设置'));
     await tester.pump();
     expect(find.text('我的数据'), findsOneWidget);
     expect(find.text('内容收藏'), findsOneWidget);
-    expect(find.text('关注更新'), findsOneWidget);
+    expect(find.text('关注计划'), findsOneWidget);
     expect(find.text('保存方案'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('检查 App 更新'), 220);
     expect(find.text('检查 App 更新'), findsOneWidget);

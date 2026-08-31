@@ -2,6 +2,8 @@
 <resources>
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowSplashScreenBackground">#F7F9F8</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/launch_image</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#FAFAF8</item>
+        <item name="android:windowSplashScreenAnimationDuration">200</item>
     </style>
 </resources>

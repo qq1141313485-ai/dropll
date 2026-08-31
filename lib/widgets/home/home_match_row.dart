@@ -147,9 +147,7 @@ class _HomeMatchRowState extends State<HomeMatchRow> {
   }
 
   String? _minuteText() {
-    final raw = (match.liveStatusText ?? '').trim();
-    final minute = RegExp(r'\d{1,3}(?:\+\d{1,2})?').firstMatch(raw)?.group(0);
-    return minute == null || minute.isEmpty ? null : "$minute'";
+    return match.liveMinuteDisplay;
   }
 
   String _extractFinalScore(Map<String, dynamic>? source) {

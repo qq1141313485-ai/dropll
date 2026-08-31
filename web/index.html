@@ -22,6 +22,15 @@
     window.addEventListener('flutter-first-frame', function () {
       document.getElementById('loading')?.remove();
     });
+    navigator.serviceWorker?.getRegistrations().then(function (registrations) {
+      return Promise.all(
+        registrations
+          .filter(function (registration) {
+            return new URL(registration.scope).pathname.startsWith('/web/');
+          })
+          .map(function (registration) { return registration.unregister(); })
+      );
+    });
   </script>
   <script src="flutter_bootstrap.js" async
           onerror="document.getElementById('loading').textContent='加载失败，请刷新页面重试'"></script>

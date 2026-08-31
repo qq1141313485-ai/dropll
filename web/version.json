@@ -1,0 +1,8 @@
+{
+  "app_name": "球镜",
+  "version": "1.0.1",
+  "build_number": 5,
+  "package_name": "com.caimaster.jingqiujing",
+  "download_url": "https://cclloo.com/download.html",
+  "release_notes": "优化计划内容展示和版本检查，提升使用稳定性。"
+}

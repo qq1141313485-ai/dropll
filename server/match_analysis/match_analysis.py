@@ -12,6 +12,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+try:  # Supports both package imports and the existing direct-module tests.
+    from .goal_model import build_goal_proxy
+except ImportError:  # pragma: no cover - exercised by direct deployment imports.
+    from goal_model import build_goal_proxy
+
 
 WEB_API = "https://webapi.sporttery.cn/gateway/uniform/football"
 MATCH_ID_RE = re.compile(r"^[0-9]{1,20}$")
@@ -474,6 +479,7 @@ def normalize_analysis(match_id: str, payloads: dict[str, JsonMap]) -> JsonMap:
         ),
         "future": _future_matches(payloads.get("future", {})),
     }
+    data["goalModel"] = build_goal_proxy(data["recent"], data["headToHead"])
     data["availability"] = {
         "headToHead": bool(data["headToHead"]["matches"]),
         "standings": bool(
