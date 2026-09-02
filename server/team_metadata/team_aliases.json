@@ -734,5 +734,20 @@
   "町田泽维": {"provider":"thesportsdb","query":"Machida Zelvia","sourceTeamId":"139889","sourceName":"Machida Zelvia","country":"Japan"},
   "川崎前锋": {"provider":"thesportsdb","query":"Kawasaki Frontale","sourceTeamId":"137709","sourceName":"Kawasaki Frontale","country":"Japan"},
   "奥斯纳": {"provider":"thesportsdb","query":"VfL Osnabruck","sourceTeamId":"137115","sourceName":"Osnabrück","country":"Germany"},
-  "拜仁": {"provider":"thesportsdb","query":"Bayern Munich","sourceTeamId":"133664","sourceName":"Bayern Munich","country":"Germany"}
+  "拜仁": {"provider":"thesportsdb","query":"Bayern Munich","sourceTeamId":"133664","sourceName":"Bayern Munich","country":"Germany"},
+  "查尔顿": {"provider":"thesportsdb","query":"Charlton Athletic","sourceTeamId":"133851","sourceName":"Charlton Athletic","country":"England"},
+  "米尔沃尔": {"provider":"thesportsdb","query":"Millwall","sourceTeamId":"133634","sourceName":"Millwall","country":"England"},
+  "女王巡游": {"provider":"thesportsdb","query":"Queens Park Rangers","sourceTeamId":"133605","sourceName":"Queens Park Rangers","country":"England"},
+  "米堡": {"provider":"thesportsdb","query":"Middlesbrough","sourceTeamId":"133628","sourceName":"Middlesbrough","country":"England"},
+  "西布罗姆": {"provider":"thesportsdb","query":"West Bromwich Albion","sourceTeamId":"133611","sourceName":"West Bromwich Albion","country":"England"},
+  "帕梅拉斯": {"provider":"thesportsdb","query":"Palmeiras","sourceTeamId":"134465","sourceName":"Palmeiras","country":"Brazil"},
+  "格雷米奥": {"provider":"thesportsdb","query":"Gremio","sourceTeamId":"134288","sourceName":"Grêmio","country":"Brazil"},
+  "图卢兹": {"provider":"thesportsdb","query":"Toulouse","sourceTeamId":"133703","sourceName":"Toulouse","country":"France"},
+  "皇家社会": {"provider":"thesportsdb","query":"Real Sociedad","sourceTeamId":"133724","sourceName":"Real Sociedad","country":"Spain"},
+  "迈季宽广": {"provider":"thesportsdb","query":"Al Fayha","sourceTeamId":"136014","sourceName":"Al-Fayha","country":"Saudi Arabia"},
+  "拉斯永恒": {"provider":"thesportsdb","query":"Al Kholood","sourceTeamId":"149112","sourceName":"Al-Kholood","country":"Saudi Arabia"},
+  "新未来SC": {"provider":"thesportsdb","query":"NEOM SC","sourceTeamId":"150637","sourceName":"Neom","country":"Saudi Arabia"},
+  "赛哈海湾": {"provider":"thesportsdb","query":"Al Khaleej","sourceTeamId":"139080","sourceName":"Al-Khaleej","country":"Saudi Arabia"},
+  "迪里耶": {"provider":"thesportsdb","query":"Al Diriyah","sourceTeamId":"152917","sourceName":"Al-Diriyah","country":"Saudi Arabia"},
+  "胡巴卡德": {"provider":"thesportsdb","query":"Al Qadsiah","sourceTeamId":"136015","sourceName":"Al-Qadsiah","country":"Saudi Arabia"}
 }
