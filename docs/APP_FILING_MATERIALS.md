@@ -15,7 +15,7 @@
 | Android 应用包名 | `com.caimaster.jingqiujing` |
 | iOS Bundle ID | `com.caimaster.jingqiujing` |
 | 当前版本 | `1.0.1`，构建号 `5` |
-| 官网 / Web 访问地址 | `https://cclloo.com/app/` |
+| 官网 / Web 访问地址 | `https://cclloo.com/web/` |
 | 隐私政策 | `https://api.cclloo.com/privacy` |
 | 服务与投诉支持页 | `https://api.cclloo.com/support` |
 | 数据来源说明 | 通过公开只读 HTTPS 接口获取赛事、赛果和赔率资料；数据可能受上游更新时间影响。 |

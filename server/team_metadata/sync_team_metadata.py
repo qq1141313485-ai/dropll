@@ -112,6 +112,32 @@ def _download_badge(url: str, destination: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _cached_identity_item(
+    items: dict[str, Any],
+    output_dir: Path,
+    badges_dir: Path,
+    source_team_id: str,
+    source_name: str,
+    country: str,
+) -> dict[str, Any] | None:
+    """Return a verified cached item for another alias of the same team."""
+    for item in items.values():
+        if not isinstance(item, dict):
+            continue
+        badge_file = str(item.get("badgeFile") or "")
+        badge_path = (output_dir / badge_file).resolve()
+        if (
+            str(item.get("sourceTeamId") or "") == source_team_id
+            and str(item.get("sourceName") or "") == source_name
+            and str(item.get("country") or "") == country
+            and badge_file.startswith("badges/")
+            and badge_path.parent == badges_dir.resolve()
+            and badge_path.is_file()
+        ):
+            return dict(item)
+    return None
+
+
 def sync(
     aliases_path: Path,
     output_dir: Path,
@@ -150,6 +176,8 @@ def sync(
             expected_id = str(mapping.get("sourceTeamId") or "")
             expected_name = str(mapping.get("sourceName") or "")
             expected_country = str(mapping.get("country") or "")
+            if not expected_id or not expected_name:
+                raise ValueError("sourceTeamId and sourceName are required")
             existing_item = existing_teams.get(local_name)
             existing_badge_file = (
                 str(existing_item.get("badgeFile") or "")
@@ -168,6 +196,18 @@ def sync(
                 and existing_badge_path.is_file()
             ):
                 manifest_items[local_name] = existing_item
+                cached_count += 1
+                continue
+            identity_item = _cached_identity_item(
+                manifest_items,
+                output_dir,
+                badges_dir,
+                expected_id,
+                expected_name,
+                expected_country,
+            )
+            if not refresh_existing and identity_item is not None:
+                manifest_items[local_name] = identity_item
                 cached_count += 1
                 continue
             source = _source_team(

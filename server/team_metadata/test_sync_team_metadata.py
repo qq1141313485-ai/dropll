@@ -183,6 +183,53 @@ class TeamMetadataSyncTest(unittest.TestCase):
 
             self.assertEqual(result["teams"]["保留队"], kept)
 
+    def test_sync_reuses_badge_for_multiple_names_of_same_team(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "cache"
+            badge = output / "badges" / "42.png"
+            badge.parent.mkdir(parents=True)
+            badge.write_bytes(b"x" * 300)
+            cached = {
+                "sourceTeamId": "42",
+                "sourceName": "Test FC",
+                "country": "Test",
+                "badgeFile": "badges/42.png",
+                "badgeSha256": "digest",
+                "badgeBytes": 300,
+            }
+            (output / "manifest.json").write_text(
+                json.dumps({"teams": {"测试队": cached}}), encoding="utf-8"
+            )
+            aliases = root / "aliases.json"
+            aliases.write_text(
+                json.dumps(
+                    {
+                        "测试队全称": {
+                            "query": "Test FC",
+                            "sourceTeamId": "42",
+                            "sourceName": "Test FC",
+                            "country": "Test",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("sync_team_metadata._source_team") as source_team:
+                result = sync(
+                    aliases,
+                    output,
+                    "123",
+                    0,
+                    names={"测试队全称"},
+                )
+
+            source_team.assert_not_called()
+            self.assertEqual(result["errorCount"], 0)
+            self.assertEqual(result["cachedCount"], 1)
+            self.assertEqual(result["teams"]["测试队全称"], cached)
+
 
 if __name__ == "__main__":
     unittest.main()
