@@ -83,7 +83,7 @@ Mac 历史工程、旧 APK、旧构建目录仅可用于排查，禁止反向覆
 ### 3.5 官网、Web 与服务器边界
 
 - 官网根目录与 Flutter Web 必须分开发布：官网为 `/www/wwwroot/cclloo.com`，Flutter Web 当前入口为 `/www/wwwroot/cclloo.com/web/`。不得将 Web 构建解压到官网根目录。
-- API 是独立反向代理服务。部署官网或 `/app/` 时，禁止覆盖 API 配置、API 服务目录或下载目录。
+- API 是独立反向代理服务。部署官网或 `/web/` 时，禁止覆盖 API 配置、API 服务目录或下载目录。
 - Flutter Web 必须保持国内网络可用：CanvasKit 和 Noto Sans SC 使用站内静态资源，不能在运行时依赖 Google、gstatic 或 Google Fonts。每次 Web 发布后都要在真机网络环境检查首屏、中文字体和接口加载。
 - 官网文案应保持“赛事观察、资料整理、个人复盘”定位，不使用保证中奖、稳赚、必胜、诱导投注或夸大预测能力的表达。
 - 官网预约、账号或后台等能力若只存在浏览器 `localStorage`，必须明确视为前端临时能力，不得描述为服务器已落库或有运营后台。
