@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fcntl
+import gzip
 import hashlib
 import json
 import logging
@@ -14,7 +15,9 @@ import urllib.request
 from contextlib import closing
 from dataclasses import replace
 from datetime import datetime, timedelta
+from html.parser import HTMLParser
 from pathlib import Path
+import re
 from typing import Any
 from uuid import uuid4
 
@@ -43,11 +46,22 @@ from plan_image_classifier import (
 )
 
 
-SOURCE_NAME = "hongxisaishi"
+SOURCE_KIND = os.environ.get("CAIMASTER_PLAN_SOURCE_KIND", "hongxi_json").strip().lower()
+SOURCE_NAME = os.environ.get(
+    "CAIMASTER_PLAN_SOURCE_NAME",
+    "zlwhd" if SOURCE_KIND == "zlwhd_html" else "hongxisaishi",
+).strip() or "hongxisaishi"
 API_BASE_URL = os.environ.get(
     "CAIMASTER_PLAN_SOURCE_API",
     "https://api.tchongxi.com",
 ).rstrip("/")
+SOURCE_WEB_URL = os.environ.get(
+    "CAIMASTER_PLAN_SOURCE_WEB",
+    "https://www.zlwhd.com" if SOURCE_KIND == "zlwhd_html" else API_BASE_URL,
+).rstrip("/")
+MAX_ARTICLES_PER_RUN = max(
+    1, int(os.environ.get("CAIMASTER_PLAN_SOURCE_MAX_ARTICLES_PER_RUN", "40"))
+)
 MAX_PAGES = max(1, int(os.environ.get("CAIMASTER_PLAN_SOURCE_MAX_PAGES", "30")))
 LOOKBACK_DAYS = max(
     1,
@@ -90,6 +104,82 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 logger = logging.getLogger("plan_source_sync")
+
+
+class _ArticleLinkParser(HTMLParser):
+    """Extract article links from the static zlwhd.com home page."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.items: list[dict[str, str]] = []
+        self._href = ""
+        self._text: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() != "a":
+            return
+        href = dict(attrs).get("href") or ""
+        if re.search(r"/sys-nd/\d+\.html(?:[?#].*)?$", href):
+            self._href = urllib.parse.urljoin(SOURCE_WEB_URL + "/", href)
+            self._text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._href:
+            self._text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "a" and self._href:
+            title = " ".join("".join(self._text).split())
+            match = re.search(r"(\d{4}-\d{2}-\d{2})", title)
+            if match:
+                title = title.replace(match.group(1), "").strip()
+            if title:
+                article_id = re.search(r"/sys-nd/(\d+)\.html", self._href)
+                if article_id:
+                    self.items.append(
+                        {
+                            "id": article_id.group(1),
+                            "title": title,
+                            "detail_url": self._href,
+                            "date_text": match.group(1) if match else "",
+                        }
+                    )
+            self._href = ""
+            self._text = []
+
+
+def _decode_zlwhd_news_info(raw: bytes) -> dict[str, Any]:
+    """Read the embedded newsInfo object emitted by the site builder."""
+    text = raw.decode("utf-8", errors="replace")
+    marker = '"newsInfo":'
+    start = text.find(marker)
+    if start < 0:
+        raise SourceError("zlwhd article has no newsInfo metadata")
+    try:
+        info, _ = json.JSONDecoder().raw_decode(text[start + len(marker):])
+    except json.JSONDecodeError as exc:
+        raise SourceError("invalid zlwhd article metadata") from exc
+    if not isinstance(info, dict):
+        raise SourceError("invalid zlwhd newsInfo metadata")
+    # zlwhd stores publication time as JavaScript milliseconds.
+    if not info.get("publishtime") and info.get("date"):
+        try:
+            info["publishtime"] = int(info["date"]) // 1000
+        except (TypeError, ValueError):
+            pass
+    return info
+
+
+def _zlwhd_title(title: str, published_at: int = 0) -> str:
+    """Convert the site's MMDD title to the full date format used by the app."""
+    value = " ".join(str(title or "").split())
+    if re.match(r"^\d{8}", value):
+        return value
+    mmdd = re.match(r"^(\d{2})(\d{2})(.*)$", value)
+    if not mmdd:
+        return value
+    year = datetime.fromtimestamp(published_at, CHINA_TZ).year if published_at else datetime.now(CHINA_TZ).year
+    return f"{year}{mmdd.group(1)}{mmdd.group(2)}{mmdd.group(3)}"
 
 
 def _init_sync_store() -> None:
@@ -267,7 +357,10 @@ def _request(
             with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
                 if response.status != 200:
                     raise SourceError(f"HTTP {response.status}: {url}")
-                return response.read(15 * 1024 * 1024 + 1)
+                contents = response.read(15 * 1024 * 1024 + 1)
+                if response.headers.get("Content-Encoding", "").lower() == "gzip":
+                    contents = gzip.decompress(contents)
+                return contents
         except (urllib.error.URLError, TimeoutError, SourceError) as exc:
             last_error = exc
             if attempt < 3:
@@ -393,6 +486,42 @@ def _fetch_articles(*, use_sync_store: bool = True) -> list[dict[str, Any]]:
             else _fetch_queued_articles()
         )
     queued_count = len(collected)
+    if SOURCE_KIND == "zlwhd_html":
+        raw = _request(SOURCE_WEB_URL + "/")
+        parser = _ArticleLinkParser()
+        parser.feed(raw.decode("utf-8", errors="replace"))
+        for item in parser.items:
+            title = item["title"]
+            # The source site mixes football and basketball recommendations.
+            if "篮球" in title:
+                continue
+            published_ts = 0
+            if item.get("date_text"):
+                try:
+                    published_ts = int(
+                        datetime.strptime(item["date_text"], "%Y-%m-%d")
+                        .replace(tzinfo=CHINA_TZ)
+                        .timestamp()
+                    )
+                except ValueError:
+                    published_ts = 0
+            if published_ts and datetime.fromtimestamp(published_ts, CHINA_TZ) < cutoff:
+                continue
+            if item["id"] in imported_ids:
+                continue
+            item["publishtime"] = published_ts
+            item["title"] = _zlwhd_title(title, published_ts)
+            collected[item["id"]] = item
+        # Process the newest batch first; subsequent timer runs continue the backlog.
+        candidates = sorted(
+            collected.values(),
+            key=lambda item: int(item.get("publishtime") or 0),
+            reverse=True,
+        )[:MAX_ARTICLES_PER_RUN]
+        return sorted(
+            candidates,
+            key=lambda item: int(item.get("publishtime") or 0),
+        )
     old_streak = 0
     encountered_imported = False
     for page in range(1, MAX_PAGES + 1):
@@ -536,6 +665,12 @@ def _new_image_urls(image_urls: list[str]) -> list[str]:
 
 
 def _article_archive(article: dict[str, Any]) -> dict[str, Any]:
+    if SOURCE_KIND == "zlwhd_html":
+        detail_url = str(article.get("detail_url") or "").strip()
+        if not detail_url:
+            detail_url = f"{SOURCE_WEB_URL}/sys-nd/{article.get('id')}.html"
+        raw = _request(detail_url)
+        return _decode_zlwhd_news_info(raw)
     article_id = str(article.get("id") or "").strip()
     detail = _request_json(
         "/addons/cms/api.archives/detail",
@@ -548,6 +683,11 @@ def _article_image_urls(
     article: dict[str, Any],
     archive: dict[str, Any],
 ) -> list[str]:
+    if SOURCE_KIND == "zlwhd_html":
+        content = archive.get("richContent")
+        image_urls = extract_image_urls(content, SOURCE_WEB_URL)
+        if image_urls:
+            return image_urls
     image_urls = extract_image_urls(archive.get("content"), API_BASE_URL)
     if not image_urls:
         fallback = str(archive.get("image") or article.get("image") or "").strip()

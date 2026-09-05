@@ -16,6 +16,34 @@ from plan_source_common import (
 
 
 class PlanSourceSyncTest(unittest.TestCase):
+    def test_zlwhd_homepage_links_and_title_normalization(self) -> None:
+        html = (
+            '<a href="/sys-nd/100.html">0905大鹏 <span>2026-09-05</span></a>'
+            '<a href="/sys-nd/101.html">0905篮球推荐 2026-09-05</a>'
+        )
+        with mock.patch.object(plan_source_sync, "SOURCE_WEB_URL", "https://www.zlwhd.com"):
+            parser = plan_source_sync._ArticleLinkParser()
+            parser.feed(html)
+        self.assertEqual(parser.items[0]["id"], "100")
+        self.assertEqual(parser.items[0]["title"], "0905大鹏")
+        self.assertEqual(
+            plan_source_sync._zlwhd_title("0905大鹏", 1788537600),
+            "20260905大鹏",
+        )
+
+    def test_zlwhd_news_info_and_rich_content(self) -> None:
+        raw = (
+            '<script>{"newsInfo":{"id":100,"title":"0905大鹏",'
+            '"date":1788606960000,"richContent":"<p><img src=\\"//cdn.example/a.jpg\\"></p>"}}</script>'
+        ).encode("utf-8")
+        info = plan_source_sync._decode_zlwhd_news_info(raw)
+        self.assertEqual(info["publishtime"], 1788606960)
+        with mock.patch.object(plan_source_sync, "SOURCE_KIND", "zlwhd_html"):
+            self.assertEqual(
+                plan_source_sync._article_image_urls({}, info),
+                ["https://cdn.example/a.jpg"],
+            )
+
     def test_compact_date_title(self) -> None:
         name, published = parse_plan_title("20260725公牛", {})
 
